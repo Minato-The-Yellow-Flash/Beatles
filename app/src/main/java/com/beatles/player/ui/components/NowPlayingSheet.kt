@@ -98,6 +98,7 @@ fun NowPlayingSheet(
     onPlayFromQueue: (Song) -> Unit,
     autoPlayEnabled: Boolean = true,
     onToggleAutoPlay: () -> Unit = {},
+    autoMixMode: com.beatles.player.player.automix.AutoMixMode = com.beatles.player.player.automix.AutoMixMode.NEW,
     autoMixEnabled: Boolean = true,
     onToggleAutoMix: () -> Unit = {},
     onGoToAlbum: (Song) -> Unit = {},
@@ -619,9 +620,14 @@ fun NowPlayingSheet(
             ) {
                 if (lyrics.isNotEmpty()) {
                     val listState = rememberLazyListState()
-                    val currentIdx = lyrics.indexOfLast { it.timeMs <= currentPosition }.coerceAtLeast(0)
+                    val currentIdx = lyrics.indexOfLast { it.timeMs <= currentPosition }
                     LaunchedEffect(currentIdx) {
-                        if (currentIdx > 0) listState.animateScrollToItem(currentIdx, scrollOffset = -260)
+                        if (currentIdx in lyrics.indices) {
+                            listState.animateScrollToItem(
+                                index = (currentIdx - 1).coerceAtLeast(0),
+                                scrollOffset = 0
+                            )
+                        }
                     }
 
                     LazyColumn(
@@ -629,21 +635,21 @@ fun NowPlayingSheet(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(start = 24.dp, end = 38.dp),
-                        contentPadding = PaddingValues(top = 40.dp, bottom = 80.dp),
-                        verticalArrangement = Arrangement.spacedBy(18.dp)
+                        contentPadding = PaddingValues(top = 180.dp, bottom = 260.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        itemsIndexed(lyrics) { idx, line ->
+                        itemsIndexed(lyrics, key = { idx, line -> "lyric_${line.timeMs}_$idx" }) { idx, line ->
                             val isActive = idx == currentIdx
-                            val isPast = idx < currentIdx
-                            val isUpcoming = idx > currentIdx
+                            val isPast = currentIdx >= 0 && idx < currentIdx
+                            val isUpcoming = currentIdx < 0 || idx > currentIdx
 
-                            val targetScale = if (isActive) 1.05f else if (isPast) 0.96f else 1.0f
-                            val targetAlpha = if (isActive) 1.0f else if (isPast) 0.35f else 0.45f
-                            val targetBlur = if (isPast) 2.dp else 0.dp
+                            val targetScale = if (isActive) 1.03f else 1.0f
+                            val targetAlpha = if (isActive) 1.0f else if (isPast) 0.32f else 0.45f
+                            val targetBlur = if (isActive) 0.dp else if (isPast) 3.5.dp else 2.5.dp
 
                             val lineScale by animateFloatAsState(
                                 targetValue = targetScale,
-                                animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+                                animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
                                 label = "lineScale_$idx"
                             )
                             val lineAlpha by animateFloatAsState(
@@ -658,24 +664,11 @@ fun NowPlayingSheet(
                             )
 
                             if (isActive) {
-                                // Apple Music Style: smooth floating-point progressive sweep with radiant glow
-                                val elapsed = if (isPlaying) (currentPosition + 250L - line.timeMs).coerceAtLeast(0L) else 0L
-                                val gapToNext = if (idx < lyrics.size - 1) lyrics[idx + 1].timeMs - line.timeMs else 4000L
-                                val lineDuration = gapToNext.coerceIn(800L, 16000L).toFloat()
-                                val targetProgress = (elapsed / lineDuration).coerceIn(0f, 1f)
-
-                                val smoothProgress by animateFloatAsState(
-                                    targetValue = targetProgress,
-                                    animationSpec = tween(durationMillis = 120, easing = LinearEasing),
-                                    label = "lyricsGlowProgress"
-                                )
-
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .graphicsLayer {
                                             scaleX = lineScale
-                                            scaleY = lineScale
                                             transformOrigin = TransformOrigin(0f, 0.5f)
                                         }
                                         .padding(vertical = 4.dp)
@@ -683,67 +676,18 @@ fun NowPlayingSheet(
                                             onSeek(line.timeMs)
                                         }
                                 ) {
-                                    var layoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
-
-                                    // Layer 1: Dim background text (white 35% alpha)
-                                    Text(
-                                        text = line.text,
-                                        color = Color.White.copy(alpha = 0.35f),
-                                        fontSize = 28.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        lineHeight = 36.sp,
-                                        onTextLayout = { layoutResult = it }
-                                    )
-
-                                    // Layer 2: Glowing active text with continuous sweep - EXACT SAME FontWeight.Bold to prevent font glyph drift
                                     Text(
                                         text = line.text,
                                         color = Color.White,
-                                        fontSize = 28.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        lineHeight = 36.sp,
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.Black,
+                                        lineHeight = 34.sp,
                                         style = TextStyle(
                                             shadow = androidx.compose.ui.graphics.Shadow(
-                                                color = Color.White.copy(alpha = 0.55f),
-                                                blurRadius = 16f
+                                                color = Color.White.copy(alpha = 0.70f),
+                                                blurRadius = 18f
                                             )
-                                        ),
-                                        modifier = Modifier.drawWithContent {
-                                            val res = layoutResult
-                                            if (res != null && smoothProgress > 0f) {
-                                                val numLines = res.lineCount
-                                                val totalLength = line.text.length.coerceAtLeast(1)
-
-                                                clipPath(Path().apply {
-                                                    for (l in 0 until numLines) {
-                                                        val lStart = res.getLineStart(l)
-                                                        val lEnd = res.getLineEnd(l)
-                                                        val startFraction = lStart.toFloat() / totalLength
-                                                        val endFraction = lEnd.toFloat() / totalLength
-
-                                                        if (smoothProgress > startFraction) {
-                                                            val lineProgress = ((smoothProgress - startFraction) / (endFraction - startFraction).coerceAtLeast(0.001f)).coerceIn(0f, 1f)
-                                                            val left = res.getLineLeft(l)
-                                                            val right = res.getLineRight(l)
-                                                            val top = res.getLineTop(l)
-                                                            val bottom = res.getLineBottom(l)
-
-                                                            val sweepRight = left + (right - left) * lineProgress
-                                                            addRect(
-                                                                androidx.compose.ui.geometry.Rect(
-                                                                    left = left - 8f,
-                                                                    top = top - 4f,
-                                                                    right = sweepRight,
-                                                                    bottom = bottom + 4f
-                                                                )
-                                                            )
-                                                        }
-                                                    }
-                                                }) {
-                                                    this@drawWithContent.drawContent()
-                                                }
-                                            }
-                                        }
+                                        )
                                     )
                                 }
                             } else {
@@ -752,12 +696,11 @@ fun NowPlayingSheet(
                                         .fillMaxWidth()
                                         .graphicsLayer {
                                             scaleX = lineScale
-                                            scaleY = lineScale
                                             alpha = lineAlpha
                                             transformOrigin = TransformOrigin(0f, 0.5f)
                                         }
                                         .blur(lineBlur)
-                                        .padding(vertical = 3.dp)
+                                        .padding(vertical = 4.dp)
                                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                                             onSeek(line.timeMs)
                                         }
@@ -765,9 +708,9 @@ fun NowPlayingSheet(
                                     Text(
                                         text = line.text,
                                         color = Color.White,
-                                        fontSize = 24.sp,
-                                        fontWeight = if (isUpcoming) FontWeight.Medium else FontWeight.Normal,
-                                        lineHeight = 32.sp
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        lineHeight = 34.sp
                                     )
                                 }
                             }
@@ -789,15 +732,33 @@ fun NowPlayingSheet(
             verticalArrangement = Arrangement.Bottom
         ) {
             if (!showLyrics && !showNextUp) {
-                // Song title + artist (lowered for balanced spacing)
+                // Song title + artist + Language & Genre badge
                 Column(modifier = Modifier.padding(horizontal = 24.dp).padding(top = 10.dp)) {
                     Text(song.title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(song.artist, color = Color.White.copy(alpha = 0.7f), fontSize = 16.sp, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(song.artist, color = Color.White.copy(alpha = 0.7f), fontSize = 16.sp, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                        val playingLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
+                        val playingGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .padding(horizontal = 7.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                "$playingLang • $playingGenre",
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Heart + AutoMix Toggle + 3-dots mini menu row (moved 5px above, borderless liquid glass)
+                // Heart + AutoMix Toggle + 3-dots mini menu row (moved 5px above, frosted glass)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -831,12 +792,76 @@ fun NowPlayingSheet(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // IRL AutoMix DJ Crossfade Toggle between Heart and 3-Dots (White frosted glass overlay, no red)
+                    // Triple-state AutoMix Toggle (New: Red glowing accent, Old: Subtle red, Off: Inactive grey)
+                    val newModeInfinite = rememberInfiniteTransition(label = "newModeGlow")
+                    val newModeGlowAlpha by newModeInfinite.animateFloat(
+                        initialValue = 0.5f,
+                        targetValue = 1.0f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1100, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "newModeGlowAlpha"
+                    )
+
+                    val autoMixLabel = when (autoMixMode) {
+                        com.beatles.player.player.automix.AutoMixMode.NEW -> "AutoMix (New)"
+                        com.beatles.player.player.automix.AutoMixMode.OLD -> "AutoMix (Old)"
+                        com.beatles.player.player.automix.AutoMixMode.OFF -> "AutoMix Off"
+                    }
+                    val autoMixModifier = when (autoMixMode) {
+                        com.beatles.player.player.automix.AutoMixMode.NEW -> {
+                            Modifier
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .border(
+                                    1.5.dp,
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color(0xFFFF334B).copy(alpha = newModeGlowAlpha),
+                                            Color(0xFFFF6E7D).copy(alpha = newModeGlowAlpha),
+                                            Color(0xFFFF2A3A).copy(alpha = newModeGlowAlpha)
+                                        )
+                                    ),
+                                    RoundedCornerShape(18.dp)
+                                )
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color(0xFFF82C38).copy(alpha = 0.32f),
+                                            Color(0xFFFF5260).copy(alpha = 0.22f)
+                                        )
+                                    )
+                                )
+                        }
+                        com.beatles.player.player.automix.AutoMixMode.OLD -> {
+                            Modifier
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .border(1.dp, Color(0xFFF82C38).copy(alpha = 0.45f), RoundedCornerShape(18.dp))
+                                .background(Color(0xFFF82C38).copy(alpha = 0.14f))
+                        }
+                        com.beatles.player.player.automix.AutoMixMode.OFF -> {
+                            Modifier
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(18.dp))
+                                .background(Color.White.copy(alpha = 0.08f))
+                        }
+                    }
+                    val autoMixTint = when (autoMixMode) {
+                        com.beatles.player.player.automix.AutoMixMode.NEW -> Color(0xFFFF4858)
+                        com.beatles.player.player.automix.AutoMixMode.OLD -> Color(0xFFFF7A85)
+                        com.beatles.player.player.automix.AutoMixMode.OFF -> Color.White.copy(alpha = 0.45f)
+                    }
+                    val autoMixTextColor = when (autoMixMode) {
+                        com.beatles.player.player.automix.AutoMixMode.NEW -> Color.White
+                        com.beatles.player.player.automix.AutoMixMode.OLD -> Color.White.copy(alpha = 0.90f)
+                        com.beatles.player.player.automix.AutoMixMode.OFF -> Color.White.copy(alpha = 0.45f)
+                    }
+
                     Box(
-                        modifier = Modifier
-                            .height(36.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(if (autoMixEnabled) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.10f))
+                        modifier = autoMixModifier
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -850,16 +875,16 @@ fun NowPlayingSheet(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 Icons.Default.GraphicEq,
-                                contentDescription = "AutoMix",
-                                tint = if (autoMixEnabled) Color.White else Color.White.copy(alpha = 0.55f),
+                                contentDescription = autoMixLabel,
+                                tint = autoMixTint,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                "AutoMix",
-                                color = if (autoMixEnabled) Color.White else Color.White.copy(alpha = 0.55f),
+                                autoMixLabel,
+                                color = autoMixTextColor,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = if (autoMixMode == com.beatles.player.player.automix.AutoMixMode.NEW) FontWeight.Bold else FontWeight.Medium
                             )
                         }
                     }

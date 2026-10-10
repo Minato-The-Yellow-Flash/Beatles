@@ -251,7 +251,9 @@ fun HomeScreen(
                                 model = heroAlbum.coverUrl,
                                 contentDescription = heroAlbum.title ?: "",
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier.fillMaxSize(),
+                                fallback = androidx.compose.ui.res.painterResource(com.beatles.player.R.drawable.beatles_logo_bar),
+                                error = androidx.compose.ui.res.painterResource(com.beatles.player.R.drawable.beatles_logo_bar)
                             )
                             Box(
                                 modifier = Modifier
@@ -266,7 +268,7 @@ fun HomeScreen(
                                         )
                                     )
                             )
-                            // Borderless liquid glass badge
+                            // Frosted badge
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
@@ -393,7 +395,9 @@ fun HomeScreen(
                                         model = album.coverUrl,
                                         contentDescription = album.title ?: "",
                                         contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
+                                        modifier = Modifier.fillMaxSize(),
+                                        fallback = androidx.compose.ui.res.painterResource(com.beatles.player.R.drawable.beatles_logo_bar),
+                                        error = androidx.compose.ui.res.painterResource(com.beatles.player.R.drawable.beatles_logo_bar)
                                     )
                                     Box(
                                         modifier = Modifier
@@ -462,8 +466,11 @@ fun HomeScreen(
                             ) {
                                 AsyncImage(model = song.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(144.dp).clip(RoundedCornerShape(14.dp)))
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text(song.title ?: "", color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                                Text(song.title ?: "", color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                 Text(song.artist ?: "", color = textSecondary, fontSize = 11.sp, maxLines = 1)
+                                val mfyLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
+                                val mfyGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
+                                Text("$mfyLang • $mfyGenre", color = AccentRed.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                             }
                         }
                     }
@@ -497,6 +504,9 @@ fun HomeScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(song.title ?: "", color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                             Text(song.artist ?: "", color = textSecondary, fontSize = 12.sp, maxLines = 1)
+                            val topLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
+                            val topGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
+                            Text("$topLang • $topGenre", color = AccentRed.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                         }
                         val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
                         Text(dur, color = textMuted, fontSize = 12.sp)
@@ -621,6 +631,9 @@ fun SeeAllScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(song.title ?: "", color = textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                         Text(song.artist ?: "", color = textSecondary, fontSize = 12.sp, maxLines = 1)
+                        val songLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
+                        val songGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
+                        Text("$songLang • $songGenre", color = AccentRed.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                     }
                     val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
                     Text(dur, color = textMuted, fontSize = 12.sp)

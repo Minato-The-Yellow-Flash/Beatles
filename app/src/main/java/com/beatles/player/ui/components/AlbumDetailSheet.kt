@@ -386,7 +386,7 @@ fun AlbumDetailSheet(
             }
         }
 
-        // Pinned Top Navigation Bar (Fixed with uniform liquid glass blur, stays visible during scroll)
+        // Pinned Top Navigation Bar (Fixed with uniform blur, stays visible during scroll)
         val dockedAlpha = if (firstVisibleItem > 0) 1f else (firstVisibleOffset / 500f).coerceIn(0f, 1f)
         val dockedOffset by animateFloatAsState(targetValue = if (dockedAlpha > 0.1f) 0f else 20f, label = "dockedOffset")
 
@@ -398,7 +398,7 @@ fun AlbumDetailSheet(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Liquid Glass Back button
+            // Frosted Back button
             Box(
                 modifier = Modifier
                     .size(42.dp)
@@ -442,7 +442,7 @@ fun AlbumDetailSheet(
                 )
             }
 
-            // Liquid Glass Info button (replaces Share & 3-dots, always pinned)
+            // Frosted Info button (replaces Share & 3-dots, always pinned)
             Box(
                 modifier = Modifier
                     .size(42.dp)

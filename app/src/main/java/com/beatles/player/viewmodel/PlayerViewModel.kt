@@ -88,6 +88,7 @@ data class PlayerUiState(
     val showSeeAllSection: String? = null,
     val isFavorite: Boolean = false,
     val autoPlayEnabled: Boolean = true,
+    val autoMixMode: com.beatles.player.player.automix.AutoMixMode = com.beatles.player.player.automix.AutoMixMode.NEW,
     val autoMixEnabled: Boolean = true,
     val autoMixState: AutoMixState = AutoMixState(),
     val albums: List<Album> = DEFAULT_ALBUMS,
@@ -1022,13 +1023,29 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toggleAutoMix() {
-        val enable = !_uiState.value.autoMixEnabled
-        if (!enable) {
-            autoMixEngine.abortTransition()
-            _uiState.update { it.copy(autoMixEnabled = false, downloadNotice = "AutoMix off") }
-            return
+        val nextMode = when (_uiState.value.autoMixMode) {
+            com.beatles.player.player.automix.AutoMixMode.NEW -> com.beatles.player.player.automix.AutoMixMode.OLD
+            com.beatles.player.player.automix.AutoMixMode.OLD -> com.beatles.player.player.automix.AutoMixMode.OFF
+            com.beatles.player.player.automix.AutoMixMode.OFF -> com.beatles.player.player.automix.AutoMixMode.NEW
         }
-        applyAutoMixRequirements(announce = true)
+        when (nextMode) {
+            com.beatles.player.player.automix.AutoMixMode.NEW -> {
+                autoMixEngine.harmonicMode = true
+                autoMixEngine.extendedWindow = true
+                _uiState.update { it.copy(autoMixMode = nextMode, autoMixEnabled = true, downloadNotice = "AutoMix: Harmonic Pro (New Algorithm)") }
+                applyAutoMixRequirements(announce = false)
+            }
+            com.beatles.player.player.automix.AutoMixMode.OLD -> {
+                autoMixEngine.harmonicMode = false
+                autoMixEngine.extendedWindow = false
+                _uiState.update { it.copy(autoMixMode = nextMode, autoMixEnabled = true, downloadNotice = "AutoMix: Classic Crossfade (Old Algorithm)") }
+                applyAutoMixRequirements(announce = false)
+            }
+            com.beatles.player.player.automix.AutoMixMode.OFF -> {
+                autoMixEngine.abortTransition()
+                _uiState.update { it.copy(autoMixMode = nextMode, autoMixEnabled = false, downloadNotice = "AutoMix: Inactive (Off)") }
+            }
+        }
     }
 
     /**

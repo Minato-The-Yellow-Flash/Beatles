@@ -45,7 +45,7 @@ object AppTheme {
     val bg: Color get() = if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)
     val card: Color get() = if (isDark) Color(0xFFE2E2E2).copy(alpha = 0.12f) else Color.White
     val sheet: Color get() = if (isDark) Color(0xFF1E2024) else Color(0xFFFFFFFF)
-    /** Frosted "liquid glass" surface tint used by nav bar / popovers. */
+    /** Frosted translucent surface tint used by nav bar / popovers. */
     val glass: Color get() = if (isDark) Color(0xFF2A2A34).copy(alpha = 0.38f) else Color.White.copy(alpha = 0.72f)
 }
 

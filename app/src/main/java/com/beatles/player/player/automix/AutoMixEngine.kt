@@ -51,6 +51,7 @@ class AutoMixEngine(
     var onMixerPosition: ((Long, Long) -> Unit)? = null
 
     var extendedWindow: Boolean = true
+    var harmonicMode: Boolean = true
 
     private var plannedForSongId: String? = null
     private var incoming: Song? = null
@@ -241,17 +242,28 @@ class AutoMixEngine(
             val nowPos = withContext(Dispatchers.Main.immediate) {
                 try { currentDeck?.currentPosition } catch (_: Throwable) { null }
             } ?: posMs
-            val plan = TransitionPlanner.plan(
-                outgoing = current,
-                outgoingDurationMs = durationMs,
-                tail = tail,
-                outgoingLyrics = lyrics,
-                incoming = next,
-                head = head,
-                gaplessAlbum = TransitionPlanner.isGaplessAlbumPair(current, next, playlist),
-                nowPositionMs = nowPos,
-                extendedWindow = extendedWindow
-            )
+            val plan = if (harmonicMode) {
+                TransitionPlanner.plan(
+                    outgoing = current,
+                    outgoingDurationMs = durationMs,
+                    tail = tail,
+                    outgoingLyrics = lyrics,
+                    incoming = next,
+                    head = head,
+                    gaplessAlbum = TransitionPlanner.isGaplessAlbumPair(current, next, playlist),
+                    nowPositionMs = nowPos,
+                    extendedWindow = extendedWindow
+                )
+            } else {
+                TransitionPlan(
+                    type = TransitionType.SHORT_CROSSFADE,
+                    startPositionMs = maxOf(0L, durationMs - 7_000L),
+                    durationMs = 7_000L,
+                    confidenceScore = 0.85f,
+                    incomingStartOffsetMs = 0L,
+                    tempoAdjustmentRatio = 1.0f
+                )
+            }
 
             Log.i("AutoMix", "Musical Plan [${plan.type}]: start=${plan.startPositionMs}ms duration=${plan.durationMs}ms in@${plan.incomingStartOffsetMs}ms tempo=${plan.tempoAdjustmentRatio} score=${plan.confidenceScore}")
 

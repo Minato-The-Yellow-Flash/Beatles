@@ -13,6 +13,12 @@ enum class TransitionType {
     DROP_TRANSITION
 }
 
+enum class AutoMixMode {
+    NEW, // Harmonic, Phrase & Beat matched (Red glowy accent)
+    OLD, // Classic Equal-power crossfade (Subtle red accent)
+    OFF  // Disabled / Inactive
+}
+
 enum class TransitionPhase {
     IDLE,
     ANALYZING,

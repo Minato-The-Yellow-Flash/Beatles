@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Pure Sound. Liquid Aesthetics. Seamless Harmonic Mixing.</strong>
+  <strong>Pure Sound. Modern Aesthetics. Seamless Harmonic Mixing.</strong>
 </p>
 
 <p align="center">
@@ -42,8 +42,8 @@ Beatles combines hardware-accelerated progressive blur, synchronized real-time l
 - **Progressive Depth**: Inactive past lines gracefully blur and fade, while upcoming verses stay subtly visible.
 - **Multi-Source Fallback**: Real-time sync powered by [LRCLIB](https://lrclib.net/) with high-accuracy line timecodes.
 
-### 💎 Liquid Glass Design & Expressive Micro-Interactions
-- **Haze-Powered Liquid Glassmorphism**: High-performance real-time background blurring using [Haze](https://github.com/chrisbanes/haze).
+### 💎 Frosted Glass Design & Expressive Micro-Interactions
+- **Haze-Powered Frosted Glassmorphism**: High-performance real-time background blurring using [Haze](https://github.com/chrisbanes/haze).
 - **Progressive Masked Gradients**: Header and navigation bars blend smoothly with underlying scrolling content using vertical gradient destination-in masks.
 - **Full Theme Adaptability**: Complete Light and Dark theme palettes with dynamic surface tinting and contrast optimization.
 - **Fluid Physics-Based Modal Sheets**: Continuous gesture drag-to-dismiss for full-screen playback with natural inertia and predictive back support.
@@ -143,7 +143,7 @@ BeatlesAndroid/
 │   │   │   │       ├── TransitionPlanner.kt  # Downbeat & phrase alignment
 │   │   │   │       └── WaveformAnalyzer.kt   # Volume & loudness envelope calculator
 │   │   │   ├── ui/
-│   │   │   │   ├── AppNavigation.kt          # Root navigation, liquid tabs, bottom sheet
+│   │   │   │   ├── AppNavigation.kt          # Root navigation, frosted tabs, bottom sheet
 │   │   │   │   ├── components/               # NowPlayingSheet, AlbumDetailSheet, EdgeFade
 │   │   │   │   ├── screens/                  # Home, Explore, Search, Library, Onboarding
 │   │   │   │   └── theme/                    # Theme, Color, Type definitions

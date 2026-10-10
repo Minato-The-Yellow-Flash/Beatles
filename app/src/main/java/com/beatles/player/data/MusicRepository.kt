@@ -104,10 +104,18 @@ object MusicRepository {
     private val VIDEO_EXCLUDE_REGEX = Regex("(?i)\\b(official\\s+video|music\\s+video|video\\s+song|full\\s+video|lyrical\\s+video|lyrics\\s+video|official\\s+music\\s+video|full\\s+hd\\s+video|4k\\s+video|hd\\s+video|visualizer|lyric\\s+video|dance\\s+video|short\\s+film|behind\\s+the\\s+scenes|making\\s+of)\\b")
 
     fun cleanSongTitle(raw: String): String {
-        return raw
-            .replace(Regex("(?i)\\s*[\\[\\(](official\\s+audio|audio|official|original\\s+audio|studio\\s+audio|full\\s+audio|hq|hd|4k|lyric\\s+video|lyrics)[\\]\\)]"), "")
-            .replace(Regex("(?i)\\s*-\\s*(official\\s+audio|audio)"), "")
-            .trim()
+        var t = raw
+        // 1. Strip bracketed text containing video/audio/resolution tags: [Official Video], (8K Video), [Full Video], etc.
+        t = t.replace(Regex("(?i)\\s*[\\[\\(]([^)\\]]*?(?:official|music\\s*video|full\\s*video|video\\s*song|video|audio|lyric|lyrics|8k|4k|hd|hq|1080p|720p|remaster|visualizer|teaser|trailer|clip)[^)\\]]*?)[\\]\\)]"), "")
+        // 2. Strip trailing pipe/dash/slash tags: | 8K Video, | Full Video, | Official Video, etc.
+        t = t.replace(Regex("(?i)\\s*(\\||//|/|•|–|-)\\s*(?:8k|4k|hd|hq|full\\s*hd|1080p)?\\s*(?:official\\s*video|music\\s*video|full\\s*video|video\\s*song|video|official\\s*audio|audio\\s*song|audio|lyric\\s*video|visualizer)\\s*.*$"), "")
+        // 3. Strip standalone resolution and video junk
+        t = t.replace(Regex("(?i)\\b(?:8k|4k|1080p|720p)\\s*(?:uhd|video|video\\s*song|full\\s*video)?\\b"), "")
+        t = t.replace(Regex("(?i)\\b(?:full\\s+video|official\\s+video|video\\s+song)\\b"), "")
+        // 4. Clean leading/trailing punctuation & excess whitespace
+        t = t.replace(Regex("^[\\s\\|\\-\\–/:•]+|[\\s\\|\\-\\–/:•]+$"), "")
+        t = t.replace(Regex("\\s+"), " ").trim()
+        return if (t.isBlank()) raw.trim() else t
     }
 
     private fun normalizeForMatch(s: String): String =
@@ -140,31 +148,32 @@ object MusicRepository {
         val q = normalizeForMatch(query)
         val title = normalizeForMatch(song.title)
         val artist = normalizeForMatch(song.artist)
-        val rankScore = 1.0 - rank.toDouble() / total.coerceAtLeast(1)
-        var score = 0.5 * tokenMatch(query, song) + 0.5 * rankScore
-        if (title == q || title.startsWith(q)) score += 0.25
-        if ("$title $artist".contains(q) || "$artist $title".contains(q)) score += 0.15
-        if (artist.isNotBlank() && q.contains(artist)) score += 0.1
-        for (t in NOISE_TERMS) if (title.contains(t) && !q.contains(t)) score -= 0.35
+        val rankScore = (1.0 - rank.toDouble() / total.coerceAtLeast(1)) * 5.0
+        val tMatch = tokenMatch(query, song)
 
-        val isExplicitVideoSearch = q.contains("video") || q.contains("lyrical") || q.contains("lyrics") || q.contains("mv") || q.contains("film")
+        var score = tMatch * 25.0 + rankScore
 
-        // Heavily prioritize pure studio audio & YouTube Music topic tracks
-        if (title.contains("audio") || title.contains("official audio") || song.artist.contains("Topic") || song.artist.contains(" - Topic")) {
-            score += 2.5
+        // High reward for exact or prefix title matches
+        if (title == q) score += 50.0
+        else if (title.startsWith(q)) score += 30.0
+        else if (title.contains(q)) score += 20.0
+
+        // Artist + Title combination matches
+        if ("$title $artist" == q || "$artist $title" == q) score += 40.0
+        else if ("$title $artist".contains(q) || "$artist $title".contains(q)) score += 15.0
+
+        // Penalize noise terms (karaoke, status, ringtone, reaction) unless query specifically asks for them
+        for (t in NOISE_TERMS) {
+            if (title.contains(t) && !q.contains(t)) score -= 15.0
         }
-        
-        // Strictly penalize music videos unless explicitly requested
-        if (!isExplicitVideoSearch) {
-            if (VIDEO_EXCLUDE_REGEX.containsMatchIn(song.title) || title.contains("official video") || title.contains("music video")) {
-                score -= 3.5
+
+        // Tie-breaker bonus for studio audio / official topic track ONLY if song already matches query!
+        if (tMatch >= 0.5) {
+            if (song.artist.contains("Topic", ignoreCase = true) || title.contains("audio")) {
+                score += 3.0
             }
         }
 
-        // Penalize excessively long videos (> 10 minutes) unless query asks for mix/full/album
-        if (song.durationSeconds > 600 && !q.contains("mix") && !q.contains("full") && !q.contains("album") && !q.contains("podcast")) {
-            score -= 0.6
-        }
         return score
     }
 
@@ -702,16 +711,16 @@ object MusicRepository {
                 id = "feat_alb_9",
                 title = "After Hours",
                 artist = "The Weeknd",
-                coverUrl = "https://cdn-images.dzcdn.net/images/cover/8f8e56d7736e0906260e0a4ba64c1251/1000x1000-000000-80-0-0.jpg",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/a4/be/89/a4be896e-21ef-e79e-436f-6f91d904719c/20UMGIM10300.rgb.jpg/1000x1000bb.jpg",
                 genre = "Pop",
                 releaseYear = "2020",
                 releaseDate = "Mar 20, 2020",
                 type = "Album",
                 songs = listOf(
-                    Song("tw_1", "Blinding Lights", "The Weeknd", "After Hours", "https://cdn-images.dzcdn.net/images/cover/8f8e56d7736e0906260e0a4ba64c1251/1000x1000-000000-80-0-0.jpg", 200),
-                    Song("tw_2", "Save Your Tears", "The Weeknd", "After Hours", "https://cdn-images.dzcdn.net/images/cover/8f8e56d7736e0906260e0a4ba64c1251/1000x1000-000000-80-0-0.jpg", 215),
-                    Song("tw_3", "In Your Eyes", "The Weeknd", "After Hours", "https://cdn-images.dzcdn.net/images/cover/8f8e56d7736e0906260e0a4ba64c1251/1000x1000-000000-80-0-0.jpg", 237),
-                    Song("tw_4", "Heartless", "The Weeknd", "After Hours", "https://cdn-images.dzcdn.net/images/cover/8f8e56d7736e0906260e0a4ba64c1251/1000x1000-000000-80-0-0.jpg", 198)
+                    Song("tw_1", "Blinding Lights", "The Weeknd", "After Hours", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/a4/be/89/a4be896e-21ef-e79e-436f-6f91d904719c/20UMGIM10300.rgb.jpg/1000x1000bb.jpg", 200),
+                    Song("tw_2", "Save Your Tears", "The Weeknd", "After Hours", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/a4/be/89/a4be896e-21ef-e79e-436f-6f91d904719c/20UMGIM10300.rgb.jpg/1000x1000bb.jpg", 215),
+                    Song("tw_3", "In Your Eyes", "The Weeknd", "After Hours", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/a4/be/89/a4be896e-21ef-e79e-436f-6f91d904719c/20UMGIM10300.rgb.jpg/1000x1000bb.jpg", 237),
+                    Song("tw_4", "Heartless", "The Weeknd", "After Hours", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/a4/be/89/a4be896e-21ef-e79e-436f-6f91d904719c/20UMGIM10300.rgb.jpg/1000x1000bb.jpg", 198)
                 )
             ),
             Album(
@@ -734,32 +743,32 @@ object MusicRepository {
                 id = "feat_alb_11",
                 title = "Best of Shreya Ghoshal",
                 artist = "Shreya Ghoshal",
-                coverUrl = "https://cdn-images.dzcdn.net/images/artist/3bb832d37d10ff2affcfa9afdc7c68a0/500x500-000000-80-0-0.jpg",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/07/21/df/0721df26-f7be-db50-7dc4-6e06821262d6/8903431940988_cover.jpg/1000x1000bb.jpg",
                 genre = "Bollywood Romance",
                 releaseYear = "2024",
                 releaseDate = "Feb 10, 2024",
                 type = "Album",
                 songs = listOf(
-                    Song("sg_1", "Sunn Raha Hai (Female)", "Shreya Ghoshal", "Aashiqui 2", "https://cdn-images.dzcdn.net/images/artist/3bb832d37d10ff2affcfa9afdc7c68a0/500x500-000000-80-0-0.jpg", 314),
-                    Song("sg_2", "Deewani Mastani", "Shreya Ghoshal", "Bajirao Mastani", "https://cdn-images.dzcdn.net/images/artist/3bb832d37d10ff2affcfa9afdc7c68a0/500x500-000000-80-0-0.jpg", 340),
-                    Song("sg_3", "Param Sundari", "Shreya Ghoshal", "Mimi", "https://cdn-images.dzcdn.net/images/artist/3bb832d37d10ff2affcfa9afdc7c68a0/500x500-000000-80-0-0.jpg", 200),
-                    Song("sg_4", "Manwa Laage", "Shreya Ghoshal", "Happy New Year", "https://cdn-images.dzcdn.net/images/artist/3bb832d37d10ff2affcfa9afdc7c68a0/500x500-000000-80-0-0.jpg", 271)
+                    Song("sg_1", "Sunn Raha Hai (Female)", "Shreya Ghoshal", "Aashiqui 2", "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/07/21/df/0721df26-f7be-db50-7dc4-6e06821262d6/8903431940988_cover.jpg/1000x1000bb.jpg", 314),
+                    Song("sg_2", "Deewani Mastani", "Shreya Ghoshal", "Bajirao Mastani", "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/07/21/df/0721df26-f7be-db50-7dc4-6e06821262d6/8903431940988_cover.jpg/1000x1000bb.jpg", 340),
+                    Song("sg_3", "Param Sundari", "Shreya Ghoshal", "Mimi", "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/07/21/df/0721df26-f7be-db50-7dc4-6e06821262d6/8903431940988_cover.jpg/1000x1000bb.jpg", 200),
+                    Song("sg_4", "Manwa Laage", "Shreya Ghoshal", "Happy New Year", "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/07/21/df/0721df26-f7be-db50-7dc4-6e06821262d6/8903431940988_cover.jpg/1000x1000bb.jpg", 271)
                 )
             ),
             Album(
                 id = "feat_alb_12",
                 title = "Atif Aslam Essentials",
                 artist = "Atif Aslam",
-                coverUrl = "https://cdn-images.dzcdn.net/images/artist/0ea90444148fff9c11d77f06a344724e/500x500-000000-80-0-0.jpg",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/19/22/e1/1922e118-e3c3-3e12-40ee-c59ce1a4235e/8902894356499_cover.jpg/1000x1000bb.jpg",
                 genre = "Bollywood Romance",
                 releaseYear = "2023",
                 releaseDate = "Sep 15, 2023",
                 type = "Album",
                 songs = listOf(
-                    Song("aa_1", "Tajdar-e-Haram", "Atif Aslam", "Coke Studio", "https://cdn-images.dzcdn.net/images/artist/0ea90444148fff9c11d77f06a344724e/500x500-000000-80-0-0.jpg", 320),
-                    Song("aa_2", "Jeene Laga Hoon", "Atif Aslam", "Ramaiya Vastavaiya", "https://cdn-images.dzcdn.net/images/artist/0ea90444148fff9c11d77f06a344724e/500x500-000000-80-0-0.jpg", 237),
-                    Song("aa_3", "Tera Hone Laga Hoon", "Atif Aslam", "Ajab Prem Ki Ghazab Kahani", "https://cdn-images.dzcdn.net/images/artist/0ea90444148fff9c11d77f06a344724e/500x500-000000-80-0-0.jpg", 299),
-                    Song("aa_4", "Dil Diyan Gallan", "Atif Aslam", "Tiger Zinda Hai", "https://cdn-images.dzcdn.net/images/artist/0ea90444148fff9c11d77f06a344724e/500x500-000000-80-0-0.jpg", 260)
+                    Song("aa_1", "Tajdar-e-Haram", "Atif Aslam", "Coke Studio", "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/19/22/e1/1922e118-e3c3-3e12-40ee-c59ce1a4235e/8902894356499_cover.jpg/1000x1000bb.jpg", 320),
+                    Song("aa_2", "Jeene Laga Hoon", "Atif Aslam", "Ramaiya Vastavaiya", "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/19/22/e1/1922e118-e3c3-3e12-40ee-c59ce1a4235e/8902894356499_cover.jpg/1000x1000bb.jpg", 237),
+                    Song("aa_3", "Tera Hone Laga Hoon", "Atif Aslam", "Ajab Prem Ki Ghazab Kahani", "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/19/22/e1/1922e118-e3c3-3e12-40ee-c59ce1a4235e/8902894356499_cover.jpg/1000x1000bb.jpg", 299),
+                    Song("aa_4", "Dil Diyan Gallan", "Atif Aslam", "Tiger Zinda Hai", "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/19/22/e1/1922e118-e3c3-3e12-40ee-c59ce1a4235e/8902894356499_cover.jpg/1000x1000bb.jpg", 260)
                 )
             ),
             Album(
@@ -992,7 +1001,7 @@ object MusicRepository {
                 .map { item ->
                     val rawThumb = item.thumbnails.firstOrNull()?.url ?: ""
                     val highRes = getBestThumbnailUrl(rawThumb)
-                    Song(item.url, item.name, item.uploaderName, "Recommended", highRes, item.duration.toInt(), genre = targetGenre, isAlbum = false)
+                    Song(item.url, cleanSongTitle(item.name), item.uploaderName.replace(" - Topic", "").trim(), "Recommended", highRes, item.duration.toInt(), genre = "$targetLang • $targetGenre", isAlbum = false)
                 }
             // Filter strictly to match the same language as the seed song!
             val matched = extracted.filter { detectLanguage(it) == targetLang }

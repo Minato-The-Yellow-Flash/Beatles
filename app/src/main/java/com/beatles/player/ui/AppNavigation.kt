@@ -79,11 +79,12 @@ private val AccentRed = Color(0xFFF82C38)
 private val AccentPurple = Color(0xFF7B2FBE)
 private val AccentBlue = Color(0xFF2471A3)
 
-// Apple deceleration easing curve [0.32, 0.72, 0, 1] for ultra-smooth fluid UI transitions
-val AppleEase = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
+// Fluid deceleration easing curve [0.32, 0.72, 0, 1] for ultra-smooth transitions
+val SmoothEase = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
+val AppleEase = SmoothEase
 
-// Liquid Glass Styling: borderless, high reflection, translucent
-private val LiquidGlassBg = Color(0xFF383842).copy(alpha = 0.28f)
+// Frosted Translucent Styling: borderless, high reflection, translucent
+private val TranslucentBarBg = Color(0xFF383842).copy(alpha = 0.28f)
 
 @Composable
 fun BeatlesApp(viewModel: PlayerViewModel) {
@@ -226,9 +227,9 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         else -> {
             val isDark = isDarkTheme(state.themeMode)
             val appBg = if (isDark) GrayBlackBg else Color(0xFFF6F7F9)
-            val liquidGlassBg = if (isDark) Color(0xFF1E1F26).copy(alpha = 0.90f) else Color(0xFFFFFFFF).copy(alpha = 0.92f)
-            val liquidGlassBorder = if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.10f)
-            val liquidGlassInnerPill = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.08f)
+            val translucentBarBg = if (isDark) Color(0xFF1E1F26).copy(alpha = 0.90f) else Color(0xFFFFFFFF).copy(alpha = 0.92f)
+            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.10f)
+            val translucentInnerPill = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.08f)
             val textPrimary = if (isDark) Color.White else Color(0xFF141416)
             val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
             val navInactiveTint = if (isDark) Color.White.copy(alpha = 0.45f) else Color(0xFF8E8E93)
@@ -422,7 +423,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     }
                 }
 
-                // Bottom: Mini Player + Borderless Liquid Glass Nav
+                // Bottom: Mini Player + Borderless Translucent Nav
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -474,8 +475,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(RoundedCornerShape(pillCorner))
-                                        .border(0.5.dp, liquidGlassBorder, RoundedCornerShape(pillCorner))
-                                        .background(liquidGlassBg)
+                                        .border(0.5.dp, translucentBarBorder, RoundedCornerShape(pillCorner))
+                                        .background(translucentBarBg)
                                         .pointerInput(Unit) {
                                             // Angle math: a swipe only counts when it is within ~20° of horizontal
                                             // (|dx| > 2.75·|dy|). Diagonal / vertical drags never change the song.
@@ -613,7 +614,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         }
                     }
 
-                    // Bottom Navigation Bar — Borderless Liquid Glass
+                    // Bottom Navigation Bar — Borderless Translucent Glass
                     when (state.userRole) {
                         UserRole.LISTENER -> {
                             val tabs = listOf(
@@ -677,8 +678,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             .width(with(density) { leftWidthPx.toDp() })
                                             .fillMaxHeight()
                                             .clip(RoundedCornerShape(barCorner))
-                                            .border(0.5.dp, liquidGlassBorder, RoundedCornerShape(barCorner))
-                                            .background(liquidGlassBg)
+                                            .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
+                                            .background(translucentBarBg)
                                             .padding(4.dp)
                                     ) {
                                         // Left Pill Content: Both layers blend smoothly with crossfade
@@ -708,7 +709,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         .width(with(density) { (tabWidth - 2).coerceAtLeast(1f).toDp() })
                                                         .offset { IntOffset((indicatorFraction * tabWidth).roundToInt(), 0) }
                                                         .clip(RoundedCornerShape((barCorner - 4.dp).coerceAtLeast(4.dp)))
-                                                        .background(liquidGlassInnerPill)
+                                                        .background(translucentInnerPill)
                                                 )
 
                                                 Row(
@@ -807,8 +808,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             .width(with(density) { searchWidthPx.toDp() })
                                             .fillMaxHeight()
                                             .clip(RoundedCornerShape(barCorner))
-                                            .border(0.5.dp, liquidGlassBorder, RoundedCornerShape(barCorner))
-                                            .background(liquidGlassBg)
+                                            .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
+                                            .background(translucentBarBg)
                                             .padding(4.dp)
                                     ) {
                                         // Compact search button (normal mode)
@@ -906,8 +907,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     alpha = searchExpandProgress
                                                 }
                                                 .clip(CircleShape)
-                                                .border(0.5.dp, liquidGlassBorder, CircleShape)
-                                                .background(liquidGlassBg)
+                                                .border(0.5.dp, translucentBarBorder, CircleShape)
+                                                .background(translucentBarBg)
                                                 .clickable(
                                                     interactionSource = remember { MutableInteractionSource() },
                                                     indication = null
@@ -968,7 +969,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         .height(bottomBarHeight)
                                         .clip(RoundedCornerShape(barCorner))
                                         .hazeChild(state = hazeState, shape = RoundedCornerShape(barCorner))
-                                        .background(liquidGlassBg)
+                                        .background(translucentBarBg)
                                         .padding(4.dp)
                                 ) {
                                     val tabWidth = constraints.maxWidth / tabs.size.toFloat()
@@ -1012,8 +1013,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     modifier = Modifier
                                         .size(circleSize)
                                         .clip(CircleShape)
-                                        .border(0.5.dp, liquidGlassBorder, CircleShape)
-                                        .background(liquidGlassBg)
+                                        .border(0.5.dp, translucentBarBorder, CircleShape)
+                                        .background(translucentBarBg)
                                         .clickable { viewModel.setShowAddAlbumDialog(true) },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1046,8 +1047,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         .weight(1f)
                                         .height(bottomBarHeight)
                                         .clip(RoundedCornerShape(barCorner))
-                                        .border(0.5.dp, liquidGlassBorder, RoundedCornerShape(barCorner))
-                                        .background(liquidGlassBg)
+                                        .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
+                                        .background(translucentBarBg)
                                         .padding(4.dp)
                                 ) {
                                     val tabWidth = constraints.maxWidth / tabs.size.toFloat()
@@ -1093,8 +1094,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     modifier = Modifier
                                         .size(circleSize)
                                         .clip(CircleShape)
-                                        .border(0.5.dp, liquidGlassBorder, CircleShape)
-                                        .background(if (state.adminTab == AdminTab.SETTINGS) AccentBlue else liquidGlassBg)
+                                        .border(0.5.dp, translucentBarBorder, CircleShape)
+                                        .background(if (state.adminTab == AdminTab.SETTINGS) AccentBlue else translucentBarBg)
                                         .clickable { viewModel.setAdminTab(AdminTab.SETTINGS) },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1221,6 +1222,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 onPlayFromQueue = { s -> viewModel.playSong(s, state.playlist) },
                                 autoPlayEnabled = state.autoPlayEnabled,
                                 onToggleAutoPlay = { viewModel.toggleAutoPlay() },
+                                autoMixMode = state.autoMixMode,
                                 autoMixEnabled = state.autoMixEnabled,
                                 onToggleAutoMix = { viewModel.toggleAutoMix() },
                                 onGoToAlbum = { s -> viewModel.openAlbumForSong(s) },
