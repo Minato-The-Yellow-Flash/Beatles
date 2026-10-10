@@ -238,7 +238,7 @@ We welcome contributions from developers of all skill levels! Whether you want t
 
 ---
 
-Crafetd with care by ~ Team beatles !
+Crafted with care by ~ Team beatles !
 Members : 
 
 ## 📄 License & Legal Notice
