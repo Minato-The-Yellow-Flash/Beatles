@@ -238,6 +238,9 @@ We welcome contributions from developers of all skill levels! Whether you want t
 
 ---
 
+Crafetd with care by ~ Team beatles !
+Members : 
+
 ## 📄 License & Legal Notice
 
 This project is licensed under the **GNU General Public License v3.0 (GPLv3)** — see the [LICENSE](LICENSE) file for details.
