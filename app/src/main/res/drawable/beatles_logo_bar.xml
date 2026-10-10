@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="256dp"
+    android:height="256dp"
+    android:viewportWidth="1254"
+    android:viewportHeight="1254">
+    <!-- Pure Red Center Line across the logo without any arch accents -->
+    <path
+        android:fillColor="#FFDF121E"
+        android:pathData="M42,605.5 H1208 C1216.5,605.5 1224,612.5 1224,621 C1224,629.5 1216.5,636.5 1208,636.5 H42 C33.5,636.5 26,629.5 26,621 C26,612.5 33.5,605.5 42,605.5 Z" />
+</vector>
