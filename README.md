@@ -238,8 +238,10 @@ We welcome contributions from developers of all skill levels! Whether you want t
 
 ---
 
-Crafted with care by ~ Team beatles
-Members : Aashirvad Shukla
+Crafted with care, by ~ Team Beatles :)
+
+Members : 
+Aashirvad Shukla
 Tarun Kumar 
 Yash Kumar
 
