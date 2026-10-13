@@ -33,6 +33,9 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -103,14 +106,23 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     }
     var searchFocusRequested by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
+    val scope = rememberCoroutineScope()
+    var activeMiniArtBounds by remember { mutableStateOf<Rect?>(null) }
     val playerProgress = remember { Animatable(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(state.isExpanded) {
-        playerProgress.animateTo(
-            targetValue = if (state.isExpanded) 1f else 0f,
-            animationSpec = spring(dampingRatio = 0.84f, stiffness = 320f)
-        )
+        if (state.isExpanded) {
+            playerProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(dampingRatio = 0.88f, stiffness = 380f)
+            )
+        } else {
+            playerProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 260, easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f))
+            )
+        }
     }
 
     // Dynamic Header Collapse on Scroll – raw offset is only read in layout/draw lambdas (no recomposition per frame)
@@ -363,33 +375,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 }
 
 
-                // ═══ UPPER PROGRESSIVE BLUR OVERLAY (iOS 26 Full-Screen Progressive Header Blur) ═══
-                if (state.selectedAlbum == null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(130.dp)
-                            .align(Alignment.TopCenter)
-                            .zIndex(1f)
-                            .graphicsLayer {
-                                compositingStrategy = CompositingStrategy.Offscreen
-                            }
-                            .drawWithContent {
-                                drawContent()
-                                drawRect(
-                                    brush = Brush.verticalGradient(
-                                        0.0f to Color.Black,
-                                        1.0f to Color.Black.copy(alpha = 0.10f)
-                                    ),
-                                    blendMode = BlendMode.DstIn
-                                )
-                            }
-                            .hazeChild(state = hazeState)
-                    )
-                }
-
                 // ═══ 2. STICKY TOP HEADER (Floating Logo + User Avatar) ═══
-                if (state.showSeeAllSection == null && state.currentTab != Tab.SEARCH && state.selectedAlbum == null) {
+                if (state.showSeeAllSection == null && state.currentTab != Tab.SEARCH && state.selectedAlbum == null && playerProgress.value <= 0.01f && !state.isExpanded) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -498,45 +485,51 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         val song = state.currentSong
                         if (song != null) {
                             BoxWithConstraints(modifier = mod) {
-                                if (maxWidth < 100.dp) return@BoxWithConstraints
                                 var miniDragX by remember { mutableFloatStateOf(0f) }
-                                val pillCorner = 24.dp
+                                val pillCorner = if (compact) barCorner else 24.dp
                                 val pillArt = if (compact) 26.dp else 33.dp
 
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(RoundedCornerShape(pillCorner))
-                                        .hazeChild(state = hazeState, shape = RoundedCornerShape(pillCorner))
                                         .border(0.5.dp, translucentBarBorder, RoundedCornerShape(pillCorner))
                                         .background(translucentBarBg)
                                         .pointerInput(Unit) {
-                                            // Angle math: a swipe only counts when it is within ~20° of horizontal
-                                            // (|dx| > 2.75·|dy|). Diagonal / vertical drags never change the song.
                                             awaitEachGesture {
                                                 val down = awaitFirstDown(requireUnconsumed = false)
                                                 val slop = viewConfiguration.touchSlop
                                                 var dx = 0f
                                                 var dy = 0f
-                                                var mode = 0 // 0 = undecided, 1 = horizontal swipe, -1 = ignore
+                                                var isHorizontalSwipe = false
                                                 do {
                                                     val event = awaitPointerEvent()
                                                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                                     val d = change.positionChange()
                                                     dx += d.x
                                                     dy += d.y
-                                                    if (mode == 0 && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) {
-                                                        mode = if (kotlin.math.abs(dx) > kotlin.math.abs(dy) * 2.75f) 1 else -1
+                                                    if (!isHorizontalSwipe && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) {
+                                                        if (kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.6f) {
+                                                            isHorizontalSwipe = true
+                                                        }
                                                     }
-                                                    if (mode == 1) change.consume()
+                                                    if (isHorizontalSwipe) {
+                                                        change.consume()
+                                                    }
                                                 } while (event.changes.any { it.pressed })
-                                                if (mode == 1) {
-                                                    if (dx < -80f) {
+
+                                                if (isHorizontalSwipe) {
+                                                    if (dx < -70f) {
                                                         com.beatles.player.ui.components.Haptics.confirm(miniView)
                                                         viewModel.playNext()
-                                                    } else if (dx > 80f) {
+                                                    } else if (dx > 70f) {
                                                         com.beatles.player.ui.components.Haptics.confirm(miniView)
                                                         viewModel.playPrevious()
+                                                    }
+                                                } else {
+                                                    // Pure tap: expand player (swipes never expand player)
+                                                    if (kotlin.math.abs(dx) <= slop && kotlin.math.abs(dy) <= slop) {
+                                                        viewModel.setExpanded(true)
                                                     }
                                                 }
                                             }
@@ -545,10 +538,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .clickable(
-                                                interactionSource = remember { MutableInteractionSource() },
-                                                indication = null
-                                            ) { viewModel.setExpanded(true) }
                                             .padding(horizontal = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -557,10 +546,27 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             model = song.coverUrl,
                                             contentDescription = null,
                                             contentScale = ContentScale.Crop,
-                                            modifier = Modifier.size(pillArt).clip(CircleShape)
+                                            modifier = Modifier
+                                                .size(pillArt)
+                                                .clip(CircleShape)
+                                                .onGloballyPositioned { coords ->
+                                                    if (coords.isAttached && !isSearch) {
+                                                        activeMiniArtBounds = coords.boundsInRoot()
+                                                    }
+                                                }
                                         )
                                     } else {
-                                        Box(modifier = Modifier.size(pillArt).clip(CircleShape).background(Color.Gray))
+                                        Box(
+                                            modifier = Modifier
+                                                .size(pillArt)
+                                                .clip(CircleShape)
+                                                .background(Color.Gray)
+                                                .onGloballyPositioned { coords ->
+                                                    if (coords.isAttached && !isSearch) {
+                                                        activeMiniArtBounds = coords.boundsInRoot()
+                                                    }
+                                                }
+                                        )
                                     }
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column(
@@ -626,22 +632,26 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     }
                 }
 
-                    // Top Mini Player: fades out when entering search mode or when expanded (sheet morphs over it)
+                    // Top Mini Player: smoothly collapses height and fades out when scrolling or entering search
+                    val topMorphScale = (1f - morph).coerceIn(0f, 1f)
                     val topPlayerAlpha = (1f - combined * 2.5f).coerceIn(0f, 1f) * (1f - playerProgress.value)
-                    if (hasSong && topPlayerAlpha > 0.01f) {
+                    if (hasSong && topPlayerAlpha > 0.01f && topMorphScale > 0.01f) {
+                        val animatedTopHeight = 49.dp * topMorphScale
+                        val animatedTopPad = 4.dp * topMorphScale
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .height(animatedTopHeight + animatedTopPad * 2)
                                 .graphicsLayer {
                                     alpha = topPlayerAlpha
                                     scaleX = 0.92f + 0.08f * topPlayerAlpha
                                     scaleY = 0.92f + 0.08f * topPlayerAlpha
                                 }
-                                .padding(vertical = 4.dp),
+                                .padding(vertical = animatedTopPad),
                             contentAlignment = Alignment.Center
                         ) {
                             miniPlayerPill(
-                                Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(49.dp),
+                                Modifier.fillMaxWidth().padding(horizontal = 12.dp).fillMaxHeight(),
                                 false
                             )
                         }
@@ -712,7 +722,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             .width(with(density) { leftWidthPx.toDp() })
                                             .fillMaxHeight()
                                             .clip(RoundedCornerShape(barCorner))
-                                            .hazeChild(state = hazeState, shape = RoundedCornerShape(barCorner))
                                             .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
                                             .background(translucentBarBg)
                                             .padding(4.dp)
@@ -818,10 +827,9 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.width(with(density) { gapPx.toDp() }))
-
-                                    // Scroll mode: mini player sits in the middle (nav pill → circle on the left, search → circle on the right)
-                                    if (hasSong && morph > 0.01f) {
+                                    // Scroll mode: mini player sits in the middle (symmetrical spacing, no jitter or visible side cutoffs)
+                                    if (hasSong && morph > 0.001f) {
+                                        Spacer(modifier = Modifier.width(with(density) { (gapPx * morph).toDp() }))
                                         val middleWidth = searchModeMiddleWidthPx * morph
                                         Box(
                                             modifier = Modifier
@@ -830,11 +838,11 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 .clip(RoundedCornerShape(barCorner))
                                                 .graphicsLayer { alpha = morph }
                                         ) {
-                                            if (middleWidth >= with(density) { 100.dp.toPx() }) {
-                                                miniPlayerPill(Modifier.fillMaxSize(), true)
-                                            }
+                                            miniPlayerPill(Modifier.fillMaxSize(), true)
                                         }
                                         Spacer(modifier = Modifier.width(with(density) { (gapPx * morph).toDp() }))
+                                    } else {
+                                        Spacer(modifier = Modifier.width(with(density) { gapPx.toDp() }))
                                     }
 
                                     // Search Pill: contracts to circle button (normal mode) or expands into search bar (search mode)
@@ -843,7 +851,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             .width(with(density) { searchWidthPx.toDp() })
                                             .fillMaxHeight()
                                             .clip(RoundedCornerShape(barCorner))
-                                            .hazeChild(state = hazeState, shape = RoundedCornerShape(barCorner))
                                             .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
                                             .background(translucentBarBg)
                                             .padding(4.dp)
@@ -942,7 +949,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     alpha = searchExpandProgress
                                                 }
                                                 .clip(CircleShape)
-                                                .hazeChild(state = hazeState, shape = CircleShape)
                                                 .border(0.5.dp, translucentBarBorder, CircleShape)
                                                 .background(translucentBarBg)
                                                 .clickable(
@@ -960,10 +966,27 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     model = coverUrl,
                                                     contentDescription = "Now Playing",
                                                     contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.size(artSize).clip(CircleShape)
+                                                    modifier = Modifier
+                                                        .size(artSize)
+                                                        .clip(CircleShape)
+                                                        .onGloballyPositioned { coords ->
+                                                            if (coords.isAttached && isSearch) {
+                                                                activeMiniArtBounds = coords.boundsInRoot()
+                                                            }
+                                                        }
                                                 )
                                             } else if (animatedRightPillWidth >= artSize) {
-                                                Box(modifier = Modifier.size(artSize).clip(CircleShape).background(Color.Gray))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(artSize)
+                                                        .clip(CircleShape)
+                                                        .background(Color.Gray)
+                                                        .onGloballyPositioned { coords ->
+                                                            if (coords.isAttached && isSearch) {
+                                                                activeMiniArtBounds = coords.boundsInRoot()
+                                                            }
+                                                        }
+                                                )
                                             }
 
                                             // Mini play indicator ring if playing
@@ -1004,7 +1027,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         .weight(1f)
                                         .height(bottomBarHeight)
                                         .clip(RoundedCornerShape(barCorner))
-                                        .hazeChild(state = hazeState, shape = RoundedCornerShape(barCorner))
                                         .background(translucentBarBg)
                                         .padding(4.dp)
                                 ) {
@@ -1190,6 +1212,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .zIndex(100f)
                                 .offset { IntOffset(0, dragY.roundToInt()) }
                                 .graphicsLayer {
                                     scaleX = playerScale
@@ -1200,8 +1223,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
                                         onDragEnd = {
-                                            if (dragY > 150f) {
-                                                viewModel.setExpanded(false)
+                                            if (dragY > 140f) {
+                                                val currentP = (playerProgress.value - dragY / 600f).coerceIn(0f, 1f)
+                                                scope.launch {
+                                                    playerProgress.snapTo(currentP)
+                                                    viewModel.setExpanded(false)
+                                                }
                                             }
                                             dragY = 0f
                                         },
@@ -1209,7 +1236,11 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             if (dragAmount > 0 || dragY > 0f) {
                                                 dragY = (dragY + dragAmount).coerceAtLeast(0f)
                                                 if (dragY > 260f) {
-                                                    viewModel.setExpanded(false)
+                                                    val currentP = (playerProgress.value - dragY / 600f).coerceIn(0f, 1f)
+                                                    scope.launch {
+                                                        playerProgress.snapTo(currentP)
+                                                        viewModel.setExpanded(false)
+                                                    }
                                                     dragY = 0f
                                                 }
                                             }
@@ -1235,7 +1266,11 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 autoMixProgress = state.autoMixState.progress,
                                 autoMixLabel = state.autoMixState.label,
                                 morphProgress = p,
-                                sourceOriginBounds = if (state.isExpanded) state.selectedSongBounds else null,
+                                sourceOriginBounds = if (state.isExpanded && state.selectedSongBounds != null) {
+                                    state.selectedSongBounds
+                                } else {
+                                    activeMiniArtBounds ?: state.selectedSongBounds
+                                },
                                 onClose = { viewModel.setExpanded(false) },
                                 onTogglePlay = { viewModel.togglePlayPause() },
                                 onNext = { viewModel.playNext() },

@@ -362,7 +362,13 @@ fun NowPlayingSheet(
         val originArtLeft = sourceOriginBounds?.left?.let { with(density) { it.toDp() } } ?: miniArtLeft
         val originArtTop = sourceOriginBounds?.top?.let { with(density) { it.toDp() } } ?: miniArtTop
         val originArtSize = sourceOriginBounds?.width?.let { with(density) { it.toDp() } } ?: miniArtSize
-        val originArtCorner = if (sourceOriginBounds != null) 16.dp else 8.dp
+        val originArtCorner = if (sourceOriginBounds != null && sourceOriginBounds.width <= with(density) { 48.dp.toPx() }) {
+            with(density) { (sourceOriginBounds.width / 2f).toDp() }
+        } else if (sourceOriginBounds != null) {
+            16.dp
+        } else {
+            13.dp
+        }
 
         val currentCoverLeft = originArtLeft + (coverLeft - originArtLeft) * morphProgress
         val currentCoverTop = originArtTop + (coverTop - originArtTop) * morphProgress
@@ -853,19 +859,6 @@ fun NowPlayingSheet(
             }
         }
 
-        // Top pull-down minimize indicator handle
-        if (!isCompactCover && morphProgress > 0.8f) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 14.dp)
-                    .width(36.dp)
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(Color.White.copy(alpha = 0.35f * morphProgress))
-                    .clickable { onClose() }
-            )
-        }
 
         // Bottom Controls Container (Fades out after 10s of inactivity during Lyrics mode or when morphing down)
         val controlsVisibilityAlpha = controlsAlpha * ((morphProgress - 0.20f) / 0.80f).coerceIn(0f, 1f)
@@ -918,7 +911,7 @@ fun NowPlayingSheet(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Heart + AutoMix Toggle + 3-dots mini menu row (bright luminous frosted glass overlay, borderless)
+                // Heart + AutoMix Toggle + 3-dots mini menu row (matching Lyrics & Next Up button background settings)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -927,11 +920,13 @@ fun NowPlayingSheet(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val heartBg = if (isFavorite) Color.White else Color.White.copy(alpha = 0.20f)
+                    val heartTint = if (isFavorite) AccentRed else Color.White
                     Box(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
-                            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.16f))))
+                            .background(heartBg)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -945,7 +940,7 @@ fun NowPlayingSheet(
                         Icon(
                             if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
                             contentDescription = "Favorite",
-                            tint = heartColor,
+                            tint = heartTint,
                             modifier = Modifier.size(20.dp).scale(heartScale)
                         )
                     }
@@ -958,39 +953,15 @@ fun NowPlayingSheet(
                         com.beatles.player.player.automix.AutoMixMode.OLD -> "AutoMix Pro"
                         com.beatles.player.player.automix.AutoMixMode.OFF -> "AutoMix Off"
                     }
-                    val autoMixModifier = when (autoMixMode) {
-                        com.beatles.player.player.automix.AutoMixMode.NEW -> {
-                            Modifier
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(19.dp))
-                                .background(Brush.horizontalGradient(listOf(Color.White, Color(0xFFF2F2F2))))
-                        }
-                        com.beatles.player.player.automix.AutoMixMode.OLD -> {
-                            Modifier
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(19.dp))
-                                .background(Color.White.copy(alpha = 0.90f))
-                        }
-                        com.beatles.player.player.automix.AutoMixMode.OFF -> {
-                            Modifier
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(19.dp))
-                                .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.14f))))
-                        }
-                    }
-                    val autoMixTint = when (autoMixMode) {
-                        com.beatles.player.player.automix.AutoMixMode.NEW -> Color(0xFF141416)
-                        com.beatles.player.player.automix.AutoMixMode.OLD -> Color(0xFF141416)
-                        com.beatles.player.player.automix.AutoMixMode.OFF -> Color.White.copy(alpha = 0.85f)
-                    }
-                    val autoMixTextColor = when (autoMixMode) {
-                        com.beatles.player.player.automix.AutoMixMode.NEW -> Color(0xFF141416)
-                        com.beatles.player.player.automix.AutoMixMode.OLD -> Color(0xFF141416)
-                        com.beatles.player.player.automix.AutoMixMode.OFF -> Color.White.copy(alpha = 0.90f)
-                    }
+                    val isAutoMixActive = autoMixMode != com.beatles.player.player.automix.AutoMixMode.OFF
+                    val autoMixBg = if (isAutoMixActive) Color.White else Color.White.copy(alpha = 0.20f)
+                    val autoMixContentTint = if (isAutoMixActive) Color(0xFF141416) else Color.White
 
                     Box(
-                        modifier = autoMixModifier
+                        modifier = Modifier
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(19.dp))
+                            .background(autoMixBg)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -1005,13 +976,13 @@ fun NowPlayingSheet(
                             Icon(
                                 Icons.Default.GraphicEq,
                                 contentDescription = autoMixLabel,
-                                tint = autoMixTint,
+                                tint = autoMixContentTint,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 autoMixLabel,
-                                color = autoMixTextColor,
+                                color = autoMixContentTint,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -1024,7 +995,7 @@ fun NowPlayingSheet(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
-                            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.16f))))
+                            .background(Color.White.copy(alpha = 0.20f))
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -1038,7 +1009,7 @@ fun NowPlayingSheet(
                         Icon(
                             Icons.Default.MoreHoriz,
                             contentDescription = "More Options",
-                            tint = Color.White.copy(alpha = 0.8f),
+                            tint = Color.White,
                             modifier = Modifier.size(20.dp)
                         )
                     }
