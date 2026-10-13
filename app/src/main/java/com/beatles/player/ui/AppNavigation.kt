@@ -120,7 +120,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         } else {
             playerProgress.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(durationMillis = 260, easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f))
+                animationSpec = spring(dampingRatio = 0.88f, stiffness = 380f)
             )
         }
     }
@@ -1202,46 +1202,35 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
                 // Full screen player overlay (Fluid morph directly with mini player & song cards)
                 if (state.currentSong != null) {
-                    val p = (playerProgress.value - (dragY / 600f)).coerceIn(0f, 1f)
+                    val p = playerProgress.value.coerceIn(0f, 1f)
 
                     if (playerProgress.value > 0.001f || state.isExpanded) {
-                        val backgroundAlpha = (p / 0.6f).coerceIn(0f, 1f)
-                        val playerScale = 0.94f + 0.06f * p
                         val playerCorner = (28.dp * (1f - p)).coerceAtLeast(0.dp)
 
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .zIndex(100f)
-                                .offset { IntOffset(0, dragY.roundToInt()) }
-                                .graphicsLayer {
-                                    scaleX = playerScale
-                                    scaleY = playerScale
-                                    alpha = backgroundAlpha
-                                }
                                 .clip(RoundedCornerShape(playerCorner))
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
                                         onDragEnd = {
-                                            if (dragY > 140f) {
-                                                val currentP = (playerProgress.value - dragY / 600f).coerceIn(0f, 1f)
+                                            if (playerProgress.value < 0.85f) {
+                                                viewModel.setExpanded(false)
+                                            } else {
                                                 scope.launch {
-                                                    playerProgress.snapTo(currentP)
-                                                    viewModel.setExpanded(false)
+                                                    playerProgress.animateTo(
+                                                        targetValue = 1f,
+                                                        animationSpec = spring(dampingRatio = 0.88f, stiffness = 380f)
+                                                    )
                                                 }
                                             }
-                                            dragY = 0f
                                         },
                                         onVerticalDrag = { _, dragAmount ->
-                                            if (dragAmount > 0 || dragY > 0f) {
-                                                dragY = (dragY + dragAmount).coerceAtLeast(0f)
-                                                if (dragY > 260f) {
-                                                    val currentP = (playerProgress.value - dragY / 600f).coerceIn(0f, 1f)
-                                                    scope.launch {
-                                                        playerProgress.snapTo(currentP)
-                                                        viewModel.setExpanded(false)
-                                                    }
-                                                    dragY = 0f
+                                            if (state.isExpanded) {
+                                                scope.launch {
+                                                    val newP = (playerProgress.value - dragAmount / 450f).coerceIn(0f, 1f)
+                                                    playerProgress.snapTo(newP)
                                                 }
                                             }
                                         }
