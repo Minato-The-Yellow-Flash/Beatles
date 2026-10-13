@@ -15,8 +15,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.FolderSpecial
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,6 +45,7 @@ import com.beatles.player.ui.theme.isDarkTheme
 import com.beatles.player.viewmodel.PlayerUiState
 import androidx.compose.ui.zIndex
 import com.beatles.player.ui.components.edgeFade
+import com.beatles.player.ui.components.AppleMusicGradientCover
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -93,6 +97,89 @@ fun HomeScreen(
     }
     val homeAlbumSets = remember(state.albumSets) {
         state.albumSets.filter { it.id.isNotBlank() }.distinctBy { it.id }
+    }
+
+    // Ensure at least 5 featured albums are always available
+    val allFeaturedAlbums = remember(homeAlbums) {
+        val list = homeAlbums.toMutableList()
+        if (list.size < 5) {
+            val defaults = com.beatles.player.data.MusicRepository.getFeaturedAlbums()
+            for (d in defaults) {
+                if (list.none { it.id == d.id }) list.add(d)
+            }
+        }
+        list
+    }
+
+    // Selected Genre Filter State
+    var selectedGenre by remember { mutableStateOf("All") }
+    val genres = remember {
+        listOf("All", "Hip Hop", "Punjabi", "Bollywood", "Lo-Fi", "Pop", "Classical", "Indie", "R&B")
+    }
+
+    // Filtered songs matching selected genre
+    val filteredGenreSongs = remember(selectedGenre, allRecs, state.albums) {
+        if (selectedGenre == "All") {
+            allRecs.take(8)
+        } else {
+            val g = selectedGenre.lowercase()
+            val fromRecs = allRecs.filter { song ->
+                val detected = com.beatles.player.data.MusicRepository.detectGenre(song).lowercase()
+                val text = "${song.title} ${song.artist} ${song.genre} ${song.album}".lowercase()
+                when (selectedGenre) {
+                    "Hip Hop" -> detected.contains("hip-hop") || text.contains("hip hop") || text.contains("rap") || text.contains("drill")
+                    "Punjabi" -> detected.contains("bhangra") || text.contains("punjabi") || com.beatles.player.data.MusicRepository.detectLanguage(song) == "Punjabi"
+                    "Bollywood" -> detected.contains("bollywood") || text.contains("hindi") || com.beatles.player.data.MusicRepository.detectLanguage(song) == "Hindi"
+                    "Lo-Fi" -> text.contains("lofi") || text.contains("lo-fi") || text.contains("chill") || detected.contains("acoustic")
+                    "Pop" -> detected.contains("pop") || text.contains("pop")
+                    "Classical" -> text.contains("classical") || text.contains("ghazal") || detected.contains("devotional")
+                    "Indie" -> text.contains("indie") || text.contains("folk")
+                    "R&B" -> detected.contains("r&b") || text.contains("r&b") || text.contains("soul")
+                    else -> text.contains(g)
+                }
+            }
+            val fromAlbums = state.albums.flatMap { it.songs }.filter { song ->
+                val detected = com.beatles.player.data.MusicRepository.detectGenre(song).lowercase()
+                val text = "${song.title} ${song.artist} ${song.genre} ${song.album}".lowercase()
+                when (selectedGenre) {
+                    "Hip Hop" -> detected.contains("hip-hop") || text.contains("hip hop") || text.contains("rap") || text.contains("drill")
+                    "Punjabi" -> detected.contains("bhangra") || text.contains("punjabi") || com.beatles.player.data.MusicRepository.detectLanguage(song) == "Punjabi"
+                    "Bollywood" -> detected.contains("bollywood") || text.contains("hindi") || com.beatles.player.data.MusicRepository.detectLanguage(song) == "Hindi"
+                    "Lo-Fi" -> text.contains("lofi") || text.contains("lo-fi") || text.contains("chill") || detected.contains("acoustic")
+                    "Pop" -> detected.contains("pop") || text.contains("pop")
+                    "Classical" -> text.contains("classical") || text.contains("ghazal") || detected.contains("devotional")
+                    "Indie" -> text.contains("indie") || text.contains("folk")
+                    "R&B" -> detected.contains("r&b") || text.contains("r&b") || text.contains("soul")
+                    else -> text.contains(g)
+                }
+            }
+            val merged = (fromRecs + fromAlbums).distinctBy { it.id }
+            if (merged.isNotEmpty()) merged.take(8) else allRecs.take(6)
+        }
+    }
+
+    // Adaptive Artist Spotlight derived from user recommendations / listening style
+    val spotlightArtist = remember(state.selectedArtists, state.recentlyPlayed, state.favoriteSongs, allRecs) {
+        state.selectedArtists.firstOrNull { it.isNotBlank() }
+            ?: state.recentlyPlayed.firstOrNull { it.artist.isNotBlank() }?.artist
+            ?: state.favoriteSongs.firstOrNull { it.artist.isNotBlank() }?.artist
+            ?: allRecs.firstOrNull { it.artist.isNotBlank() }?.artist
+            ?: "Karan Aujla"
+    }
+
+    val spotlightArtistImage = remember(spotlightArtist) {
+        CURATED_ONBOARD_ARTISTS.find { it.name.equals(spotlightArtist, ignoreCase = true) }?.imageUrl
+            ?: state.albums.find { it.artist.equals(spotlightArtist, ignoreCase = true) }?.coverUrl
+            ?: allRecs.firstOrNull { it.artist.equals(spotlightArtist, ignoreCase = true) }?.coverUrl
+            ?: ""
+    }
+
+    val spotlightSongs = remember(spotlightArtist, allRecs, state.albums, state.recentlyPlayed, state.favoriteSongs) {
+        val matches = (allRecs + state.albums.flatMap { it.songs } + state.recentlyPlayed + state.favoriteSongs)
+            .filter { it.artist.contains(spotlightArtist, ignoreCase = true) }
+            .distinctBy { it.id }
+        if (matches.isNotEmpty()) matches.take(6)
+        else allRecs.take(4)
     }
 
     var pullOffsetRaw by remember { mutableFloatStateOf(0f) }
@@ -150,7 +237,7 @@ fun HomeScreen(
             .fillMaxSize()
             .nestedScroll(nestedScrollConnection)
     ) {
-        // Pull-to-refresh badge (positioned safely below top header bar so it's never covered up)
+        // Pull-to-refresh badge
         if (currentPullOffset > 12f || state.isRefreshingHome) {
             val refreshAlpha = if (state.isRefreshingHome) 1f else (currentPullOffset / 110f).coerceIn(0f, 1f)
             Box(
@@ -197,211 +284,146 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "For You",
+                        text = "Listen Now",
                         color = textPrimary,
-                        fontSize = 24.sp,
+                        fontSize = 26.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
             }
 
-            // 0. Recently Played at the top
-            if (recentSongs.isNotEmpty()) {
-                item(key = "recent_section") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Recently Played", color = textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("See All", color = AccentRed, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clickable { onSeeAll("recently_played") })
+            // =========================================================================
+            // 1. FEATURED ALBUMS (Top Section - Hero + At least 5 Albums/Playlists)
+            // =========================================================================
+            val heroAlbum = state.heroAlbum ?: allFeaturedAlbums.firstOrNull()
+            if (heroAlbum != null) {
+                item(key = "hero_section") {
+                    val heroGenre = (heroAlbum.genre ?: "Pop").uppercase()
+                    val heroYear = heroAlbum.releaseYear ?: "2026"
+                    val heroSongs = heroAlbum.songs ?: emptyList()
+                    val heroCover = remember(heroAlbum) {
+                        if (heroAlbum.coverUrl.isNotBlank() && heroAlbum.coverUrl.startsWith("http")) heroAlbum.coverUrl
+                        else heroAlbum.songs.firstOrNull { it.coverUrl.isNotBlank() && it.coverUrl.startsWith("http") }?.coverUrl
+                            ?: CURATED_ONBOARD_ARTISTS.find { it.name.equals(heroAlbum.artist, ignoreCase = true) }?.imageUrl
+                            ?: ""
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        itemsIndexed(recentSongs, key = { index, song -> "recent_${song.id}_$index" }) { _, song ->
-                            Box(
-                                modifier = Modifier
-                                    .width(140.dp)
-                                    .height(180.dp)
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .clickable { onPlay(song, recentSongs) }
-                            ) {
-                                AsyncImage(model = song.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.15f), Color.Black.copy(alpha = if (isDark) 0.80f else 0.55f)))))
-                                Column(modifier = Modifier.align(Alignment.BottomStart).padding(12.dp)) {
-                                    Text(song.title ?: "", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                    Text(song.artist ?: "", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, maxLines = 1)
-                                }
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(28.dp))
-                }
-            }
-
-            // 1. Featured Album – personalised to the user's artists/language (no manual refresh)
-            if (homeAlbums.isNotEmpty() || state.heroAlbum != null) {
-                val heroAlbum = state.heroAlbum ?: homeAlbums.firstOrNull()
-                if (heroAlbum != null) {
-                    item(key = "hero_section") {
-                        val heroGenre = (heroAlbum.genre ?: "Pop").uppercase()
-                        val heroYear = heroAlbum.releaseYear ?: "2026"
-                        val heroSongs = heroAlbum.songs ?: emptyList()
-                        val heroCover = remember(heroAlbum) {
-                            if (heroAlbum.coverUrl.isNotBlank() && heroAlbum.coverUrl.startsWith("http")) heroAlbum.coverUrl
-                            else heroAlbum.songs.firstOrNull { it.coverUrl.isNotBlank() && it.coverUrl.startsWith("http") }?.coverUrl
-                                ?: com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(heroAlbum.artist, ignoreCase = true) }?.imageUrl
-                                ?: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg"
-                        }
-                        var heroBounds by remember { mutableStateOf<Rect?>(null) }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .height(280.dp)
-                                .onGloballyPositioned { coords -> heroBounds = coords.boundsInRoot() }
-                                .clip(RoundedCornerShape(22.dp))
-                        ) {
-                            AsyncImage(
-                                model = heroCover,
-                                contentDescription = heroAlbum.title ?: "",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize(),
-                                fallback = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light),
-                                error = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            listOf(
-                                                Color.Transparent,
-                                                Color.Black.copy(alpha = 0.20f),
-                                                Color.Black.copy(alpha = if (isDark) 0.88f else 0.65f)
-                                            )
-                                        )
-                                    )
-                            )
-                            // Frosted badge
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopStart)
-                                    .padding(14.dp)
-                                    .background(Color(0xFFE2E2E2).copy(alpha = 0.16f), RoundedCornerShape(50))
-                                    .padding(horizontal = 12.dp, vertical = 4.dp)
-                            ) {
-                                Text("FEATURED ALBUM", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            }
-                            Column(
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .padding(start = 16.dp, bottom = 16.dp, end = 16.dp)
-                            ) {
-                                Text(
-                                    "NEW RELEASE • $heroYear • $heroGenre",
-                                    color = Color.White.copy(alpha = 0.65f),
-                                    fontSize = 11.sp,
-                                    letterSpacing = 1.5.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(heroAlbum.title ?: "", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                Text("${heroAlbum.artist ?: ""} • ${heroSongs.size} tracks", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-                                Spacer(modifier = Modifier.height(14.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Button(
-                                        onClick = {
-                                            heroSongs.firstOrNull()?.let { onPlay(it, heroSongs) }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                                        shape = RoundedCornerShape(50),
-                                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
-                                    ) {
-                                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Play Album", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                    Button(
-                                        onClick = { onSelectAlbum(heroAlbum, heroBounds) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2E2E2).copy(alpha = 0.16f), contentColor = Color.White),
-                                        shape = RoundedCornerShape(50),
-                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                                    ) {
-                                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("View Album", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } else if (allRecs.isNotEmpty()) {
-                item(key = "featured_rec_section") {
-                    val featured = allRecs.first()
+                    var heroBounds by remember { mutableStateOf<Rect?>(null) }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
-                            .height(260.dp)
-                            .clip(RoundedCornerShape(20.dp))
+                            .height(280.dp)
+                            .onGloballyPositioned { coords -> heroBounds = coords.boundsInRoot() }
+                            .clip(RoundedCornerShape(22.dp))
                     ) {
-                        AsyncImage(model = featured.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.20f), Color.Black.copy(alpha = if (isDark) 0.88f else 0.65f)))))
+                        // Apple Music dynamic gradient background fallback
+                        AppleMusicGradientCover(
+                            title = heroAlbum.title ?: "Featured Album",
+                            artist = heroAlbum.artist ?: "",
+                            modifier = Modifier.fillMaxSize(),
+                            cornerRadius = 22.dp
+                        )
+                        if (heroCover.isNotBlank() && heroCover.startsWith("http")) {
+                            AsyncImage(
+                                model = heroCover,
+                                contentDescription = heroAlbum.title ?: "",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            Color.Transparent,
+                                            Color.Black.copy(alpha = 0.20f),
+                                            Color.Black.copy(alpha = if (isDark) 0.88f else 0.65f)
+                                        )
+                                    )
+                                )
+                        )
+                        // Frosted badge
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
                                 .padding(14.dp)
-                                .background(AccentRed, RoundedCornerShape(50))
-                                .padding(horizontal = 10.dp, vertical = 3.dp)
+                                .background(Color(0xFFE2E2E2).copy(alpha = 0.18f), RoundedCornerShape(50))
+                                .padding(horizontal = 12.dp, vertical = 4.dp)
                         ) {
-                            Text("FEATURED", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Text("FEATURED ALBUM", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         }
-                        Column(modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 16.dp, end = 16.dp)) {
-                            Text("NEW RELEASE", color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 16.dp, bottom = 16.dp, end = 16.dp)
+                        ) {
+                            Text(
+                                "NEW RELEASE • $heroYear • $heroGenre",
+                                color = Color.White.copy(alpha = 0.65f),
+                                fontSize = 11.sp,
+                                letterSpacing = 1.5.sp,
+                                fontWeight = FontWeight.Medium
+                            )
                             Spacer(modifier = Modifier.height(2.dp))
-                            Text(featured.title ?: "", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                            Text("${featured.artist ?: ""} · ${featured.album ?: ""}", color = Color.White.copy(alpha = 0.75f), fontSize = 13.sp)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Button(
-                                onClick = { onPlay(featured, allRecs) },
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentRed),
-                                shape = RoundedCornerShape(50),
-                                contentPadding = PaddingValues(horizontal = 22.dp, vertical = 8.dp)
-                            ) {
-                                Text("Play Now", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text(heroAlbum.title ?: "", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text("${heroAlbum.artist ?: ""} • ${heroSongs.size} tracks", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Button(
+                                    onClick = {
+                                        heroSongs.firstOrNull()?.let { onPlay(it, heroSongs) }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                                    shape = RoundedCornerShape(50),
+                                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Play Album", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = { onSelectAlbum(heroAlbum, heroBounds) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2E2E2).copy(alpha = 0.18f), contentColor = Color.White),
+                                    shape = RoundedCornerShape(50),
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("View Album", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                }
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(18.dp))
                 }
             }
 
-            // Featured Albums Row
-            if (homeAlbums.isNotEmpty()) {
+            // Featured Albums Horizontal Carousel (features at least 5 albums/playlists)
+            if (allFeaturedAlbums.isNotEmpty()) {
                 item(key = "featured_albums_row") {
-                    Spacer(modifier = Modifier.height(28.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Featured Albums", color = textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("${homeAlbums.size} albums", color = textMuted, fontSize = 12.sp)
+                        Text("${allFeaturedAlbums.size} featured", color = textMuted, fontSize = 12.sp)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        itemsIndexed(homeAlbums, key = { index, album -> "alb_${album.id}_$index" }) { _, album ->
+                        itemsIndexed(allFeaturedAlbums, key = { index, album -> "feat_alb_${album.id}_$index" }) { _, album ->
                             val albumSongs = album.songs ?: emptyList()
                             val resolvedAlbumCover = remember(album) {
                                 if (album.coverUrl.isNotBlank() && album.coverUrl.startsWith("http")) album.coverUrl
                                 else album.songs.firstOrNull { it.coverUrl.isNotBlank() && it.coverUrl.startsWith("http") }?.coverUrl
-                                    ?: com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(album.artist, ignoreCase = true) }?.imageUrl
-                                    ?: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg"
+                                    ?: CURATED_ONBOARD_ARTISTS.find { it.name.equals(album.artist, ignoreCase = true) }?.imageUrl
+                                    ?: ""
                             }
                             var cardBounds by remember { mutableStateOf<Rect?>(null) }
                             val interactionSource = remember { MutableInteractionSource() }
@@ -413,7 +435,7 @@ fun HomeScreen(
                             )
                             Column(
                                 modifier = Modifier
-                                    .width(152.dp)
+                                    .width(156.dp)
                                     .graphicsLayer {
                                         scaleX = cardScale
                                         scaleY = cardScale
@@ -426,17 +448,24 @@ fun HomeScreen(
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(152.dp)
+                                        .size(156.dp)
                                         .clip(RoundedCornerShape(18.dp))
                                 ) {
-                                    AsyncImage(
-                                        model = resolvedAlbumCover,
-                                        contentDescription = album.title ?: "",
-                                        contentScale = ContentScale.Crop,
+                                    // Live gradient fallback
+                                    AppleMusicGradientCover(
+                                        title = album.title ?: "",
+                                        artist = album.artist ?: "",
                                         modifier = Modifier.fillMaxSize(),
-                                        fallback = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light),
-                                        error = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light)
+                                        cornerRadius = 18.dp
                                     )
+                                    if (resolvedAlbumCover.isNotBlank() && resolvedAlbumCover.startsWith("http")) {
+                                        AsyncImage(
+                                            model = resolvedAlbumCover,
+                                            contentDescription = album.title ?: "",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
@@ -447,7 +476,7 @@ fun HomeScreen(
                                         modifier = Modifier
                                             .align(Alignment.TopStart)
                                             .padding(8.dp)
-                                            .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50))
+                                            .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(50))
                                             .padding(horizontal = 8.dp, vertical = 2.dp)
                                     ) {
                                         Text("${albumSongs.size} tracks", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
@@ -478,47 +507,340 @@ fun HomeScreen(
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(28.dp))
                 }
             }
 
-            // 3. Made For You
-            if (madeForYouSongs.isNotEmpty()) {
-                item(key = "made_for_you_section") {
-                    Spacer(modifier = Modifier.height(28.dp))
+            // =========================================================================
+            // 2. RECENTLY PLAYED (2nd Section)
+            // =========================================================================
+            if (recentSongs.isNotEmpty()) {
+                item(key = "recent_section") {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Made For You", color = textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("See All", color = AccentRed, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clickable { onSeeAll("made_for_you") })
+                        Text("Recently Played", color = textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("See All", color = AccentRed, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clickable { onSeeAll("recently_played") })
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        itemsIndexed(madeForYouSongs, key = { index, song -> "mfy_${song.id}_$index" }) { _, song ->
+                        itemsIndexed(recentSongs, key = { index, song -> "recent_${song.id}_$index" }) { _, song ->
+                            val interactionSource = remember { MutableInteractionSource() }
+                            val isPressed by interactionSource.collectIsPressedAsState()
+                            val cardScale by animateFloatAsState(
+                                targetValue = if (isPressed) 0.95f else 1.0f,
+                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+                                label = "recentScale"
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .width(140.dp)
+                                    .height(180.dp)
+                                    .graphicsLayer {
+                                        scaleX = cardScale
+                                        scaleY = cardScale
+                                    }
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .clickable(interactionSource = interactionSource, indication = null) { onPlay(song, recentSongs) }
+                            ) {
+                                AppleMusicGradientCover(
+                                    title = song.title ?: "",
+                                    artist = song.artist ?: "",
+                                    modifier = Modifier.fillMaxSize(),
+                                    cornerRadius = 20.dp
+                                )
+                                if (song.coverUrl.isNotBlank() && song.coverUrl.startsWith("http")) {
+                                    AsyncImage(model = song.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                }
+                                Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.15f), Color.Black.copy(alpha = if (isDark) 0.80f else 0.55f)))))
+                                Column(modifier = Modifier.align(Alignment.BottomStart).padding(12.dp)) {
+                                    Text(song.title ?: "", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Text(song.artist ?: "", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, maxLines = 1)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(28.dp))
+                }
+            }
+
+            // =========================================================================
+            // 3. GENRE FILTER CHIPS & GENRE MIX (3rd Section)
+            // =========================================================================
+            item(key = "genre_chips_section") {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Explore by Genre", color = textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Filter", color = textMuted, fontSize = 12.sp)
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(genres.size) { idx ->
+                        val g = genres[idx]
+                        val isSelected = g == selectedGenre
+                        val chipInteraction = remember { MutableInteractionSource() }
+                        val isChipPressed by chipInteraction.collectIsPressedAsState()
+                        val chipScale by animateFloatAsState(
+                            targetValue = if (isChipPressed) 0.94f else 1.0f,
+                            animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+                            label = "chipScale"
+                        )
+                        Box(
+                            modifier = Modifier
+                                .graphicsLayer {
+                                    scaleX = chipScale
+                                    scaleY = chipScale
+                                }
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (isSelected) AccentRed
+                                    else if (isDark) Color.White.copy(alpha = 0.10f)
+                                    else Color.Black.copy(alpha = 0.06f)
+                                )
+                                .clickable(interactionSource = chipInteraction, indication = null) {
+                                    selectedGenre = g
+                                }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = g,
+                                color = if (isSelected) Color.White else textPrimary.copy(alpha = 0.80f),
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Horizontal tracks for the selected genre
+                if (filteredGenreSongs.isNotEmpty()) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        itemsIndexed(filteredGenreSongs, key = { index, song -> "genre_${song.id}_$index" }) { _, song ->
+                            val cardInteraction = remember { MutableInteractionSource() }
+                            val isPressed by cardInteraction.collectIsPressedAsState()
+                            val scale by animateFloatAsState(
+                                targetValue = if (isPressed) 0.95f else 1.0f,
+                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+                                label = "genreSongScale"
+                            )
                             Column(
                                 modifier = Modifier
-                                    .width(144.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .clickable { onPlay(song, allRecs) }
+                                    .width(140.dp)
+                                    .graphicsLayer {
+                                        scaleX = scale
+                                        scaleY = scale
+                                    }
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable(interactionSource = cardInteraction, indication = null) {
+                                        onPlay(song, filteredGenreSongs)
+                                    }
                             ) {
-                                AsyncImage(model = song.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(144.dp).clip(RoundedCornerShape(14.dp)))
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(140.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                ) {
+                                    AppleMusicGradientCover(
+                                        title = song.title ?: "",
+                                        artist = song.artist ?: "",
+                                        modifier = Modifier.fillMaxSize(),
+                                        cornerRadius = 16.dp
+                                    )
+                                    if (song.coverUrl.isNotBlank() && song.coverUrl.startsWith("http")) {
+                                        AsyncImage(
+                                            model = song.coverUrl,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    // Play icon overlay
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(8.dp)
+                                            .size(30.dp)
+                                            .background(Color.Black.copy(alpha = 0.65f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Text(song.title ?: "", color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                 Text(song.artist ?: "", color = textSecondary, fontSize = 11.sp, maxLines = 1)
-                                val mfyLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
-                                val mfyGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
-                                Text("$mfyLang • $mfyGenre", color = AccentRed.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                             }
                         }
                     }
                 }
+                Spacer(modifier = Modifier.height(28.dp))
             }
 
-            // 4. Other Section: Top Songs
+            // =========================================================================
+            // 4. ADAPTIVE ARTIST SPOTLIGHT PLAYLIST CARD (4th Section)
+            // =========================================================================
+            item(key = "spotlight_artist_section") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(
+                            Brush.linearGradient(
+                                if (isDark) listOf(Color(0xFF261828), Color(0xFF191823), Color(0xFF141416))
+                                else listOf(Color(0xFFF3E7EC), Color(0xFFE9ECF5), Color(0xFFF6F7F9))
+                            )
+                        )
+                        .border(
+                            0.5.dp,
+                            if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f),
+                            RoundedCornerShape(22.dp)
+                        )
+                        .padding(18.dp)
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .background(AccentRed.copy(alpha = 0.18f), RoundedCornerShape(50))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.GraphicEq, contentDescription = null, tint = AccentRed, modifier = Modifier.size(12.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("ARTIST SPOTLIGHT", color = AccentRed, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                }
+                            }
+                            Text(
+                                "Tailored to your taste",
+                                color = textMuted,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                            ) {
+                                AppleMusicGradientCover(
+                                    title = spotlightArtist,
+                                    artist = "Spotlight",
+                                    modifier = Modifier.fillMaxSize(),
+                                    cornerRadius = 36.dp,
+                                    showLabel = false
+                                )
+                                if (spotlightArtistImage.isNotBlank() && spotlightArtistImage.startsWith("http")) {
+                                    AsyncImage(
+                                        model = spotlightArtistImage,
+                                        contentDescription = spotlightArtist,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "$spotlightArtist Essentials",
+                                    color = textPrimary,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    "Dynamic mix updated from your listening style",
+                                    color = textSecondary,
+                                    fontSize = 12.sp,
+                                    maxLines = 2
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Preview tracks in spotlight
+                        spotlightSongs.take(3).forEach { song ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onPlay(song, spotlightSongs) }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                ) {
+                                    AppleMusicGradientCover(
+                                        title = song.title ?: "",
+                                        artist = song.artist ?: "",
+                                        modifier = Modifier.fillMaxSize(),
+                                        cornerRadius = 8.dp,
+                                        showLabel = false
+                                    )
+                                    if (song.coverUrl.isNotBlank() && song.coverUrl.startsWith("http")) {
+                                        AsyncImage(model = song.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(song.title ?: "", color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                                    Text(song.artist ?: "", color = textSecondary, fontSize = 11.sp, maxLines = 1)
+                                }
+                                val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
+                                Text(dur, color = textMuted, fontSize = 11.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = {
+                                spotlightSongs.firstOrNull()?.let { onPlay(it, spotlightSongs) }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentRed),
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.fillMaxWidth().height(44.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Play Artist Mix", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(28.dp))
+            }
+
+            // =========================================================================
+            // 5. TOP SONGS & MADE FOR YOU (5th Section)
+            // =========================================================================
             if (topSongsList.isNotEmpty()) {
                 item(key = "top_songs_header") {
-                    Spacer(modifier = Modifier.height(28.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -537,7 +859,22 @@ fun HomeScreen(
                             .padding(horizontal = 16.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AsyncImage(model = song.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(50.dp).clip(RoundedCornerShape(10.dp)))
+                        Box(
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                        ) {
+                            AppleMusicGradientCover(
+                                title = song.title ?: "",
+                                artist = song.artist ?: "",
+                                modifier = Modifier.fillMaxSize(),
+                                cornerRadius = 10.dp,
+                                showLabel = false
+                            )
+                            if (song.coverUrl.isNotBlank() && song.coverUrl.startsWith("http")) {
+                                AsyncImage(model = song.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            }
+                        }
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(song.title ?: "", color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
@@ -550,12 +887,72 @@ fun HomeScreen(
                         Text(dur, color = textMuted, fontSize = 12.sp)
                     }
                 }
+                item(key = "top_songs_divider") { Spacer(modifier = Modifier.height(28.dp)) }
             }
 
-            // 5. Album Section / Album Sets (Moved to the bottom all together)
+            if (madeForYouSongs.isNotEmpty()) {
+                item(key = "made_for_you_section") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Made For You", color = textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("See All", color = AccentRed, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clickable { onSeeAll("made_for_you") })
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        itemsIndexed(madeForYouSongs, key = { index, song -> "mfy_${song.id}_$index" }) { _, song ->
+                            val interaction = remember { MutableInteractionSource() }
+                            val isPressed by interaction.collectIsPressedAsState()
+                            val scale by animateFloatAsState(
+                                targetValue = if (isPressed) 0.95f else 1.0f,
+                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+                                label = "mfyScale"
+                            )
+                            Column(
+                                modifier = Modifier
+                                    .width(144.dp)
+                                    .graphicsLayer {
+                                        scaleX = scale
+                                        scaleY = scale
+                                    }
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable(interactionSource = interaction, indication = null) { onPlay(song, allRecs) }
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(144.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                ) {
+                                    AppleMusicGradientCover(
+                                        title = song.title ?: "",
+                                        artist = song.artist ?: "",
+                                        modifier = Modifier.fillMaxSize(),
+                                        cornerRadius = 14.dp
+                                    )
+                                    if (song.coverUrl.isNotBlank() && song.coverUrl.startsWith("http")) {
+                                        AsyncImage(model = song.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(song.title ?: "", color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(song.artist ?: "", color = textSecondary, fontSize = 11.sp, maxLines = 1)
+                                val mfyLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
+                                val mfyGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
+                                Text("$mfyLang • $mfyGenre", color = AccentRed.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(28.dp))
+                }
+            }
+
+            // =========================================================================
+            // 6. ALBUM SETS / COLLECTIONS
+            // =========================================================================
             if (homeAlbumSets.isNotEmpty()) {
                 item(key = "album_sets_section") {
-                    Spacer(modifier = Modifier.height(28.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -578,6 +975,7 @@ fun HomeScreen(
                             )
                         }
                     }
+                    Spacer(modifier = Modifier.height(28.dp))
                 }
             }
 
@@ -612,7 +1010,6 @@ fun SeeAllScreen(
 
     val listState = rememberLazyListState()
 
-    // Dynamic Subheader collapsing on scroll
     val headerOffset by remember {
         derivedStateOf {
             val firstItem = listState.firstVisibleItemIndex
@@ -626,7 +1023,6 @@ fun SeeAllScreen(
         }
     }
 
-    // Infinite pagination when scrolling Top Songs
     if (section == "top_songs") {
         LaunchedEffect(listState) {
             snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
@@ -659,12 +1055,27 @@ fun SeeAllScreen(
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AsyncImage(
-                        model = song.coverUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(54.dp).clip(RoundedCornerShape(10.dp))
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                    ) {
+                        AppleMusicGradientCover(
+                            title = song.title ?: "",
+                            artist = song.artist ?: "",
+                            modifier = Modifier.fillMaxSize(),
+                            cornerRadius = 10.dp,
+                            showLabel = false
+                        )
+                        if (song.coverUrl.isNotBlank() && song.coverUrl.startsWith("http")) {
+                            AsyncImage(
+                                model = song.coverUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(song.title ?: "", color = textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1)
@@ -776,10 +1187,7 @@ fun AlbumSetHomeCard(
                     covers.forEachIndexed { idx, cover ->
                         val offsetXDp = (idx * 24).dp
                         val scale = 1f - (covers.size - 1 - idx) * 0.06f
-                        AsyncImage(
-                            model = cover,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
+                        Box(
                             modifier = Modifier
                                 .size(90.dp)
                                 .offset(x = offsetXDp)
@@ -788,7 +1196,21 @@ fun AlbumSetHomeCard(
                                 .clickable {
                                     setAlbums.getOrNull(idx)?.let { onSelectAlbum(it) }
                                 }
-                        )
+                        ) {
+                            AppleMusicGradientCover(
+                                title = setAlbums.getOrNull(idx)?.title ?: "Album",
+                                artist = setAlbums.getOrNull(idx)?.artist ?: "",
+                                modifier = Modifier.fillMaxSize(),
+                                cornerRadius = 12.dp,
+                                showLabel = false
+                            )
+                            AsyncImage(
+                                model = cover,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     }
                 }
             }
@@ -804,7 +1226,6 @@ fun AlbumSetHomeCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Play Set (plays all tracks from all albums in set)
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(50))
@@ -818,7 +1239,6 @@ fun AlbumSetHomeCard(
                         Text("Play Set", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    // View Set (opens first album in set)
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(50))

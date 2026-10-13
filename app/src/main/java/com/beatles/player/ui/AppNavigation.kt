@@ -241,7 +241,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         else -> {
             val isDark = isDarkTheme(state.themeMode)
             val appBg = if (isDark) GrayBlackBg else Color(0xFFF6F7F9)
-            val translucentBarBg = if (isDark) Color(0xFF1E1F26).copy(alpha = 0.90f) else Color(0xFFFFFFFF).copy(alpha = 0.92f)
+            val translucentBarBg = if (isDark) Color(0xFF1E1F26).copy(alpha = 0.70f) else Color(0xFFFFFFFF).copy(alpha = 0.72f)
             val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Transparent
             val translucentInnerPill = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.08f)
             val textPrimary = if (isDark) Color.White else Color(0xFF141416)
@@ -335,41 +335,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     }
                 }
 
-                // ═══ 1. UPPER GRADUAL BLUR LAYER (Native Progressive Blur) ═══
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(130.dp)
-                        .align(Alignment.TopCenter)
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(
-                                brush = Brush.verticalGradient(
-                                    0.0f to Color.Black,
-                                    0.45f to Color.Black,
-                                    0.80f to Color.Black.copy(alpha = 0.4f),
-                                    1.0f to Color.Transparent
-                                ),
-                                blendMode = BlendMode.DstIn
-                            )
-                        }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .hazeChild(state = hazeState)
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(
-                                        if (isDark) Color(0xFF141416).copy(alpha = 0.88f) else Color(0xFFF6F7F9).copy(alpha = 0.92f),
-                                        if (isDark) Color(0xFF141416).copy(alpha = 0.45f) else Color(0xFFF6F7F9).copy(alpha = 0.50f),
-                                        Color.Transparent
-                                    )
-                                )
-                            )
-                    )
-                }
 
                 // ═══ 2. STICKY TOP HEADER (Floating Logo + User Avatar) ═══
                 if (state.showSeeAllSection == null && state.currentTab != Tab.SEARCH && state.selectedAlbum == null) {
@@ -482,13 +447,14 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                             BoxWithConstraints(modifier = mod) {
                                 if (maxWidth < 100.dp) return@BoxWithConstraints
                                 var miniDragX by remember { mutableFloatStateOf(0f) }
-                                val pillCorner = 28.dp
-                                val pillArt = if (compact) 30.dp else 37.dp
+                                val pillCorner = 24.dp
+                                val pillArt = if (compact) 26.dp else 33.dp
 
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(RoundedCornerShape(pillCorner))
+                                        .hazeChild(state = hazeState, shape = RoundedCornerShape(pillCorner))
                                         .border(0.5.dp, translucentBarBorder, RoundedCornerShape(pillCorner))
                                         .background(translucentBarBg)
                                         .pointerInput(Unit) {
@@ -622,7 +588,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                             contentAlignment = Alignment.Center
                         ) {
                             miniPlayerPill(
-                                Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(53.dp),
+                                Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(49.dp),
                                 false
                             )
                         }
@@ -692,6 +658,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             .width(with(density) { leftWidthPx.toDp() })
                                             .fillMaxHeight()
                                             .clip(RoundedCornerShape(barCorner))
+                                            .hazeChild(state = hazeState, shape = RoundedCornerShape(barCorner))
                                             .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
                                             .background(translucentBarBg)
                                             .padding(4.dp)
@@ -822,6 +789,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             .width(with(density) { searchWidthPx.toDp() })
                                             .fillMaxHeight()
                                             .clip(RoundedCornerShape(barCorner))
+                                            .hazeChild(state = hazeState, shape = RoundedCornerShape(barCorner))
                                             .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
                                             .background(translucentBarBg)
                                             .padding(4.dp)
@@ -921,6 +889,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     alpha = searchExpandProgress
                                                 }
                                                 .clip(CircleShape)
+                                                .hazeChild(state = hazeState, shape = CircleShape)
                                                 .border(0.5.dp, translucentBarBorder, CircleShape)
                                                 .background(translucentBarBg)
                                                 .clickable(
@@ -1169,10 +1138,21 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     )
 
                     if (state.isExpanded || animatedOffset < with(density) { 1990.dp.toPx() }) {
+                        val maxOff = with(density) { 2000.dp.toPx() }
+                        val expandFraction = (1f - (animatedOffset / maxOff)).coerceIn(0f, 1f)
+                        val playerScale = 0.90f + 0.10f * expandFraction
+                        val playerCorner = (28.dp * (1f - expandFraction)).coerceAtLeast(0.dp)
+
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .offset { IntOffset(0, animatedOffset.roundToInt()) }
+                                .graphicsLayer {
+                                    scaleX = playerScale
+                                    scaleY = playerScale
+                                    alpha = expandFraction
+                                }
+                                .clip(RoundedCornerShape(playerCorner))
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
                                         onDragEnd = {

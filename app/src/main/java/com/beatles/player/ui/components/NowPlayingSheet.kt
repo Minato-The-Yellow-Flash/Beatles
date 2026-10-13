@@ -17,6 +17,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
@@ -194,8 +196,7 @@ fun NowPlayingSheet(
                 )
             }
     ) {
-        val isHighRes = currentCoverUrl.contains("1000x1000") || currentCoverUrl.contains("maxresdefault") || currentCoverUrl.contains("500x500") || currentCoverUrl.contains("w800") || currentCoverUrl.contains("s800")
-        val mainBlurAmount by animateDpAsState(targetValue = if (showLyrics || showNextUp) 70.dp else if (isHighRes) 0.dp else 25.dp, label = "mainBlur")
+        val backgroundBlurAmount by animateDpAsState(targetValue = if (showLyrics || showNextUp) 85.dp else 70.dp, label = "bgBlur")
 
         Box(modifier = Modifier.fillMaxSize().haze(state = sheetHaze)) {
         // Previous cover underneath during transition
@@ -206,31 +207,14 @@ fun NowPlayingSheet(
                     .fillMaxSize()
                     .graphicsLayer { alpha = prevAlpha }
             ) {
-                AsyncImage(
-                    model = previousCoverUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().blur(80.dp)
-                )
-                AsyncImage(
-                    model = previousCoverUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .blur(mainBlurAmount)
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(
-                                brush = Brush.verticalGradient(
-                                    0.0f to Color.Black, 0.45f to Color.Black,
-                                    0.7f to Color.Transparent, 1.0f to Color.Transparent
-                                ),
-                                blendMode = BlendMode.DstIn
-                            )
-                        }
-                )
+                if (previousCoverUrl!!.isNotBlank()) {
+                    AsyncImage(
+                        model = previousCoverUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().blur(backgroundBlurAmount)
+                    )
+                }
             }
         }
 
@@ -278,36 +262,26 @@ fun NowPlayingSheet(
                         alpha = if (isSpilling) 1f else currentAlpha
                     }
             ) {
-                AsyncImage(
-                    model = currentCoverUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().blur(80.dp)
-                )
-                AsyncImage(
-                    model = currentCoverUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .blur(mainBlurAmount)
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(
-                                brush = Brush.verticalGradient(
-                                    0.0f to Color.Black, 0.45f to Color.Black,
-                                    0.7f to Color.Transparent, 1.0f to Color.Transparent
-                                ),
-                                blendMode = BlendMode.DstIn
-                            )
-                        }
-                )
+                if (currentCoverUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = currentCoverUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().blur(backgroundBlurAmount)
+                    )
+                } else {
+                    AppleMusicGradientCover(
+                        title = song.title,
+                        artist = song.artist,
+                        modifier = Modifier.fillMaxSize().blur(backgroundBlurAmount),
+                        showLabel = false
+                    )
+                }
             }
         }
         
         // Blurred background overlay when lyrics or next up is active
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (showLyrics || showNextUp) 0.65f else 0.2f)))
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (showLyrics || showNextUp) 0.68f else 0.40f)))
         }
 
         // Double-Tap Heart Pop Animation Overlay (no black background)
@@ -360,6 +334,102 @@ fun NowPlayingSheet(
             label = "dragSpring"
         )
 
+        val config = LocalConfiguration.current
+        val screenWidth = config.screenWidthDp.dp
+        val screenHeight = config.screenHeightDp.dp
+        val defaultCoverSize = (screenWidth - 72.dp).coerceAtMost(300.dp)
+        val defaultCoverLeft = (screenWidth - defaultCoverSize) / 2
+        val defaultCoverTop = 84.dp
+
+        val coverSize by animateDpAsState(
+            targetValue = if (isNextUpActive) 68.dp else defaultCoverSize,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
+            label = "coverSize"
+        )
+        val coverLeft by animateDpAsState(
+            targetValue = if (isNextUpActive) 24.dp else defaultCoverLeft,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
+            label = "coverLeft"
+        )
+        val coverTop by animateDpAsState(
+            targetValue = if (isNextUpActive) 54.dp else defaultCoverTop,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
+            label = "coverTop"
+        )
+        val coverCorner by animateDpAsState(
+            targetValue = if (isNextUpActive) 14.dp else 22.dp,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
+            label = "coverCorner"
+        )
+        val coverAlpha by animateFloatAsState(
+            targetValue = if (isLyricsActive) 0f else 1f,
+            animationSpec = tween(220),
+            label = "coverAlpha"
+        )
+
+        // Apple Music-Style Interactive Foreground Album Artwork (glides to top-left when Next Up is active)
+        if (coverAlpha > 0.01f) {
+            Box(
+                modifier = Modifier
+                    .offset(x = coverLeft, y = coverTop)
+                    .size(coverSize)
+                    .graphicsLayer {
+                        alpha = coverAlpha
+                        if (!isNextUpActive) {
+                            translationX = animatedDragX
+                            val dampScale = 1f - (kotlin.math.abs(animatedDragX) / 3000f).coerceIn(0f, 0.05f)
+                            scaleX = dampScale
+                            scaleY = dampScale
+                        }
+                    }
+                    .clip(RoundedCornerShape(coverCorner))
+                    .shadow(if (isNextUpActive) 4.dp else 18.dp, RoundedCornerShape(coverCorner))
+            ) {
+                if (currentCoverUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = currentCoverUrl,
+                        contentDescription = song.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    AppleMusicGradientCover(
+                        title = song.title,
+                        artist = song.artist,
+                        cornerRadius = coverCorner,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
+
+        // Next Up Header beside the left-glided cover
+        if (isNextUpActive) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 104.dp, end = 20.dp, top = 54.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("PLAYING NEXT", color = AccentRed, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text(song.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(song.artist, color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp, maxLines = 1)
+                }
+                IconButton(
+                    onClick = onToggleNextUp,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.20f))
+                        .border(0.5.dp, Color.White.copy(alpha = 0.35f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+
         if (!isLyricsActive && !isNextUpActive) {
             Box(
                 modifier = Modifier
@@ -389,8 +459,6 @@ fun NowPlayingSheet(
                                     val absX = kotlin.math.abs(totalDx)
                                     val absY = kotlin.math.abs(totalDy)
                                     if (absX + absY > 24f) {
-                                        // Strict angle check: dx must be at least 2.75x dy (< 20° from horizontal)
-                                        // This ensures vertical pull-down to dismiss sheet NEVER skips tracks
                                         if (absX > 2.75f * absY) {
                                             isHorizontal = true
                                             change.consume()
@@ -428,35 +496,13 @@ fun NowPlayingSheet(
             )
         }
 
-        // Next Up Queue with pinned stationary header and swipe/reorder actions
+        // Next Up Queue with stationary scroll container
         if (isNextUpActive) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 190.dp, top = 60.dp)
+                    .padding(bottom = 190.dp, top = 136.dp)
             ) {
-                // Pinned Stationary Header (Never scrolls with content!)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Next Up", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                        Text("Swipe right: Play Next • Swipe left: Remove", color = Color.White.copy(alpha = 0.45f), fontSize = 11.sp)
-                    }
-                    IconButton(
-                        onClick = onToggleNextUp,
-                        modifier = Modifier.size(36.dp).background(Color.White.copy(alpha = 0.12f), CircleShape)
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(20.dp))
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
                 val currentIdx = playlist.indexOfFirst { it.id == song.id }
                 val upcoming = if (currentIdx >= 0) playlist.drop(currentIdx + 1) else playlist
 
@@ -793,22 +839,23 @@ fun NowPlayingSheet(
                         Spacer(modifier = Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color.White.copy(alpha = 0.12f))
-                                .padding(horizontal = 7.dp, vertical = 2.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.22f))
+                                .border(0.5.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Text(
                                 "$playingLang • $playingGenre",
-                                color = Color.White.copy(alpha = 0.85f),
+                                color = Color.White.copy(alpha = 0.90f),
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Heart + AutoMix Toggle + 3-dots mini menu row (moved 5px above, frosted glass)
+                // Heart + AutoMix Toggle + 3-dots mini menu row (bright luminous frosted glass overlay)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -819,9 +866,10 @@ fun NowPlayingSheet(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE2E2E2).copy(alpha = 0.12f))
+                            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.16f))))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.40f), CircleShape)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -851,35 +899,35 @@ fun NowPlayingSheet(
                     val autoMixModifier = when (autoMixMode) {
                         com.beatles.player.player.automix.AutoMixMode.NEW -> {
                             Modifier
-                                .height(36.dp)
-                                .clip(RoundedCornerShape(18.dp))
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(19.dp))
                                 .background(Brush.horizontalGradient(listOf(Color.White, Color(0xFFF2F2F2))))
-                                .border(1.dp, Color.White, RoundedCornerShape(18.dp))
+                                .border(1.dp, Color.White, RoundedCornerShape(19.dp))
                         }
                         com.beatles.player.player.automix.AutoMixMode.OLD -> {
                             Modifier
-                                .height(36.dp)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(Color.White.copy(alpha = 0.88f))
-                                .border(1.dp, Color.White.copy(alpha = 0.95f), RoundedCornerShape(18.dp))
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(19.dp))
+                                .background(Color.White.copy(alpha = 0.90f))
+                                .border(1.dp, Color.White.copy(alpha = 0.95f), RoundedCornerShape(19.dp))
                         }
                         com.beatles.player.player.automix.AutoMixMode.OFF -> {
                             Modifier
-                                .height(36.dp)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(Color.White.copy(alpha = 0.08f))
-                                .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(18.dp))
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(19.dp))
+                                .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.14f))))
+                                .border(0.5.dp, Color.White.copy(alpha = 0.38f), RoundedCornerShape(19.dp))
                         }
                     }
                     val autoMixTint = when (autoMixMode) {
                         com.beatles.player.player.automix.AutoMixMode.NEW -> Color(0xFF141416)
                         com.beatles.player.player.automix.AutoMixMode.OLD -> Color(0xFF141416)
-                        com.beatles.player.player.automix.AutoMixMode.OFF -> Color.White.copy(alpha = 0.40f)
+                        com.beatles.player.player.automix.AutoMixMode.OFF -> Color.White.copy(alpha = 0.85f)
                     }
                     val autoMixTextColor = when (autoMixMode) {
                         com.beatles.player.player.automix.AutoMixMode.NEW -> Color(0xFF141416)
                         com.beatles.player.player.automix.AutoMixMode.OLD -> Color(0xFF141416)
-                        com.beatles.player.player.automix.AutoMixMode.OFF -> Color.White.copy(alpha = 0.40f)
+                        com.beatles.player.player.automix.AutoMixMode.OFF -> Color.White.copy(alpha = 0.90f)
                     }
 
                     Box(
@@ -906,7 +954,7 @@ fun NowPlayingSheet(
                                 autoMixLabel,
                                 color = autoMixTextColor,
                                 fontSize = 12.sp,
-                                fontWeight = if (autoMixMode != com.beatles.player.player.automix.AutoMixMode.OFF) FontWeight.Bold else FontWeight.Medium
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -915,9 +963,10 @@ fun NowPlayingSheet(
 
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE2E2E2).copy(alpha = 0.12f))
+                            .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.16f))))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.40f), CircleShape)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -1186,34 +1235,46 @@ fun NowPlayingSheet(
             }
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Lyrics + Next Up pills (Strictly mutually exclusive)
+            // Lyrics + Next Up pills (Strictly mutually exclusive, bright frosted glass overlay)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                val lyricsBg = if (isLyricsActive) Color.White else Color.White.copy(alpha = 0.20f)
+                val lyricsBorder = if (isLyricsActive) Color.White else Color.White.copy(alpha = 0.32f)
+                val lyricsText = if (isLyricsActive) Color.Black else Color.White
+
+                val nextUpBg = if (isNextUpActive) Color.White else Color.White.copy(alpha = 0.20f)
+                val nextUpBorder = if (isNextUpActive) Color.White else Color.White.copy(alpha = 0.32f)
+                val nextUpText = if (isNextUpActive) Color.Black else Color.White
+
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp)
-                        .background(if (isLyricsActive) Color.White.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(lyricsBg)
+                        .border(0.5.dp, lyricsBorder, RoundedCornerShape(50))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleLyrics()
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Lyrics", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("Lyrics", color = lyricsText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp)
-                        .background(if (isNextUpActive) Color.White.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.12f), RoundedCornerShape(50))
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(nextUpBg)
+                        .border(0.5.dp, nextUpBorder, RoundedCornerShape(50))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleNextUp()
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Next Up", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Text("Next Up", color = nextUpText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
