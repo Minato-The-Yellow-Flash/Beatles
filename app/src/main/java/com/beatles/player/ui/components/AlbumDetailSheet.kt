@@ -98,9 +98,9 @@ fun FluidAlbumDetailOverlay(
         } else {
             progress.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(
-                    dampingRatio = 0.86f,
-                    stiffness = 380f
+                animationSpec = tween(
+                    durationMillis = 240,
+                    easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
                 )
             )
             currentAlbum = null
@@ -110,6 +110,13 @@ fun FluidAlbumDetailOverlay(
 
     val p = progress.value
     val alb = currentAlbum ?: return
+
+    val resolvedCover = remember(alb) {
+        if (alb.coverUrl.isNotBlank() && alb.coverUrl.startsWith("http")) alb.coverUrl
+        else alb.songs.firstOrNull { it.coverUrl.isNotBlank() && it.coverUrl.startsWith("http") }?.coverUrl
+            ?: com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(alb.artist, ignoreCase = true) }?.imageUrl
+            ?: ""
+    }
 
     if (p > 0f) {
         var dragY by remember { mutableFloatStateOf(0f) }
@@ -179,6 +186,17 @@ fun FluidAlbumDetailOverlay(
 
         val listState = rememberLazyListState()
 
+        // Scroll-driven swipe up parallax and blur calculation for the hero album artwork
+        val scrollOffset = if (listState.firstVisibleItemIndex == 0) {
+            listState.firstVisibleItemScrollOffset.toFloat()
+        } else {
+            listState.firstVisibleItemScrollOffset.toFloat() + 800f
+        }
+        val artTranslateY = (-scrollOffset * 0.75f).coerceAtLeast(-targetTopPx - 200f) * p
+        val artBlur = ((scrollOffset / 14f) * p).coerceIn(0f, 24f).dp
+        val artScale = (1f - (scrollOffset / 1400f) * p).coerceIn(0.72f, 1f)
+        val artAlpha = (1f - (scrollOffset / 340f) * p).coerceIn(0f, 1f)
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -217,9 +235,9 @@ fun FluidAlbumDetailOverlay(
                         }
                 ) {
                     // 1. Deep Ambient Blurred Base
-                    if (alb.coverUrl.isNotBlank()) {
+                    if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
                         AsyncImage(
-                            model = alb.coverUrl,
+                            model = resolvedCover,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
@@ -256,9 +274,9 @@ fun FluidAlbumDetailOverlay(
                                 )
                             }
                     ) {
-                        if (alb.coverUrl.isNotBlank()) {
+                        if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
                             AsyncImage(
-                                model = alb.coverUrl,
+                                model = resolvedCover,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
@@ -266,6 +284,17 @@ fun FluidAlbumDetailOverlay(
                                     .scale(bannerScale)
                                     .offset { IntOffset(0, bannerShiftY.roundToInt()) }
                                     .blur(20.dp)
+                            )
+                        } else {
+                            AppleMusicGradientCover(
+                                title = alb.title,
+                                artist = alb.artist,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .scale(bannerScale)
+                                    .offset { IntOffset(0, bannerShiftY.roundToInt()) }
+                                    .blur(20.dp),
+                                showLabel = false
                             )
                         }
                         Box(
@@ -315,80 +344,86 @@ fun FluidAlbumDetailOverlay(
 
                                 Spacer(modifier = Modifier.height(20.dp))
 
-                                // Rich Action Buttons Row: Play, Shuffle, Add to Set, Favorite, Info
+                                // Action Controls Row: Shuffle, Large Center Play, Favorite, Add to Set / Library
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 24.dp),
+                                    horizontalArrangement = Arrangement.SpaceEvenly,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Primary Play Button
-                                    Button(
-                                        onClick = {
-                                            if (alb.songs.isNotEmpty()) onPlay(alb.songs.first(), alb.songs)
-                                        },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(48.dp),
-                                        shape = RoundedCornerShape(24.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isDark) Color.White else Color(0xFF141416),
-                                            contentColor = if (isDark) Color.Black else Color.White
-                                        )
-                                    ) {
-                                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Play", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                    }
+                                    val buttonBg = if (isDark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.08f)
 
-                                    // Shuffle Button
-                                    Button(
-                                        onClick = {
-                                            if (alb.songs.isNotEmpty()) {
-                                                val shuffled = alb.songs.shuffled()
-                                                onPlay(shuffled.first(), shuffled)
-                                            }
-                                        },
+                                    // Shuffle Button (transparent borderless circle)
+                                    Box(
                                         modifier = Modifier
-                                            .weight(1f)
-                                            .height(48.dp),
-                                        shape = RoundedCornerShape(24.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = cardBg,
-                                            contentColor = textPrimary
-                                        )
-                                    ) {
-                                        Icon(Icons.Default.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Shuffle", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                    }
-
-                                    // Add to Set / Library Pill
-                                    IconButton(
-                                        onClick = { showSetDialog = true },
-                                        modifier = Modifier
-                                            .size(48.dp)
+                                            .size(46.dp)
                                             .clip(CircleShape)
-                                            .background(cardBg)
+                                            .background(buttonBg)
+                                            .clickable {
+                                                if (alb.songs.isNotEmpty()) {
+                                                    val shuffled = alb.songs.shuffled()
+                                                    onPlay(shuffled.first(), shuffled)
+                                                }
+                                            },
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
-                                            Icons.Default.BookmarkBorder,
-                                            contentDescription = "Options",
+                                            Icons.Default.Shuffle,
+                                            contentDescription = "Shuffle",
                                             tint = textPrimary,
                                             modifier = Modifier.size(22.dp)
                                         )
                                     }
 
-                                    // Info Button
-                                    IconButton(
-                                        onClick = { showInfoDialog = true },
+                                    // Large Center Play Button
+                                    Box(
                                         modifier = Modifier
-                                            .size(48.dp)
+                                            .size(62.dp)
                                             .clip(CircleShape)
-                                            .background(cardBg)
+                                            .background(textPrimary)
+                                            .clickable {
+                                                if (alb.songs.isNotEmpty()) onPlay(alb.songs.first(), alb.songs)
+                                            },
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
-                                            Icons.Outlined.Info,
-                                            contentDescription = "Info",
+                                            Icons.Default.PlayArrow,
+                                            contentDescription = "Play",
+                                            tint = if (isDark) Color.Black else Color.White,
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                    }
+
+                                    // Favorite Heart Button (transparent borderless circle)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .clip(CircleShape)
+                                            .background(buttonBg)
+                                            .clickable { isFavorite = !isFavorite },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                                            contentDescription = "Favorite",
+                                            tint = if (isFavorite) AccentRed else textPrimary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+
+                                    // Save to Library / Add to Set Button (transparent borderless circle)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .clip(CircleShape)
+                                            .background(buttonBg)
+                                            .clickable { showSetDialog = true },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Default.BookmarkAdd,
+                                            contentDescription = "Save Album or Add to Set",
                                             tint = textPrimary,
                                             modifier = Modifier.size(22.dp)
                                         )
@@ -517,15 +552,15 @@ fun FluidAlbumDetailOverlay(
                         )
 
                         IconButton(
-                            onClick = onClose,
+                            onClick = { showInfoDialog = true },
                             modifier = Modifier
                                 .size(38.dp)
                                 .clip(CircleShape)
                                 .background(if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f))
                         ) {
                             Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Close",
+                                Icons.Outlined.Info,
+                                contentDescription = "Info",
                                 tint = textPrimary,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -534,29 +569,33 @@ fun FluidAlbumDetailOverlay(
                 }
             }
 
-            // 5. Shared Morph Artwork: smoothly morphs from origin rect into target rect
+            // 5. Shared Morph Artwork: smoothly morphs from origin rect into target rect with swipe-up parallax and progressive blur
             Box(
                 modifier = Modifier
-                    .offset { IntOffset(curLeft.roundToInt(), curTop.roundToInt()) }
+                    .offset { IntOffset(curLeft.roundToInt(), (curTop + artTranslateY).roundToInt()) }
                     .size(
-                        with(density) { curWidth.coerceAtLeast(1f).toDp() },
-                        with(density) { curHeight.coerceAtLeast(1f).toDp() }
+                        with(density) { (curWidth * artScale).coerceAtLeast(1f).toDp() },
+                        with(density) { (curHeight * artScale).coerceAtLeast(1f).toDp() }
                     )
+                    .graphicsLayer {
+                        alpha = if (p >= 0.95f) artAlpha.coerceIn(0.08f, 1f) else 1f
+                    }
+                    .then(if (artBlur > 0.dp && p >= 0.95f) Modifier.blur(artBlur) else Modifier)
                     .clip(RoundedCornerShape(curCorner))
                     .shadow(elevation = (12.dp * p), shape = RoundedCornerShape(curCorner))
             ) {
-                if (alb.coverUrl.isNotBlank()) {
+                // Live gradient cover as robust foundation
+                AppleMusicGradientCover(
+                    title = alb.title,
+                    artist = alb.artist,
+                    cornerRadius = curCorner,
+                    modifier = Modifier.fillMaxSize()
+                )
+                if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
                     AsyncImage(
-                        model = alb.coverUrl,
+                        model = resolvedCover,
                         contentDescription = alb.title,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    AppleMusicGradientCover(
-                        title = alb.title,
-                        artist = alb.artist,
-                        cornerRadius = curCorner,
                         modifier = Modifier.fillMaxSize()
                     )
                 }

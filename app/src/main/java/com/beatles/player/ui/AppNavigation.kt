@@ -241,8 +241,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         else -> {
             val isDark = isDarkTheme(state.themeMode)
             val appBg = if (isDark) GrayBlackBg else Color(0xFFF6F7F9)
-            val translucentBarBg = if (isDark) Color(0xFF1E1F26).copy(alpha = 0.70f) else Color(0xFFFFFFFF).copy(alpha = 0.72f)
-            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Transparent
+            val translucentBarBg = if (isDark) Color(0xFF16171D).copy(alpha = 0.65f) else Color(0xFFFFFFFF).copy(alpha = 0.72f)
+            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.10f)
             val translucentInnerPill = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.08f)
             val textPrimary = if (isDark) Color.White else Color(0xFF141416)
             val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
@@ -251,6 +251,23 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
             val searchInputColor = if (isDark) Color.White else Color(0xFF141416)
             val searchHintColor = if (isDark) Color.White.copy(alpha = 0.45f) else Color(0xFF9CA3AF)
             val noticeBg = if (isDark) Color(0xFF222226).copy(alpha = 0.95f) else Color.White.copy(alpha = 0.95f)
+
+            // Dynamic edge-to-edge status bar coloring that responds to active album/player
+            val windowView = androidx.compose.ui.platform.LocalView.current
+            DisposableEffect(state.isExpanded, state.selectedAlbum, isDark) {
+                val activity = windowView.context as? android.app.Activity
+                    ?: (windowView.context as? android.content.ContextWrapper)?.baseContext as? android.app.Activity
+                if (activity != null) {
+                    val window = activity.window
+                    val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                    window.statusBarColor = android.graphics.Color.TRANSPARENT
+                    window.navigationBarColor = android.graphics.Color.TRANSPARENT
+                    val isSheetOpen = state.isExpanded || state.selectedAlbum != null
+                    insetsController.isAppearanceLightStatusBars = !isSheetOpen && !isDark
+                    insetsController.isAppearanceLightNavigationBars = !isDark
+                }
+                onDispose {}
+            }
 
 
             Box(
@@ -290,6 +307,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         Tab.HOME -> HomeScreen(
                                             state = screenState,
                                             onPlay = { s, pl -> viewModel.playSong(s, pl) },
+                                            onPlayArtistMix = { artist, songs -> viewModel.playArtistMix(artist, songs) },
                                             onSeeAll = { section -> viewModel.setSeeAllSection(section.ifEmpty { null }) },
                                             onSelectAlbum = { alb, bounds -> viewModel.setSelectedAlbum(alb, bounds) },
                                             onPlayAlbumSet = { viewModel.playAlbumSet(it) },
@@ -335,6 +353,32 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     }
                 }
 
+
+                // ═══ UPPER PROGRESSIVE BLUR OVERLAY (iOS 26 Full-Screen Progressive Header Blur) ═══
+                if (state.selectedAlbum == null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(130.dp)
+                            .align(Alignment.TopCenter)
+                            .graphicsLayer {
+                                compositingStrategy = CompositingStrategy.Offscreen
+                            }
+                            .drawWithContent {
+                                drawContent()
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        0.0f to Color.Black,
+                                        0.50f to Color.Black.copy(alpha = 0.85f),
+                                        0.85f to Color.Black.copy(alpha = 0.30f),
+                                        1.0f to Color.Transparent
+                                    ),
+                                    blendMode = BlendMode.DstIn
+                                )
+                            }
+                            .hazeChild(state = hazeState)
+                    )
+                }
 
                 // ═══ 2. STICKY TOP HEADER (Floating Logo + User Avatar) ═══
                 if (state.showSeeAllSection == null && state.currentTab != Tab.SEARCH && state.selectedAlbum == null) {
@@ -616,12 +660,14 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 if (state.searchQuery != bottomSearchText) bottomSearchText = state.searchQuery
                             }
 
-                            LaunchedEffect(state.currentTab) {
+                            LaunchedEffect(state.currentTab, searchExpandProgress) {
                                 if (state.currentTab == Tab.SEARCH) {
-                                    try {
-                                        bottomSearchFocusRequester.requestFocus()
-                                        keyboardController?.show()
-                                    } catch (_: Exception) {}
+                                    if (searchExpandProgress >= 0.15f) {
+                                        try {
+                                            bottomSearchFocusRequester.requestFocus()
+                                            keyboardController?.show()
+                                        } catch (_: Exception) {}
+                                    }
                                 } else {
                                     bottomSearchText = ""
                                     viewModel.onSearchQueryChanged("")
@@ -819,12 +865,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         }
 
                                         // Expanded Search input (search mode)
-                                        if (searchExpandProgress > 0.4f) {
+                                        if (searchExpandProgress > 0.10f) {
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxSize()
                                                     .graphicsLayer {
-                                                        alpha = ((searchExpandProgress - 0.4f) / 0.6f).coerceIn(0f, 1f)
+                                                        alpha = ((searchExpandProgress - 0.10f) / 0.85f).coerceIn(0f, 1f)
                                                     }
                                                     .padding(horizontal = 12.dp),
                                                 verticalAlignment = Alignment.CenterVertically
@@ -1279,7 +1325,7 @@ private fun MiniPlayerSeekLine(
     val pos = position()
     val progress = (pos.toFloat() / dur).coerceIn(0f, 1f)
     val mixing = isMixing()
-    val seekColor = if (mixing) Color.White else Color(0xFFF82C38)
+    val seekColor = Color.White
     Box(
         modifier = modifier
             .fillMaxWidth()

@@ -121,6 +121,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val userQueuedSongIds = mutableSetOf<String>()
     @Volatile private var precomputedAutoMixCandidate: Song? = null
     private var precomputeJob: kotlinx.coroutines.Job? = null
+    private var activePlayJob: kotlinx.coroutines.Job? = null
+    private var activeLyricsJob: kotlinx.coroutines.Job? = null
+    @Volatile private var activeTargetSongId: String? = null
 
     init {
         val isOnboarded = try { storage.isOnboarded(application) } catch (_: Exception) { false }
@@ -748,15 +751,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(recentlyPlayed = storage.getRecentlyPlayed(getApplication())) }
         fetchLyrics(song)
         
-        viewModelScope.launch {
+        activePlayJob?.cancel()
+        activeTargetSongId = song.id
+
+        activePlayJob = viewModelScope.launch {
             try {
                 val url = resolvePlayableUrl(song) ?: throw Exception("No playable source")
+
+                if (activeTargetSongId != song.id) return@launch
 
                 if (isAutoMix) {
                     player.playWithFadeIn(url, song, 1800L)
                 } else {
                     player.play(url, song)
                 }
+
+                if (activeTargetSongId != song.id) return@launch
 
                 _uiState.update { it.copy(isLoadingStream = false) }
                 triggerCandidatePrecomputation(song)
@@ -778,9 +788,32 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
             } catch (e: Exception) {
-                repo.clearStreamCache(song.id)
-                _uiState.update { it.copy(isLoadingStream = false, isPlaying = false, downloadNotice = "Unable to stream \"${song.title}\"") }
+                if (activeTargetSongId == song.id) {
+                    repo.clearStreamCache(song.id)
+                    _uiState.update { it.copy(isLoadingStream = false, isPlaying = false, downloadNotice = "Unable to stream \"${song.title}\"") }
+                }
             }
+        }
+    }
+
+    /** Plays a curated artist mix where the Next Up queue strictly contains tracks by that specific artist */
+    fun playArtistMix(artistName: String, initialSongs: List<Song> = emptyList()) {
+        viewModelScope.launch {
+            val artistNorm = artistName.trim().lowercase()
+            val fromAlbums = _uiState.value.albums.flatMap { it.songs }.filter { it.artist.lowercase().contains(artistNorm) }
+            val fromRecs = _uiState.value.recommendations.filter { it.artist.lowercase().contains(artistNorm) }
+            val fromLibrary = _uiState.value.favoriteSongs.filter { it.artist.lowercase().contains(artistNorm) }
+            val combined = (initialSongs + fromAlbums + fromRecs + fromLibrary).filter { it.id.isNotBlank() }.distinctBy { it.id }
+
+            val fullArtistPlaylist = if (combined.size < 4) {
+                val searched = repo.search("$artistName best songs").filter { 
+                    it.artist.lowercase().contains(artistNorm) || it.title.lowercase().contains(artistNorm) 
+                }
+                (combined + searched).distinctBy { it.id }
+            } else combined
+
+            val firstTrack = fullArtistPlaylist.firstOrNull() ?: initialSongs.firstOrNull() ?: return@launch
+            playSong(firstTrack, playlist = fullArtistPlaylist)
         }
     }
 
@@ -1030,9 +1063,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun fetchLyrics(song: Song) {
-        viewModelScope.launch {
+        activeLyricsJob?.cancel()
+        activeLyricsJob = viewModelScope.launch {
             val lyrics = repo.getLyrics(song.title, song.artist, song.durationSeconds)
-            _uiState.update { it.copy(lyrics = lyrics) }
+            if (_uiState.value.currentSong?.id == song.id) {
+                _uiState.update { it.copy(lyrics = lyrics) }
+            }
         }
     }
 

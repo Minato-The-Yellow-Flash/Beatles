@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.draw.shadow
@@ -284,46 +285,6 @@ fun NowPlayingSheet(
         Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (showLyrics || showNextUp) 0.68f else 0.40f)))
         }
 
-        // Double-Tap Heart Pop Animation Overlay (no black background)
-        if (showBigHeartPopup || bigHeartAlpha > 0f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = bigHeartScale
-                        scaleY = bigHeartScale
-                        alpha = bigHeartAlpha
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Favorite,
-                    contentDescription = "Liked",
-                    tint = Color(0xFFF82C38),
-                    modifier = Modifier.size(92.dp)
-                )
-            }
-        }
-
-        // Center expansion blur pulse from the middle on Play / Pause
-        if (playPausePulseAnim.value < 0.99f) {
-            val p = playPausePulseAnim.value
-            val pulseScale = 0.85f + 0.45f * p
-            val pulseAlpha = (1f - p) * 0.28f
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = pulseScale
-                        scaleY = pulseScale
-                        alpha = pulseAlpha
-                    }
-                    .blur(24.dp)
-                    .background(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.45f), Color.Transparent))),
-                contentAlignment = Alignment.Center
-            ) {}
-        }
-
         val isLyricsActive = showLyrics && !showNextUp
         val isNextUpActive = showNextUp
 
@@ -341,33 +302,54 @@ fun NowPlayingSheet(
         val defaultCoverLeft = (screenWidth - defaultCoverSize) / 2
         val defaultCoverTop = 84.dp
 
+        val isCompactCover = isNextUpActive || isLyricsActive
+
+        var lastLyricsInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+        var controlsVisible by remember { mutableStateOf(true) }
+
+        LaunchedEffect(isLyricsActive, lastLyricsInteractionTime) {
+            if (isLyricsActive) {
+                controlsVisible = true
+                delay(10000L) // 10s idle reading
+                controlsVisible = false
+            } else {
+                controlsVisible = true
+            }
+        }
+
+        val controlsAlpha by animateFloatAsState(
+            targetValue = if (isLyricsActive && !controlsVisible) 0f else 1f,
+            animationSpec = tween(400, easing = FastOutSlowInEasing),
+            label = "controlsAlpha"
+        )
+
         val coverSize by animateDpAsState(
-            targetValue = if (isNextUpActive) 68.dp else defaultCoverSize,
+            targetValue = if (isCompactCover) 68.dp else defaultCoverSize,
             animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
             label = "coverSize"
         )
         val coverLeft by animateDpAsState(
-            targetValue = if (isNextUpActive) 24.dp else defaultCoverLeft,
+            targetValue = if (isCompactCover) 24.dp else defaultCoverLeft,
             animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
             label = "coverLeft"
         )
         val coverTop by animateDpAsState(
-            targetValue = if (isNextUpActive) 54.dp else defaultCoverTop,
+            targetValue = if (isCompactCover) 54.dp else defaultCoverTop,
             animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
             label = "coverTop"
         )
         val coverCorner by animateDpAsState(
-            targetValue = if (isNextUpActive) 14.dp else 22.dp,
+            targetValue = if (isCompactCover) 14.dp else 22.dp,
             animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
             label = "coverCorner"
         )
         val coverAlpha by animateFloatAsState(
-            targetValue = if (isLyricsActive) 0f else 1f,
+            targetValue = 1f,
             animationSpec = tween(220),
             label = "coverAlpha"
         )
 
-        // Apple Music-Style Interactive Foreground Album Artwork (glides to top-left when Next Up is active)
+        // Apple Music-Style Interactive Foreground Album Artwork (glides to top-left when Next Up or Lyrics is active)
         if (coverAlpha > 0.01f) {
             Box(
                 modifier = Modifier
@@ -375,7 +357,7 @@ fun NowPlayingSheet(
                     .size(coverSize)
                     .graphicsLayer {
                         alpha = coverAlpha
-                        if (!isNextUpActive) {
+                        if (!isCompactCover) {
                             translationX = animatedDragX
                             val dampScale = 1f - (kotlin.math.abs(animatedDragX) / 3000f).coerceIn(0f, 0.05f)
                             scaleX = dampScale
@@ -383,7 +365,7 @@ fun NowPlayingSheet(
                         }
                     }
                     .clip(RoundedCornerShape(coverCorner))
-                    .shadow(if (isNextUpActive) 4.dp else 18.dp, RoundedCornerShape(coverCorner))
+                    .shadow(if (isCompactCover) 4.dp else 18.dp, RoundedCornerShape(coverCorner))
             ) {
                 if (currentCoverUrl.isNotBlank()) {
                     AsyncImage(
@@ -403,8 +385,8 @@ fun NowPlayingSheet(
             }
         }
 
-        // Next Up Header beside the left-glided cover
-        if (isNextUpActive) {
+        // Header beside the left-glided cover (Next Up or Lyrics)
+        if (isCompactCover) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -413,17 +395,24 @@ fun NowPlayingSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("PLAYING NEXT", color = AccentRed, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text(
+                        if (isLyricsActive) "LYRICS" else "PLAYING NEXT",
+                        color = AccentRed,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
                     Text(song.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     Text(song.artist, color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp, maxLines = 1)
                 }
                 IconButton(
-                    onClick = onToggleNextUp,
+                    onClick = {
+                        if (isLyricsActive) onToggleLyrics() else onToggleNextUp()
+                    },
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.20f))
-                        .border(0.5.dp, Color.White.copy(alpha = 0.35f), CircleShape)
                 ) {
                     Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(18.dp))
                 }
@@ -650,12 +639,27 @@ fun NowPlayingSheet(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 70.dp, bottom = 180.dp)
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onToggleLyrics() }
+                    .padding(top = 130.dp, bottom = if (isLyricsActive && !controlsVisible) 30.dp else 180.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                lastLyricsInteractionTime = System.currentTimeMillis()
+                                controlsVisible = true
+                            }
+                        )
+                    }
             ) {
                 if (lyrics.isNotEmpty()) {
                     val listState = rememberLazyListState()
                     val currentIdx = lyrics.indexOfLast { it.timeMs <= currentPosition }
+
+                    LaunchedEffect(listState.isScrollInProgress) {
+                        if (listState.isScrollInProgress) {
+                            lastLyricsInteractionTime = System.currentTimeMillis()
+                            controlsVisible = true
+                        }
+                    }
+
                     LaunchedEffect(currentIdx) {
                         if (currentIdx in lyrics.indices) {
                             listState.animateScrollToItem(
@@ -687,7 +691,7 @@ fun NowPlayingSheet(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(start = 28.dp, end = 28.dp),
-                            contentPadding = PaddingValues(top = 36.dp, bottom = 200.dp),
+                            contentPadding = PaddingValues(top = 20.dp, bottom = if (isLyricsActive && !controlsVisible) 60.dp else 220.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             itemsIndexed(lyrics, key = { idx, line -> "lyric_${line.timeMs}_$idx" }) { idx, line ->
@@ -815,10 +819,21 @@ fun NowPlayingSheet(
             }
         }
 
-        // Bottom Controls Container (Always visible, clean, solid)
+        // Bottom Controls Container (Fades out after 10s of inactivity during Lyrics mode)
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    alpha = controlsAlpha
+                }
+                .then(
+                    if (controlsAlpha < 0.1f) Modifier.pointerInput(Unit) {
+                        detectTapGestures {
+                            lastLyricsInteractionTime = System.currentTimeMillis()
+                            controlsVisible = true
+                        }
+                    } else Modifier
+                )
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.Bottom
         ) {
@@ -841,7 +856,6 @@ fun NowPlayingSheet(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color.White.copy(alpha = 0.22f))
-                                .border(0.5.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
                                 .padding(horizontal = 8.dp, vertical = 3.dp)
                         ) {
                             Text(
@@ -855,7 +869,7 @@ fun NowPlayingSheet(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Heart + AutoMix Toggle + 3-dots mini menu row (bright luminous frosted glass overlay)
+                // Heart + AutoMix Toggle + 3-dots mini menu row (bright luminous frosted glass overlay, borderless)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -869,7 +883,6 @@ fun NowPlayingSheet(
                             .size(38.dp)
                             .clip(CircleShape)
                             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.16f))))
-                            .border(0.5.dp, Color.White.copy(alpha = 0.40f), CircleShape)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -902,21 +915,18 @@ fun NowPlayingSheet(
                                 .height(38.dp)
                                 .clip(RoundedCornerShape(19.dp))
                                 .background(Brush.horizontalGradient(listOf(Color.White, Color(0xFFF2F2F2))))
-                                .border(1.dp, Color.White, RoundedCornerShape(19.dp))
                         }
                         com.beatles.player.player.automix.AutoMixMode.OLD -> {
                             Modifier
                                 .height(38.dp)
                                 .clip(RoundedCornerShape(19.dp))
                                 .background(Color.White.copy(alpha = 0.90f))
-                                .border(1.dp, Color.White.copy(alpha = 0.95f), RoundedCornerShape(19.dp))
                         }
                         com.beatles.player.player.automix.AutoMixMode.OFF -> {
                             Modifier
                                 .height(38.dp)
                                 .clip(RoundedCornerShape(19.dp))
                                 .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.14f))))
-                                .border(0.5.dp, Color.White.copy(alpha = 0.38f), RoundedCornerShape(19.dp))
                         }
                     }
                     val autoMixTint = when (autoMixMode) {
@@ -966,7 +976,6 @@ fun NowPlayingSheet(
                             .size(38.dp)
                             .clip(CircleShape)
                             .background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.16f))))
-                            .border(0.5.dp, Color.White.copy(alpha = 0.40f), CircleShape)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -1254,7 +1263,6 @@ fun NowPlayingSheet(
                         .height(44.dp)
                         .clip(RoundedCornerShape(50))
                         .background(lyricsBg)
-                        .border(0.5.dp, lyricsBorder, RoundedCornerShape(50))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleLyrics()
                         },
@@ -1268,7 +1276,6 @@ fun NowPlayingSheet(
                         .height(44.dp)
                         .clip(RoundedCornerShape(50))
                         .background(nextUpBg)
-                        .border(0.5.dp, nextUpBorder, RoundedCornerShape(50))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleNextUp()
                         },
@@ -1316,7 +1323,6 @@ fun NowPlayingSheet(
                         }
                         .clip(RoundedCornerShape(22.dp))
                         .background(menuBg)
-                        .border(1.dp, menuBorder, RoundedCornerShape(22.dp))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                         .padding(vertical = 6.dp)
                 ) {
@@ -1471,6 +1477,48 @@ fun NowPlayingSheet(
                     }
                 }
             }
+        }
+
+        // Double-Tap Heart Pop Animation Overlay (at top of Box hierarchy so it displays over artwork & queue)
+        if (showBigHeartPopup || bigHeartAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(99f)
+                    .graphicsLayer {
+                        scaleX = bigHeartScale
+                        scaleY = bigHeartScale
+                        alpha = bigHeartAlpha
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Favorite,
+                    contentDescription = "Liked",
+                    tint = Color(0xFFF82C38),
+                    modifier = Modifier.size(92.dp)
+                )
+            }
+        }
+
+        // Center expansion blur pulse from the middle on Play / Pause
+        if (playPausePulseAnim.value < 0.99f) {
+            val p = playPausePulseAnim.value
+            val pulseScale = 0.85f + 0.45f * p
+            val pulseAlpha = (1f - p) * 0.28f
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(99f)
+                    .graphicsLayer {
+                        scaleX = pulseScale
+                        scaleY = pulseScale
+                        alpha = pulseAlpha
+                    }
+                    .blur(24.dp)
+                    .background(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.45f), Color.Transparent))),
+                contentAlignment = Alignment.Center
+            ) {}
         }
     }
 }

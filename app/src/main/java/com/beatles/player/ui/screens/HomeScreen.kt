@@ -68,6 +68,7 @@ private val AccentRed = Color(0xFFF82C38)
 fun HomeScreen(
     state: PlayerUiState,
     onPlay: (Song, List<Song>) -> Unit,
+    onPlayArtistMix: (String, List<Song>) -> Unit = { _, _ -> },
     onSeeAll: (String) -> Unit,
     onSelectAlbum: (Album, Rect?) -> Unit = { _, _ -> },
     onPlayAlbumSet: (AlbumSet) -> Unit = {},
@@ -444,7 +445,7 @@ fun HomeScreen(
                                     .clickable(
                                         interactionSource = interactionSource,
                                         indication = null
-                                    ) { onSelectAlbum(album, cardBounds) }
+                                    ) { onSelectAlbum(album.copy(coverUrl = resolvedAlbumCover.ifBlank { album.coverUrl }), cardBounds) }
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -821,7 +822,7 @@ fun HomeScreen(
 
                         Button(
                             onClick = {
-                                spotlightSongs.firstOrNull()?.let { onPlay(it, spotlightSongs) }
+                                onPlayArtistMix(spotlightArtist, spotlightSongs)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = AccentRed),
                             shape = RoundedCornerShape(50),
