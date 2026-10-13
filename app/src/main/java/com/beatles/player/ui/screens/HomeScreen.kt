@@ -67,7 +67,7 @@ private val AccentRed = Color(0xFFF82C38)
 @Composable
 fun HomeScreen(
     state: PlayerUiState,
-    onPlay: (Song, List<Song>) -> Unit,
+    onPlay: (Song, List<Song>, Rect?) -> Unit,
     onPlayArtistMix: (String, List<Song>) -> Unit = { _, _ -> },
     onSeeAll: (String) -> Unit,
     onSelectAlbum: (Album, Rect?) -> Unit = { _, _ -> },
@@ -375,7 +375,7 @@ fun HomeScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Button(
                                     onClick = {
-                                        heroSongs.firstOrNull()?.let { onPlay(it, heroSongs) }
+                                        heroSongs.firstOrNull()?.let { onPlay(it, heroSongs, heroBounds) }
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
                                     shape = RoundedCornerShape(50),
@@ -490,7 +490,7 @@ fun HomeScreen(
                                             .size(34.dp)
                                             .background(Color.White, CircleShape)
                                             .clickable {
-                                                albumSongs.firstOrNull()?.let { onPlay(it, albumSongs) }
+                                                albumSongs.firstOrNull()?.let { onPlay(it, albumSongs, cardBounds) }
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -535,16 +535,18 @@ fun HomeScreen(
                                 animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
                                 label = "recentScale"
                             )
+                            var itemBounds by remember { mutableStateOf<Rect?>(null) }
                             Box(
                                 modifier = Modifier
                                     .width(140.dp)
                                     .height(180.dp)
+                                    .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                                     .graphicsLayer {
                                         scaleX = cardScale
                                         scaleY = cardScale
                                     }
                                     .clip(RoundedCornerShape(20.dp))
-                                    .clickable(interactionSource = interactionSource, indication = null) { onPlay(song, recentSongs) }
+                                    .clickable(interactionSource = interactionSource, indication = null) { onPlay(song, recentSongs, itemBounds) }
                             ) {
                                 AppleMusicGradientCover(
                                     title = song.title ?: "",
@@ -637,16 +639,18 @@ fun HomeScreen(
                                 animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
                                 label = "genreSongScale"
                             )
+                            var itemBounds by remember { mutableStateOf<Rect?>(null) }
                             Column(
                                 modifier = Modifier
                                     .width(140.dp)
+                                    .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                                     .graphicsLayer {
                                         scaleX = scale
                                         scaleY = scale
                                     }
                                     .clip(RoundedCornerShape(16.dp))
                                     .clickable(interactionSource = cardInteraction, indication = null) {
-                                        onPlay(song, filteredGenreSongs)
+                                        onPlay(song, filteredGenreSongs, itemBounds)
                                     }
                             ) {
                                 Box(
@@ -784,11 +788,13 @@ fun HomeScreen(
 
                         // Preview tracks in spotlight
                         spotlightSongs.take(3).forEach { song ->
+                            var itemBounds by remember { mutableStateOf<Rect?>(null) }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                                     .clip(RoundedCornerShape(12.dp))
-                                    .clickable { onPlay(song, spotlightSongs) }
+                                    .clickable { onPlay(song, spotlightSongs, itemBounds) }
                                     .padding(vertical = 6.dp, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -853,10 +859,12 @@ fun HomeScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
                 itemsIndexed(topSongsList, key = { index, song -> "top_${song.id}_$index" }) { _, song ->
+                    var itemBounds by remember { mutableStateOf<Rect?>(null) }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onPlay(song, allRecs) }
+                            .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
+                            .clickable { onPlay(song, allRecs, itemBounds) }
                             .padding(horizontal = 16.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -911,15 +919,17 @@ fun HomeScreen(
                                 animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
                                 label = "mfyScale"
                             )
+                            var itemBounds by remember { mutableStateOf<Rect?>(null) }
                             Column(
                                 modifier = Modifier
                                     .width(144.dp)
+                                    .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                                     .graphicsLayer {
                                         scaleX = scale
                                         scaleY = scale
                                     }
                                     .clip(RoundedCornerShape(14.dp))
-                                    .clickable(interactionSource = interaction, indication = null) { onPlay(song, allRecs) }
+                                    .clickable(interactionSource = interaction, indication = null) { onPlay(song, allRecs, itemBounds) }
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -989,7 +999,7 @@ fun HomeScreen(
 fun SeeAllScreen(
     section: String,
     state: PlayerUiState,
-    onPlay: (Song, List<Song>) -> Unit,
+    onPlay: (Song, List<Song>, Rect?) -> Unit,
     onBack: () -> Unit,
     onLoadMore: () -> Unit = {}
 ) {
@@ -1049,10 +1059,12 @@ fun SeeAllScreen(
             contentPadding = PaddingValues(top = 170.dp, bottom = 130.dp)
         ) {
             itemsIndexed(songs, key = { index, song -> "seeall_${song.id}_$index" }) { _, song ->
+                var itemBounds by remember { mutableStateOf<Rect?>(null) }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onPlay(song, songs) }
+                        .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
+                        .clickable { onPlay(song, songs, itemBounds) }
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {

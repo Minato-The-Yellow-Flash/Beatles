@@ -44,7 +44,9 @@ import com.beatles.player.viewmodel.PlayerUiState
 import com.beatles.player.ui.components.edgeFade
 import kotlin.math.roundToInt
 import androidx.compose.foundation.isSystemInDarkTheme
-
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
 
 @Composable
 fun SearchScreen(
@@ -53,7 +55,7 @@ fun SearchScreen(
     onSearch: (String) -> Unit,
     onQueryChange: (String) -> Unit = {},
     onSelectAlbum: (Album) -> Unit = {},
-    onPlay: (Song, List<Song>) -> Unit,
+    onPlay: (Song, List<Song>, Rect?) -> Unit,
     onMoveToPlayNext: (Song) -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
@@ -211,7 +213,7 @@ fun SearchScreen(
                     items(songsToDisplay, key = { "search_song_" + it.id }) { song ->
                         SearchSongSwipeItem(
                             song = song,
-                            onPlay = { onPlay(song, songsToDisplay) },
+                            onPlay = { bounds -> onPlay(song, songsToDisplay, bounds) },
                             onMoveToPlayNext = { onMoveToPlayNext(song) },
                             modifier = Modifier.animateItem(
                                 fadeInSpec = androidx.compose.animation.core.tween(180),
@@ -314,13 +316,14 @@ fun SearchScreen(
 @Composable
 fun SearchSongSwipeItem(
     song: Song,
-    onPlay: () -> Unit,
+    onPlay: (Rect?) -> Unit,
     onMoveToPlayNext: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val view = androidx.compose.ui.platform.LocalView.current
     var offsetX by remember { mutableFloatStateOf(0f) }
     var thresholdArmed by remember { mutableStateOf(false) }
+    var itemBounds by remember { mutableStateOf<Rect?>(null) }
     val animatedOffsetX by animateFloatAsState(
         targetValue = offsetX,
         animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
@@ -395,7 +398,8 @@ fun SearchSongSwipeItem(
                         }
                     )
                 }
-                .clickable { onPlay() }
+                .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
+                .clickable { onPlay(itemBounds) }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -427,7 +431,7 @@ fun SearchSongSwipeItem(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
-            IconButton(onClick = onPlay, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = { onPlay(itemBounds) }, modifier = Modifier.size(36.dp)) {
                 Icon(
                     Icons.Default.PlayArrow,
                     contentDescription = "Play",

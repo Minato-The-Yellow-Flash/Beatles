@@ -105,7 +105,8 @@ data class PlayerUiState(
     val isRefreshingHome: Boolean = false,
     val selectedLanguage: String = "All",
     val selectedLanguages: Set<String> = emptySet(),
-    val extendedAutoMixEnabled: Boolean = true
+    val extendedAutoMixEnabled: Boolean = true,
+    val selectedSongBounds: Rect? = null
 )
 
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
@@ -707,11 +708,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         searchJob = viewModelScope.launch { runSearch(query) }
     }
 
-    fun playSong(song: Song, playlist: List<Song>? = null, isFromSearch: Boolean = false, isAutoMix: Boolean = false) {
+    fun playSong(
+        song: Song,
+        playlist: List<Song>? = null,
+        isFromSearch: Boolean = false,
+        isAutoMix: Boolean = false,
+        sourceBounds: Rect? = null
+    ) {
         if (song.isAlbum) {
             viewModelScope.launch {
                 val tracks = repo.getAlbumTracks(song.id)
-                if (tracks.isNotEmpty()) playSong(tracks.first(), tracks)
+                if (tracks.isNotEmpty()) playSong(tracks.first(), tracks, sourceBounds = sourceBounds)
             }
             return
         }
@@ -743,6 +750,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
         _uiState.update { it.copy(
             currentSong = song, isPlaying = true, isExpanded = if (isAutoMix) it.isExpanded else true, isLoadingStream = true,
+            selectedSongBounds = sourceBounds,
             playlist = pl, currentPosition = 0L, duration = song.durationSeconds * 1000L,
             isFavorite = storage.isFavorite(getApplication(), song.id), lyrics = emptyList(), showLyrics = false
         )}

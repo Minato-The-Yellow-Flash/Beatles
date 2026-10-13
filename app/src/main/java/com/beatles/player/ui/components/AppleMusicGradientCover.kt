@@ -23,6 +23,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
 
+fun getAppleMusicGradientColors(title: String, artist: String): Triple<Color, Color, Color> {
+    val seed = abs((title.hashCode() * 31 + artist.hashCode()))
+    val hue1 = (seed % 360).toFloat()
+    val hue2 = ((seed + 75) % 360).toFloat()
+    val hue3 = ((seed + 150) % 360).toFloat()
+    return Triple(
+        Color.hsl(hue1, 0.75f, 0.48f),
+        Color.hsl(hue2, 0.85f, 0.40f),
+        Color.hsl(hue3, 0.70f, 0.25f)
+    )
+}
+
 /**
  * Procedural Apple Music-style live dynamic gradient artwork.
  * Displays vibrant, harmonized multi-stop gradients with gentle ambient shifts
@@ -36,18 +48,9 @@ fun AppleMusicGradientCover(
     cornerRadius: Dp = 16.dp,
     showLabel: Boolean = true
 ) {
-    val seed = remember(title, artist) {
-        abs((title.hashCode() * 31 + artist.hashCode()))
+    val (color1, color2, color3) = remember(title, artist) {
+        getAppleMusicGradientColors(title, artist)
     }
-
-    // Determine harmonized color pairs from seed
-    val hue1 = (seed % 360).toFloat()
-    val hue2 = ((seed + 75) % 360).toFloat()
-    val hue3 = ((seed + 150) % 360).toFloat()
-
-    val color1 = remember(hue1) { Color.hsl(hue1, 0.75f, 0.48f) }
-    val color2 = remember(hue2) { Color.hsl(hue2, 0.85f, 0.40f) }
-    val color3 = remember(hue3) { Color.hsl(hue3, 0.70f, 0.25f) }
 
     // Ambient live shift animation (gentle floating gradient)
     val infiniteTransition = rememberInfiniteTransition(label = "ambientGradientShift")

@@ -103,6 +103,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     }
     var searchFocusRequested by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
+    val playerProgress = remember { Animatable(0f) }
+    var dragY by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(state.isExpanded) {
+        playerProgress.animateTo(
+            targetValue = if (state.isExpanded) 1f else 0f,
+            animationSpec = spring(dampingRatio = 0.84f, stiffness = 320f)
+        )
+    }
 
     // Dynamic Header Collapse on Scroll – raw offset is only read in layout/draw lambdas (no recomposition per frame)
     val density = LocalDensity.current
@@ -241,9 +250,9 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         else -> {
             val isDark = isDarkTheme(state.themeMode)
             val appBg = if (isDark) GrayBlackBg else Color(0xFFF6F7F9)
-            val translucentBarBg = if (isDark) Color(0xFF16171D).copy(alpha = 0.65f) else Color(0xFFFFFFFF).copy(alpha = 0.72f)
-            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.10f)
-            val translucentInnerPill = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.08f)
+            val translucentBarBg = if (isDark) Color(0xFF16171D).copy(alpha = 0.70f) else Color(0xFFFFFFFF).copy(alpha = 0.78f)
+            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.14f)
+            val translucentInnerPill = if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.10f)
             val textPrimary = if (isDark) Color.White else Color(0xFF141416)
             val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
             val navInactiveTint = if (isDark) Color.White.copy(alpha = 0.45f) else Color(0xFF8E8E93)
@@ -306,7 +315,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     when (targetTab) {
                                         Tab.HOME -> HomeScreen(
                                             state = screenState,
-                                            onPlay = { s, pl -> viewModel.playSong(s, pl) },
+                                            onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) },
                                             onPlayArtistMix = { artist, songs -> viewModel.playArtistMix(artist, songs) },
                                             onSeeAll = { section -> viewModel.setSeeAllSection(section.ifEmpty { null }) },
                                             onSelectAlbum = { alb, bounds -> viewModel.setSelectedAlbum(alb, bounds) },
@@ -335,7 +344,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             onSearch = { viewModel.search(it) },
                                             onQueryChange = { viewModel.fetchSearchSuggestions(it) },
                                             onSelectAlbum = { viewModel.setSelectedAlbum(it) },
-                                            onPlay = { s, _ -> viewModel.playSong(s, playlist = null, isFromSearch = true) },
+                                            onPlay = { s, _, bounds -> viewModel.playSong(s, playlist = null, isFromSearch = true, sourceBounds = bounds) },
                                             onMoveToPlayNext = { s -> viewModel.moveSongToPlayNext(s) }
                                         )
                                     }
@@ -361,6 +370,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                             .fillMaxWidth()
                             .height(130.dp)
                             .align(Alignment.TopCenter)
+                            .zIndex(1f)
                             .graphicsLayer {
                                 compositingStrategy = CompositingStrategy.Offscreen
                             }
@@ -369,9 +379,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 drawRect(
                                     brush = Brush.verticalGradient(
                                         0.0f to Color.Black,
-                                        0.50f to Color.Black.copy(alpha = 0.85f),
-                                        0.85f to Color.Black.copy(alpha = 0.30f),
-                                        1.0f to Color.Transparent
+                                        1.0f to Color.Black.copy(alpha = 0.10f)
                                     ),
                                     blendMode = BlendMode.DstIn
                                 )
@@ -386,6 +394,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.TopCenter)
+                            .zIndex(10f)
                             .offset { IntOffset(0, headerOffsetPx.roundToInt()) }
                             .graphicsLayer { alpha = headerAlphaProvider() }
                     ) {
@@ -617,9 +626,9 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     }
                 }
 
-                    // Top Mini Player: fades out when entering search mode or when the page is scrolled (capsule takes over)
-                    val topPlayerAlpha = (1f - combined * 2.5f).coerceIn(0f, 1f)
-                    if (hasSong && !state.isExpanded && topPlayerAlpha > 0.01f) {
+                    // Top Mini Player: fades out when entering search mode or when expanded (sheet morphs over it)
+                    val topPlayerAlpha = (1f - combined * 2.5f).coerceIn(0f, 1f) * (1f - playerProgress.value)
+                    if (hasSong && topPlayerAlpha > 0.01f) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -660,14 +669,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 if (state.searchQuery != bottomSearchText) bottomSearchText = state.searchQuery
                             }
 
-                            LaunchedEffect(state.currentTab, searchExpandProgress) {
+                            LaunchedEffect(state.currentTab) {
                                 if (state.currentTab == Tab.SEARCH) {
-                                    if (searchExpandProgress >= 0.15f) {
-                                        try {
-                                            bottomSearchFocusRequester.requestFocus()
-                                            keyboardController?.show()
-                                        } catch (_: Exception) {}
-                                    }
+                                    delay(220)
+                                    try {
+                                        bottomSearchFocusRequester.requestFocus()
+                                        keyboardController?.show()
+                                    } catch (_: Exception) {}
                                 } else {
                                     bottomSearchText = ""
                                     viewModel.onSearchQueryChanged("")
@@ -851,7 +859,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         indication = null
                                                     ) {
                                                         viewModel.setTab(Tab.SEARCH)
-                                                        keyboardController?.show()
                                                     },
                                                 contentAlignment = Alignment.Center
                                             ) {
@@ -865,12 +872,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         }
 
                                         // Expanded Search input (search mode)
-                                        if (searchExpandProgress > 0.10f) {
+                                        if (searchExpandProgress > 0.35f) {
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxSize()
                                                     .graphicsLayer {
-                                                        alpha = ((searchExpandProgress - 0.10f) / 0.85f).coerceIn(0f, 1f)
+                                                        alpha = ((searchExpandProgress - 0.35f) / 0.65f).coerceIn(0f, 1f)
                                                     }
                                                     .padding(horizontal = 12.dp),
                                                 verticalAlignment = Alignment.CenterVertically
@@ -1171,46 +1178,41 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     )
                 }
 
-                // Full screen player overlay
+                // Full screen player overlay (Fluid morph directly with mini player & song cards)
                 if (state.currentSong != null) {
-                    val density = LocalDensity.current
-                    var offsetY by remember { mutableFloatStateOf(if (state.isExpanded) 0f else with(density) { 2000.dp.toPx() }) }
-                    LaunchedEffect(state.isExpanded) {
-                        offsetY = if (state.isExpanded) 0f else with(density) { 2000.dp.toPx() }
-                    }
-                    val animatedOffset by animateFloatAsState(
-                        targetValue = offsetY,
-                        animationSpec = tween(durationMillis = 280, easing = AppleEase), label = "playerOffset"
-                    )
+                    val p = (playerProgress.value - (dragY / 600f)).coerceIn(0f, 1f)
 
-                    if (state.isExpanded || animatedOffset < with(density) { 1990.dp.toPx() }) {
-                        val maxOff = with(density) { 2000.dp.toPx() }
-                        val expandFraction = (1f - (animatedOffset / maxOff)).coerceIn(0f, 1f)
-                        val playerScale = 0.90f + 0.10f * expandFraction
-                        val playerCorner = (28.dp * (1f - expandFraction)).coerceAtLeast(0.dp)
+                    if (playerProgress.value > 0.001f || state.isExpanded) {
+                        val backgroundAlpha = (p / 0.6f).coerceIn(0f, 1f)
+                        val playerScale = 0.94f + 0.06f * p
+                        val playerCorner = (28.dp * (1f - p)).coerceAtLeast(0.dp)
 
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .offset { IntOffset(0, animatedOffset.roundToInt()) }
+                                .offset { IntOffset(0, dragY.roundToInt()) }
                                 .graphicsLayer {
                                     scaleX = playerScale
                                     scaleY = playerScale
-                                    alpha = expandFraction
+                                    alpha = backgroundAlpha
                                 }
                                 .clip(RoundedCornerShape(playerCorner))
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
                                         onDragEnd = {
-                                            if (offsetY > 400f) {
+                                            if (dragY > 150f) {
                                                 viewModel.setExpanded(false)
-                                                offsetY = 2000f * density.density
-                                            } else {
-                                                offsetY = 0f
                                             }
+                                            dragY = 0f
                                         },
                                         onVerticalDrag = { _, dragAmount ->
-                                            if (dragAmount > 0) offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                                            if (dragAmount > 0 || dragY > 0f) {
+                                                dragY = (dragY + dragAmount).coerceAtLeast(0f)
+                                                if (dragY > 260f) {
+                                                    viewModel.setExpanded(false)
+                                                    dragY = 0f
+                                                }
+                                            }
                                         }
                                     )
                                 }
@@ -1232,6 +1234,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 autoMixActive = state.autoMixState.isMixing,
                                 autoMixProgress = state.autoMixState.progress,
                                 autoMixLabel = state.autoMixState.label,
+                                morphProgress = p,
+                                sourceOriginBounds = if (state.isExpanded) state.selectedSongBounds else null,
                                 onClose = { viewModel.setExpanded(false) },
                                 onTogglePlay = { viewModel.togglePlayPause() },
                                 onNext = { viewModel.playNext() },

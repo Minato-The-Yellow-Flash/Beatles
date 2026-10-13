@@ -14,15 +14,18 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -110,7 +113,9 @@ fun NowPlayingSheet(
     onMoveInQueue: (Int, Int) -> Unit = { _, _ -> },
     onDownloadSong: (Song) -> Unit = {},
     onCreatePlaylist: (String, Song) -> Unit = { _, _ -> },
-    onAddToPlaylist: (String, Song) -> Unit = { _, _ -> }
+    onAddToPlaylist: (String, Song) -> Unit = { _, _ -> },
+    morphProgress: Float = 1f,
+    sourceOriginBounds: Rect? = null
 ) {
     var isHeartAnimating by remember { mutableStateOf(false) }
     val heartScale by animateFloatAsState(targetValue = if (isHeartAnimating) 1.5f else 1f, animationSpec = spring(dampingRatio = 0.4f, stiffness = 400f), label = "heartScale")
@@ -349,23 +354,38 @@ fun NowPlayingSheet(
             label = "coverAlpha"
         )
 
-        // Apple Music-Style Interactive Foreground Album Artwork (glides to top-left when Next Up or Lyrics is active)
-        if (coverAlpha > 0.01f) {
+        val density = LocalDensity.current
+        val miniArtSize = 33.dp
+        val miniArtLeft = 24.dp
+        val miniArtTop = (screenHeight - 120.dp).coerceAtLeast(0.dp)
+
+        val originArtLeft = sourceOriginBounds?.left?.let { with(density) { it.toDp() } } ?: miniArtLeft
+        val originArtTop = sourceOriginBounds?.top?.let { with(density) { it.toDp() } } ?: miniArtTop
+        val originArtSize = sourceOriginBounds?.width?.let { with(density) { it.toDp() } } ?: miniArtSize
+        val originArtCorner = if (sourceOriginBounds != null) 16.dp else 8.dp
+
+        val currentCoverLeft = originArtLeft + (coverLeft - originArtLeft) * morphProgress
+        val currentCoverTop = originArtTop + (coverTop - originArtTop) * morphProgress
+        val currentCoverSize = originArtSize + (coverSize - originArtSize) * morphProgress
+        val currentCoverCorner = originArtCorner + (coverCorner - originArtCorner) * morphProgress
+
+        // Apple Music-Style Interactive Foreground Album Artwork (glides to top-left when Next Up or Lyrics is active, morphs to mini player when closing)
+        if (coverAlpha > 0.01f && morphProgress > 0.01f) {
             Box(
                 modifier = Modifier
-                    .offset(x = coverLeft, y = coverTop)
-                    .size(coverSize)
+                    .offset(x = currentCoverLeft, y = currentCoverTop)
+                    .size(currentCoverSize.coerceAtLeast(1.dp))
                     .graphicsLayer {
                         alpha = coverAlpha
-                        if (!isCompactCover) {
+                        if (!isCompactCover && morphProgress >= 0.98f) {
                             translationX = animatedDragX
                             val dampScale = 1f - (kotlin.math.abs(animatedDragX) / 3000f).coerceIn(0f, 0.05f)
                             scaleX = dampScale
                             scaleY = dampScale
                         }
                     }
-                    .clip(RoundedCornerShape(coverCorner))
-                    .shadow(if (isCompactCover) 4.dp else 18.dp, RoundedCornerShape(coverCorner))
+                    .clip(RoundedCornerShape(currentCoverCorner))
+                    .shadow(if (isCompactCover) 4.dp else (18.dp * morphProgress), RoundedCornerShape(currentCoverCorner))
             ) {
                 if (currentCoverUrl.isNotBlank()) {
                     AsyncImage(
@@ -660,6 +680,14 @@ fun NowPlayingSheet(
                         }
                     }
 
+                    val isLyricsDragged by listState.interactionSource.collectIsDraggedAsState()
+                    LaunchedEffect(isLyricsDragged) {
+                        if (isLyricsDragged) {
+                            lastLyricsInteractionTime = System.currentTimeMillis()
+                            controlsVisible = true
+                        }
+                    }
+
                     LaunchedEffect(currentIdx) {
                         if (currentIdx in lyrics.indices) {
                             listState.animateScrollToItem(
@@ -672,6 +700,12 @@ fun NowPlayingSheet(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectTapGestures {
+                                    lastLyricsInteractionTime = System.currentTimeMillis()
+                                    controlsVisible = true
+                                }
+                            }
                             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                             .drawWithContent {
                                 drawContent()
@@ -819,12 +853,27 @@ fun NowPlayingSheet(
             }
         }
 
-        // Bottom Controls Container (Fades out after 10s of inactivity during Lyrics mode)
+        // Top pull-down minimize indicator handle
+        if (!isCompactCover && morphProgress > 0.8f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 14.dp)
+                    .width(36.dp)
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.White.copy(alpha = 0.35f * morphProgress))
+                    .clickable { onClose() }
+            )
+        }
+
+        // Bottom Controls Container (Fades out after 10s of inactivity during Lyrics mode or when morphing down)
+        val controlsVisibilityAlpha = controlsAlpha * ((morphProgress - 0.20f) / 0.80f).coerceIn(0f, 1f)
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    alpha = controlsAlpha
+                    alpha = controlsVisibilityAlpha
                 }
                 .then(
                     if (controlsAlpha < 0.1f) Modifier.pointerInput(Unit) {

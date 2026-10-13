@@ -147,12 +147,24 @@ fun FluidAlbumDetailOverlay(
         val curHeight = origin.height + (targetArtworkSizePx - origin.height) * p
         val curCorner = with(density) { (18.dp.toPx() + (22.dp.toPx() - 18.dp.toPx()) * p).toDp() }
 
-        // Adaptive album tone derived from the album metadata
-        val albumOverlayHue = remember(alb.id, alb.artist) {
-            (kotlin.math.abs(alb.artist.hashCode() * 31 + alb.title.hashCode()) % 360).toFloat()
+        val hasRealCover = resolvedCover.isNotBlank() && resolvedCover.startsWith("http")
+        val defaultArtColors = remember(alb.title, alb.artist) {
+            getAppleMusicGradientColors(alb.title, alb.artist)
         }
-        val albumOverlayColor = remember(albumOverlayHue) {
-            Color.hsl(albumOverlayHue, 0.65f, 0.72f)
+
+        // Adaptive album tone derived from default artwork or metadata
+        val albumOverlayColor = if (!hasRealCover) {
+            defaultArtColors.first
+        } else {
+            remember(alb.id, alb.artist) {
+                val hue = (kotlin.math.abs(alb.artist.hashCode() * 31 + alb.title.hashCode()) % 360).toFloat()
+                Color.hsl(hue, 0.65f, 0.72f)
+            }
+        }
+        val albumPageBg = if (!hasRealCover) {
+            if (isDark) defaultArtColors.third.copy(alpha = 0.65f) else defaultArtColors.first.copy(alpha = 0.14f)
+        } else {
+            bgColor
         }
         val albumTitleBrush = remember(albumOverlayColor) {
             Brush.verticalGradient(
@@ -200,7 +212,7 @@ fun FluidAlbumDetailOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(bgColor.copy(alpha = p.coerceIn(0f, 1f)))
+                .background(albumPageBg.copy(alpha = p.coerceIn(0f, 1f)))
                 .offset { IntOffset(0, dragY.roundToInt()) }
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
@@ -344,20 +356,31 @@ fun FluidAlbumDetailOverlay(
 
                                 Spacer(modifier = Modifier.height(20.dp))
 
-                                // Action Controls Row: Shuffle, Large Center Play, Favorite, Add to Set / Library
+                                // Action Controls Row: Shuffle, Large Center Play, Save to Set / Library (Favorite removed per request)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 24.dp),
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
+                                    horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val buttonBg = if (isDark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.08f)
+                                    val buttonBg = if (!hasRealCover) {
+                                        defaultArtColors.first.copy(alpha = if (isDark) 0.30f else 0.20f)
+                                    } else {
+                                        if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.08f)
+                                    }
+                                    val buttonIconTint = if (!hasRealCover) {
+                                        if (isDark) Color.White else defaultArtColors.third
+                                    } else {
+                                        textPrimary
+                                    }
+                                    val playBtnBg = if (!hasRealCover) defaultArtColors.first else textPrimary
+                                    val playBtnIconTint = if (!hasRealCover) Color.White else if (isDark) Color.Black else Color.White
 
                                     // Shuffle Button (transparent borderless circle)
                                     Box(
                                         modifier = Modifier
-                                            .size(46.dp)
+                                            .size(50.dp)
                                             .clip(CircleShape)
                                             .background(buttonBg)
                                             .clickable {
@@ -371,17 +394,17 @@ fun FluidAlbumDetailOverlay(
                                         Icon(
                                             Icons.Default.Shuffle,
                                             contentDescription = "Shuffle",
-                                            tint = textPrimary,
-                                            modifier = Modifier.size(22.dp)
+                                            tint = buttonIconTint,
+                                            modifier = Modifier.size(24.dp)
                                         )
                                     }
 
                                     // Large Center Play Button
                                     Box(
                                         modifier = Modifier
-                                            .size(62.dp)
+                                            .size(64.dp)
                                             .clip(CircleShape)
-                                            .background(textPrimary)
+                                            .background(playBtnBg)
                                             .clickable {
                                                 if (alb.songs.isNotEmpty()) onPlay(alb.songs.first(), alb.songs)
                                             },
@@ -390,32 +413,15 @@ fun FluidAlbumDetailOverlay(
                                         Icon(
                                             Icons.Default.PlayArrow,
                                             contentDescription = "Play",
-                                            tint = if (isDark) Color.Black else Color.White,
-                                            modifier = Modifier.size(36.dp)
-                                        )
-                                    }
-
-                                    // Favorite Heart Button (transparent borderless circle)
-                                    Box(
-                                        modifier = Modifier
-                                            .size(46.dp)
-                                            .clip(CircleShape)
-                                            .background(buttonBg)
-                                            .clickable { isFavorite = !isFavorite },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                                            contentDescription = "Favorite",
-                                            tint = if (isFavorite) AccentRed else textPrimary,
-                                            modifier = Modifier.size(22.dp)
+                                            tint = playBtnIconTint,
+                                            modifier = Modifier.size(38.dp)
                                         )
                                     }
 
                                     // Save to Library / Add to Set Button (transparent borderless circle)
                                     Box(
                                         modifier = Modifier
-                                            .size(46.dp)
+                                            .size(50.dp)
                                             .clip(CircleShape)
                                             .background(buttonBg)
                                             .clickable { showSetDialog = true },
@@ -424,8 +430,8 @@ fun FluidAlbumDetailOverlay(
                                         Icon(
                                             Icons.Default.BookmarkAdd,
                                             contentDescription = "Save Album or Add to Set",
-                                            tint = textPrimary,
-                                            modifier = Modifier.size(22.dp)
+                                            tint = buttonIconTint,
+                                            modifier = Modifier.size(24.dp)
                                         )
                                     }
                                 }
@@ -574,10 +580,12 @@ fun FluidAlbumDetailOverlay(
                 modifier = Modifier
                     .offset { IntOffset(curLeft.roundToInt(), (curTop + artTranslateY).roundToInt()) }
                     .size(
-                        with(density) { (curWidth * artScale).coerceAtLeast(1f).toDp() },
-                        with(density) { (curHeight * artScale).coerceAtLeast(1f).toDp() }
+                        with(density) { curWidth.coerceAtLeast(1f).toDp() },
+                        with(density) { curHeight.coerceAtLeast(1f).toDp() }
                     )
                     .graphicsLayer {
+                        scaleX = artScale
+                        scaleY = artScale
                         alpha = if (p >= 0.95f) artAlpha.coerceIn(0.08f, 1f) else 1f
                     }
                     .then(if (artBlur > 0.dp && p >= 0.95f) Modifier.blur(artBlur) else Modifier)
