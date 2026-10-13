@@ -61,6 +61,7 @@ import com.beatles.player.data.ThemeMode
 import com.beatles.player.data.UserRole
 import com.beatles.player.ui.components.AddAlbumDialog
 import com.beatles.player.ui.components.AlbumDetailSheet
+import com.beatles.player.ui.components.FluidAlbumDetailOverlay
 import com.beatles.player.ui.components.NowPlayingSheet
 import com.beatles.player.ui.screens.*
 import com.beatles.player.ui.theme.isDarkTheme
@@ -290,7 +291,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             state = screenState,
                                             onPlay = { s, pl -> viewModel.playSong(s, pl) },
                                             onSeeAll = { section -> viewModel.setSeeAllSection(section.ifEmpty { null }) },
-                                            onSelectAlbum = { viewModel.setSelectedAlbum(it) },
+                                            onSelectAlbum = { alb, bounds -> viewModel.setSelectedAlbum(alb, bounds) },
                                             onPlayAlbumSet = { viewModel.playAlbumSet(it) },
                                             onLoadMoreTopSongs = { viewModel.loadMoreTopSongs() },
                                             onRefresh = { viewModel.refreshHomeScreen() }
@@ -1132,26 +1133,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     )
                 }
 
-                // Album Detail Sheet Overlay (Expanding continuous animation from album cover)
-                AnimatedVisibility(
-                    visible = state.selectedAlbum != null,
-                    enter = fadeIn(tween(220, easing = AppleEase)) +
-                            scaleIn(initialScale = 0.88f, animationSpec = tween(240, easing = AppleEase)) +
-                            slideInVertically(initialOffsetY = { (it * 0.15f).toInt() }, animationSpec = tween(240, easing = AppleEase)),
-                    exit = fadeOut(tween(180, easing = AppleEase)) +
-                           scaleOut(targetScale = 0.90f, animationSpec = tween(200, easing = AppleEase)) +
-                           slideOutVertically(targetOffsetY = { (it * 0.15f).toInt() }, animationSpec = tween(200, easing = AppleEase))
-                ) {
-                    state.selectedAlbum?.let { album ->
-                        AlbumDetailSheet(
-                            album = album,
-                            state = state,
-                            viewModel = viewModel,
-                            onClose = { viewModel.setSelectedAlbum(null) },
-                            onPlay = { s, pl -> viewModel.playSong(s, pl) }
-                        )
-                    }
-                }
+                // Fluid Album Detail Overlay (Expanding continuous shared-element animation from album cover)
+                FluidAlbumDetailOverlay(
+                    album = state.selectedAlbum,
+                    sourceBounds = state.selectedAlbumBounds,
+                    state = state,
+                    viewModel = viewModel,
+                    onClose = { viewModel.setSelectedAlbum(null) },
+                    onPlay = { s, pl -> viewModel.playSong(s, pl) }
+                )
 
                 // Profile Screen Overlay (Native iOS push slide transition)
                 AnimatedVisibility(

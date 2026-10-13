@@ -48,6 +48,12 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.animateFloatAsState
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -59,7 +65,7 @@ fun HomeScreen(
     state: PlayerUiState,
     onPlay: (Song, List<Song>) -> Unit,
     onSeeAll: (String) -> Unit,
-    onSelectAlbum: (Album) -> Unit = {},
+    onSelectAlbum: (Album, Rect?) -> Unit = { _, _ -> },
     onPlayAlbumSet: (AlbumSet) -> Unit = {},
     onLoadMoreTopSongs: () -> Unit = {},
     onRefresh: () -> Unit = {}
@@ -248,11 +254,13 @@ fun HomeScreen(
                                 ?: com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(heroAlbum.artist, ignoreCase = true) }?.imageUrl
                                 ?: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg"
                         }
+                        var heroBounds by remember { mutableStateOf<Rect?>(null) }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp)
                                 .height(280.dp)
+                                .onGloballyPositioned { coords -> heroBounds = coords.boundsInRoot() }
                                 .clip(RoundedCornerShape(22.dp))
                         ) {
                             AsyncImage(
@@ -316,7 +324,7 @@ fun HomeScreen(
                                         Text("Play Album", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                     }
                                     Button(
-                                        onClick = { onSelectAlbum(heroAlbum) },
+                                        onClick = { onSelectAlbum(heroAlbum, heroBounds) },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2E2E2).copy(alpha = 0.16f), contentColor = Color.White),
                                         shape = RoundedCornerShape(50),
                                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
@@ -395,10 +403,26 @@ fun HomeScreen(
                                     ?: com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(album.artist, ignoreCase = true) }?.imageUrl
                                     ?: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg"
                             }
+                            var cardBounds by remember { mutableStateOf<Rect?>(null) }
+                            val interactionSource = remember { MutableInteractionSource() }
+                            val isPressed by interactionSource.collectIsPressedAsState()
+                            val cardScale by animateFloatAsState(
+                                targetValue = if (isPressed) 0.95f else 1.0f,
+                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+                                label = "albumCardScale"
+                            )
                             Column(
                                 modifier = Modifier
                                     .width(152.dp)
-                                    .clickable { onSelectAlbum(album) }
+                                    .graphicsLayer {
+                                        scaleX = cardScale
+                                        scaleY = cardScale
+                                    }
+                                    .onGloballyPositioned { coords -> cardBounds = coords.boundsInRoot() }
+                                    .clickable(
+                                        interactionSource = interactionSource,
+                                        indication = null
+                                    ) { onSelectAlbum(album, cardBounds) }
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -549,7 +573,7 @@ fun HomeScreen(
                             AlbumSetHomeCard(
                                 set = set,
                                 isDark = isDark,
-                                onSelectAlbum = onSelectAlbum,
+                                onSelectAlbum = { onSelectAlbum(it, null) },
                                 onPlayAlbumSet = onPlayAlbumSet
                             )
                         }

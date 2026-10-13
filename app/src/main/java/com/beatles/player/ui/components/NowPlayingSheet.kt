@@ -464,6 +464,19 @@ fun NowPlayingSheet(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    0.0f to Color.Transparent,
+                                    0.025f to Color.Black,
+                                    0.94f to Color.Black,
+                                    1.0f to Color.Transparent
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
+                        }
                 ) {
                     if (upcoming.isEmpty()) {
                         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp)) {
@@ -606,97 +619,147 @@ fun NowPlayingSheet(
                         }
                     }
 
-                    LazyColumn(
-                        state = listState,
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(start = 28.dp, end = 28.dp),
-                        contentPadding = PaddingValues(top = 28.dp, bottom = 200.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                            .drawWithContent {
+                                drawContent()
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        0.0f to Color.Transparent,
+                                        0.07f to Color.Black,
+                                        0.88f to Color.Black,
+                                        1.0f to Color.Transparent
+                                    ),
+                                    blendMode = BlendMode.DstIn
+                                )
+                            }
                     ) {
-                        itemsIndexed(lyrics, key = { idx, line -> "lyric_${line.timeMs}_$idx" }) { idx, line ->
-                            val isActive = idx == currentIdx
-                            val isPast = currentIdx >= 0 && idx < currentIdx
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(start = 28.dp, end = 28.dp),
+                            contentPadding = PaddingValues(top = 36.dp, bottom = 200.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            itemsIndexed(lyrics, key = { idx, line -> "lyric_${line.timeMs}_$idx" }) { idx, line ->
+                                val isActive = idx == currentIdx
+                                val isPast = currentIdx >= 0 && idx < currentIdx
 
-                            val targetScale = if (isActive) 1.03f else 1.0f
-                            val targetAlpha = if (isActive) 1.0f else if (isPast) 0.35f else 0.45f
+                                val targetScale = if (isActive) 1.03f else 1.0f
+                                val targetAlpha = if (isActive) 1.0f else if (isPast) 0.35f else 0.45f
+                                val targetBlur = if (isActive) 0.dp else if (isPast) 3.5.dp else 2.5.dp
 
-                            val lineScale by animateFloatAsState(
-                                targetValue = targetScale,
-                                animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
-                                label = "lineScale_$idx"
-                            )
-                            val lineAlpha by animateFloatAsState(
-                                targetValue = targetAlpha,
-                                animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
-                                label = "lineAlpha_$idx"
-                            )
-
-                            if (isActive) {
-                                // Dynamic Apple Music-style vocal progression across the current sung line
-                                val nextLineTime = lyrics.getOrNull(idx + 1)?.timeMs ?: (line.timeMs + 4000L)
-                                val lineDurationMs = (nextLineTime - line.timeMs).coerceIn(1000L, 8000L)
-                                val lineProgress = ((currentPosition - line.timeMs).toFloat() / lineDurationMs).coerceIn(0f, 1f)
-                                val vocalBrush = Brush.horizontalGradient(
-                                    0.0f to Color.White,
-                                    lineProgress to Color.White,
-                                    (lineProgress + 0.12f).coerceAtMost(1.0f) to Color.White.copy(alpha = 0.40f),
-                                    1.0f to Color.White.copy(alpha = 0.40f)
+                                val lineScale by animateFloatAsState(
+                                    targetValue = targetScale,
+                                    animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                                    label = "lineScale_$idx"
+                                )
+                                val lineAlpha by animateFloatAsState(
+                                    targetValue = targetAlpha,
+                                    animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                                    label = "lineAlpha_$idx"
+                                )
+                                val lineBlur by animateDpAsState(
+                                    targetValue = targetBlur,
+                                    animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                                    label = "lineBlur_$idx"
                                 )
 
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .graphicsLayer {
-                                            scaleX = lineScale
-                                            transformOrigin = TransformOrigin(0f, 0.5f)
-                                            clip = false
-                                        }
-                                        .padding(vertical = 4.dp, horizontal = 4.dp)
-                                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                            onSeek(line.timeMs)
-                                        }
-                                ) {
-                                    Text(
-                                        text = line.text,
-                                        fontSize = 29.sp,
-                                        fontWeight = FontWeight.Black,
-                                        lineHeight = 37.sp,
-                                        style = TextStyle(
-                                            brush = vocalBrush,
-                                            shadow = androidx.compose.ui.graphics.Shadow(
-                                                color = Color.Black.copy(alpha = 0.40f),
-                                                blurRadius = 6f,
-                                                offset = Offset(0f, 2f)
+                                if (isActive) {
+                                    // Dynamic Apple Music-style vocal progression across the current sung line
+                                    val nextLineTime = lyrics.getOrNull(idx + 1)?.timeMs ?: (line.timeMs + 4000L)
+                                    val lineDurationMs = (nextLineTime - line.timeMs).coerceIn(1000L, 8000L)
+                                    val lineProgress = ((currentPosition - line.timeMs).toFloat() / lineDurationMs).coerceIn(0f, 1f)
+                                    val vocalBrush = Brush.horizontalGradient(
+                                        0.0f to Color.White,
+                                        lineProgress to Color.White,
+                                        (lineProgress + 0.12f).coerceAtMost(1.0f) to Color.White.copy(alpha = 0.40f),
+                                        1.0f to Color.White.copy(alpha = 0.40f)
+                                    )
+
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .graphicsLayer {
+                                                scaleX = lineScale
+                                                transformOrigin = TransformOrigin(0f, 0.5f)
+                                                clip = false
+                                            }
+                                            .padding(vertical = 4.dp, horizontal = 4.dp)
+                                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                                onSeek(line.timeMs)
+                                            }
+                                    ) {
+                                        Text(
+                                            text = line.text,
+                                            fontSize = 29.sp,
+                                            fontWeight = FontWeight.Black,
+                                            lineHeight = 37.sp,
+                                            style = TextStyle(
+                                                brush = vocalBrush,
+                                                shadow = androidx.compose.ui.graphics.Shadow(
+                                                    color = Color.Black.copy(alpha = 0.40f),
+                                                    blurRadius = 6f,
+                                                    offset = Offset(0f, 2f)
+                                                )
                                             )
                                         )
-                                    )
-                                }
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .graphicsLayer {
-                                            scaleX = lineScale
-                                            alpha = lineAlpha
-                                            transformOrigin = TransformOrigin(0f, 0.5f)
-                                            clip = false
-                                        }
-                                        .padding(vertical = 4.dp, horizontal = 4.dp)
-                                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                            onSeek(line.timeMs)
-                                        }
-                                ) {
-                                    Text(
-                                        text = line.text,
-                                        color = Color.White,
-                                        fontSize = 29.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        lineHeight = 37.sp
-                                    )
+                                    }
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .graphicsLayer {
+                                                scaleX = lineScale
+                                                scaleY = lineScale
+                                                alpha = lineAlpha
+                                                transformOrigin = TransformOrigin(0f, 0.5f)
+                                                compositingStrategy = CompositingStrategy.Offscreen
+                                            }
+                                            .blur(lineBlur)
+                                            .padding(vertical = 4.dp, horizontal = 4.dp)
+                                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                                onSeek(line.timeMs)
+                                            }
+                                    ) {
+                                        Text(
+                                            text = line.text,
+                                            color = Color.White,
+                                            fontSize = 29.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            lineHeight = 37.sp
+                                        )
+                                    }
                                 }
                             }
                         }
+
+                        // Ambient upper & bottom progressive blur fade
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .align(Alignment.TopCenter)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Black.copy(alpha = 0.60f), Color.Transparent)
+                                    )
+                                )
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(90.dp)
+                                .align(Alignment.BottomCenter)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.70f))
+                                    )
+                                )
+                        )
                     }
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

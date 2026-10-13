@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.geometry.Rect
 
 enum class Tab { HOME, EXPLORE, LIBRARY, SEARCH }
 
@@ -94,6 +95,7 @@ data class PlayerUiState(
     val albums: List<Album> = DEFAULT_ALBUMS,
     val heroAlbum: Album? = null,
     val selectedAlbum: Album? = null,
+    val selectedAlbumBounds: Rect? = null,
     val showAddAlbumDialog: Boolean = false,
     val mockUsers: List<MockUser> = DEFAULT_MOCK_USERS,
     val trackSubmissions: List<TrackSubmission> = DEFAULT_SUBMISSIONS,
@@ -325,7 +327,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setArtistTab(tab: ArtistTab) { _uiState.update { it.copy(artistTab = tab) } }
     fun setAdminTab(tab: AdminTab) { _uiState.update { it.copy(adminTab = tab) } }
 
-    fun setSelectedAlbum(album: Album?) { _uiState.update { it.copy(selectedAlbum = album) } }
+    fun setSelectedAlbum(album: Album?, bounds: Rect? = null) {
+        _uiState.update { it.copy(selectedAlbum = album, selectedAlbumBounds = bounds) }
+    }
     
     fun openAlbumForSong(song: Song) {
         viewModelScope.launch {
