@@ -294,7 +294,6 @@ fun LibraryScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .onGloballyPositioned { rowBounds = it.boundsInRoot() }
                                     .clickable { onPlay(song, songs, rowBounds) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -305,8 +304,9 @@ fun LibraryScreen(
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
                                         .size(56.dp)
+                                        .onGloballyPositioned { rowBounds = it.boundsInRoot() }
                                         .clip(RoundedCornerShape(12.dp))
-                                    )
+                                )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(song.title, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
@@ -338,7 +338,6 @@ fun LibraryScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .onGloballyPositioned { rowBounds = it.boundsInRoot() }
                                     .clickable { onPlay(song, songs, rowBounds) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -349,6 +348,7 @@ fun LibraryScreen(
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
                                         .size(56.dp)
+                                        .onGloballyPositioned { rowBounds = it.boundsInRoot() }
                                         .clip(CircleShape)
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
@@ -429,12 +429,15 @@ fun LibraryScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .onGloballyPositioned { rowBounds = it.boundsInRoot() }
                                     .clickable { onPlay(song, downloads, rowBounds) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(modifier = Modifier.size(56.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                                ) {
                                     AsyncImage(
                                         model = song.coverUrl,
                                         contentDescription = null,

@@ -398,7 +398,6 @@ fun SearchSongSwipeItem(
                         }
                     )
                 }
-                .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                 .clickable { onPlay(itemBounds) }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -409,6 +408,7 @@ fun SearchSongSwipeItem(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(52.dp)
+                    .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                     .clip(if (song.isAlbum) RoundedCornerShape(12.dp) else RoundedCornerShape(10.dp))
             )
             Spacer(modifier = Modifier.width(14.dp))

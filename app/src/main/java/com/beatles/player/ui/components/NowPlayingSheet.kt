@@ -122,6 +122,12 @@ fun NowPlayingSheet(
     onRemoveFromQueue: (String) -> Unit = {},
     onMoveInQueue: (Int, Int) -> Unit = { _, _ -> },
     onDownloadSong: (Song) -> Unit = {},
+    downloadedSongs: List<Song> = emptyList(),
+    downloadingSongId: String? = null,
+    downloadProgress: Float = 0f,
+    downloadFailedSongId: String? = null,
+    onCancelDownload: (String) -> Unit = {},
+    onRemoveDownload: (String) -> Unit = {},
     onCreatePlaylist: (String, Song) -> Unit = { _, _ -> },
     onAddToPlaylist: (String, Song) -> Unit = { _, _ -> },
     morphProgress: Float = 1f,
@@ -403,7 +409,9 @@ fun NowPlayingSheet(
 
         val originArtLeft = sourceOriginBounds?.left?.let { with(density) { it.toDp() } } ?: miniArtLeft
         val originArtTop = sourceOriginBounds?.top?.let { with(density) { it.toDp() } } ?: miniArtTop
-        val originArtSize = sourceOriginBounds?.width?.let { with(density) { it.toDp() } } ?: miniArtSize
+        val rawWidth = sourceOriginBounds?.width?.let { with(density) { it.toDp() } } ?: miniArtSize
+        val rawHeight = sourceOriginBounds?.height?.let { with(density) { it.toDp() } } ?: miniArtSize
+        val originArtSize = minOf(rawWidth, rawHeight).coerceIn(24.dp, 300.dp)
         val originArtCorner = if (sourceOriginBounds != null && sourceOriginBounds.width <= with(density) { 48.dp.toPx() }) {
             with(density) { (sourceOriginBounds.width / 2f).toDp() }
         } else if (sourceOriginBounds != null) {
@@ -547,6 +555,22 @@ fun NowPlayingSheet(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(bottom = 190.dp, top = 136.dp)
+                    .pointerInput(Unit) {
+                        var totalDx = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { totalDx = 0f },
+                            onDragEnd = {
+                                if (totalDx > 90f) {
+                                    Haptics.confirm(view)
+                                    onToggleNextUp()
+                                }
+                                totalDx = 0f
+                            },
+                            onHorizontalDrag = { _, dragAmount ->
+                                if (dragAmount > 0) totalDx += dragAmount
+                            }
+                        )
+                    }
             ) {
                 val currentIdx = playlist.indexOfFirst { it.id == song.id }
                 val upcoming = if (currentIdx >= 0) playlist.drop(currentIdx + 1) else playlist
@@ -692,7 +716,7 @@ fun NowPlayingSheet(
             }
         } else if (isLyricsActive) {
             // Apple Music Synced Word-by-Word Lyrics View
-            val processedLyrics = remember(lyrics) { LyricsProcessor.processSyncedLyrics(lyrics) }
+            val processedLyrics = remember(lyrics, duration) { LyricsProcessor.processSyncedLyrics(lyrics, trackDurationMs = duration) }
 
             // High-refresh (60/120fps) frame clock interpolating position from audio playback with ~35ms latency compensation
             var livePositionMs by remember { mutableLongStateOf(currentPosition) }
@@ -716,6 +740,22 @@ fun NowPlayingSheet(
                     .fillMaxSize()
                     .padding(top = 130.dp, bottom = if (isLyricsActive && !controlsVisible) 30.dp else 180.dp)
                     .pointerInput(Unit) {
+                        var totalDx = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { totalDx = 0f },
+                            onDragEnd = {
+                                if (totalDx > 90f) {
+                                    Haptics.confirm(view)
+                                    onToggleLyrics()
+                                }
+                                totalDx = 0f
+                            },
+                            onHorizontalDrag = { _, dragAmount ->
+                                if (dragAmount > 0) totalDx += dragAmount
+                            }
+                        )
+                    }
+                    .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = {
                                 lastLyricsInteractionTime = System.currentTimeMillis()
@@ -726,7 +766,9 @@ fun NowPlayingSheet(
             ) {
                 if (processedLyrics.isNotEmpty()) {
                     val listState = rememberLazyListState()
-                    val currentIdx = processedLyrics.indexOfLast { it.timeMs <= livePositionMs }
+                    val currentIdx = remember(processedLyrics, livePositionMs) {
+                        LyricsProcessor.findActiveLineIndex(processedLyrics, livePositionMs)
+                    }
 
                     val isLyricsDragged by listState.interactionSource.collectIsDraggedAsState()
                     var manualScrolled by remember { mutableStateOf(false) }
@@ -752,13 +794,15 @@ fun NowPlayingSheet(
                                 val item = listState.layoutInfo.visibleItemsInfo.find { it.index == currentIdx }
                                 if (item != null) {
                                     val delta = item.offset - topAnchor
-                                    listState.animateScrollBy(
-                                        value = delta.toFloat(),
-                                        animationSpec = spring(
-                                            dampingRatio = 0.85f,
-                                            stiffness = Spring.StiffnessMediumLow
+                                    if (kotlin.math.abs(delta) > 4) {
+                                        listState.animateScrollBy(
+                                            value = delta.toFloat(),
+                                            animationSpec = spring(
+                                                dampingRatio = 0.85f,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
                                         )
-                                    )
+                                    }
                                 } else {
                                     listState.animateScrollToItem(
                                         index = currentIdx,
@@ -811,7 +855,7 @@ fun NowPlayingSheet(
 
                                 val targetScale = if (isActive) 1.02f else 1.0f
                                 val targetAlpha = if (isActive) 1.0f else (0.50f - cappedDistance * 0.08f).coerceAtLeast(0.20f)
-                                val targetBlur = if (isActive) 0.dp else (cappedDistance * 1.2f).dp
+                                val targetBlur = if (isActive) 0.dp else (cappedDistance.coerceAtMost(2) * 0.8f).dp
 
                                 val lineScale by animateFloatAsState(
                                     targetValue = targetScale,
@@ -851,16 +895,66 @@ fun NowPlayingSheet(
                                             onSeek(line.timeMs)
                                         }
                                 ) {
-                                    if (line.words.isNotEmpty()) {
+                                    if (line.isInstrumental) {
+                                        // Animated Instrumental Interlude: "♪" + 3 dots filling in across the duration
+                                        val breakElapsed = (livePositionMs - line.timeMs).coerceIn(0L, line.durationMs)
+                                        val breakProgress = if (line.durationMs > 0) (breakElapsed.toFloat() / line.durationMs).coerceIn(0f, 1f) else 0f
+                                        val breathScale = if (isActive) (1.0f + 0.04f * kotlin.math.sin(breakElapsed / 350.0).toFloat()) else 1.0f
+
+                                        val dot1Active = if (isActive) (breakProgress >= 0.15f) else (currentIdx >= 0 && idx < currentIdx)
+                                        val dot2Active = if (isActive) (breakProgress >= 0.50f) else (currentIdx >= 0 && idx < currentIdx)
+                                        val dot3Active = if (isActive) (breakProgress >= 0.85f) else (currentIdx >= 0 && idx < currentIdx)
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .graphicsLayer {
+                                                    scaleX = breathScale
+                                                    scaleY = breathScale
+                                                }
+                                                .padding(vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Start
+                                        ) {
+                                            Text(
+                                                text = "♪",
+                                                fontSize = 28.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isActive) Color.White else Color.White.copy(alpha = 0.40f)
+                                            )
+                                            Spacer(modifier = Modifier.width(16.dp))
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                listOf(dot1Active, dot2Active, dot3Active).forEach { dotFilled ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(8.dp)
+                                                            .clip(CircleShape)
+                                                            .background(if (dotFilled) Color.White else Color.White.copy(alpha = 0.30f))
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else if (line.words.isNotEmpty()) {
+                                        val lineSweep = if (isActive) LyricsProcessor.calculateLineSweepProgress(line, livePositionMs) else 0f
                                         FlowRow(
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                                             verticalArrangement = Arrangement.spacedBy(4.dp),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            line.words.forEach { word ->
+                                            line.words.forEachIndexed { wordIdx, word ->
+                                                val wordProgress = if (isActive) {
+                                                    LyricsProcessor.calculateWordProgressFromLine(wordIdx, lineSweep)
+                                                } else if (currentIdx >= 0 && idx < currentIdx) {
+                                                    1.0f
+                                                } else {
+                                                    0.0f
+                                                }
                                                 SyncedWordItem(
                                                     word = word,
-                                                    livePositionMs = livePositionMs,
+                                                    progress = wordProgress,
                                                     isCurrentLine = isActive,
                                                     isPastLine = currentIdx >= 0 && idx < currentIdx,
                                                     onSeek = {
@@ -967,15 +1061,140 @@ fun NowPlayingSheet(
                 }
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Heart + AutoMix Toggle + 3-dots mini menu row (matching Lyrics & Next Up button background settings)
+                // Download + Heart + AutoMix Toggle + 3-dots mini menu row (matching Lyrics & Next Up button background settings)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp)
                         .offset(y = (-5).dp),
-                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val isLocalTrack = song.streamUrl?.startsWith("content://") == true ||
+                            song.streamUrl?.startsWith("file://") == true ||
+                            song.id.startsWith("local_")
+                    val isDownloaded = downloadedSongs.any { it.id == song.id }
+                    val isDownloading = downloadingSongId == song.id
+                    val isDownloadFailed = downloadFailedSongId == song.id
+
+                    if (isLocalTrack) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    } else {
+                        val dlBg = when {
+                            isDownloaded -> Color.White.copy(alpha = 0.28f)
+                            isDownloading -> Color.White.copy(alpha = 0.22f)
+                            isDownloadFailed -> Color(0xFFE74C3C).copy(alpha = 0.25f)
+                            else -> Color.White.copy(alpha = 0.20f)
+                        }
+                        val dlTint = when {
+                            isDownloaded -> Color.White
+                            isDownloading -> Color.White
+                            isDownloadFailed -> Color(0xFFFF6B6B)
+                            else -> Color.White
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(19.dp))
+                                .background(dlBg)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    Haptics.confirm(view)
+                                    when {
+                                        isDownloading -> onCancelDownload(song.id)
+                                        isDownloaded -> onRemoveDownload(song.id)
+                                        else -> onDownloadSong(song)
+                                    }
+                                }
+                                .padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                when {
+                                    isDownloading -> {
+                                        CircularProgressIndicator(
+                                            progress = { downloadProgress },
+                                            modifier = Modifier.size(16.dp),
+                                            color = Color.White,
+                                            strokeWidth = 2.dp,
+                                            trackColor = Color.White.copy(alpha = 0.25f)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "Downloading",
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Cancel",
+                                            tint = Color.White.copy(alpha = 0.7f),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    isDownloaded -> {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = "Downloaded",
+                                            tint = dlTint,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "Downloaded",
+                                            color = dlTint,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    isDownloadFailed -> {
+                                        Icon(
+                                            Icons.Default.Refresh,
+                                            contentDescription = "Retry Download",
+                                            tint = dlTint,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "Retry",
+                                            color = dlTint,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    else -> {
+                                        Icon(
+                                            Icons.Default.Download,
+                                            contentDescription = "Download",
+                                            tint = dlTint,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "Download",
+                                            color = dlTint,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
                     val heartBg = if (isFavorite) Color.White else Color.White.copy(alpha = 0.20f)
                     val heartTint = if (isFavorite) AccentRed else Color.White
                     Box(
@@ -1441,24 +1660,6 @@ fun NowPlayingSheet(
                                 Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
                             }
 
-                            HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
-
-                            // Option 3: Download Track
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        Haptics.confirm(view)
-                                        showMiniMenu = false
-                                        onDownloadSong(song)
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 11.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Download, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text("Download Track", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                            }
 
                             HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
 
@@ -1775,18 +1976,15 @@ fun QueueSongItem(
 @Composable
 private fun SyncedWordItem(
     word: SyncedWord,
-    livePositionMs: Long,
+    progress: Float,
     isCurrentLine: Boolean,
     isPastLine: Boolean,
     onSeek: (Long) -> Unit
 ) {
-    val duration = (word.endMs - word.startMs).coerceAtLeast(1L)
     val wordProgress = when {
         isPastLine -> 1f
         !isCurrentLine -> 0f
-        livePositionMs <= word.startMs -> 0f
-        livePositionMs >= word.endMs -> 1f
-        else -> ((livePositionMs - word.startMs).toFloat() / duration).coerceIn(0f, 1f)
+        else -> progress.coerceIn(0f, 1f)
     }
 
     val wordState = when {
@@ -1795,37 +1993,37 @@ private fun SyncedWordItem(
         else -> "wait"
     }
 
-    // Bright light effect (no unblur):
-    // - "wait": dim (38% alpha)
-    // - "sing": active singing word fills bright white with white halo bloom (blurRadius = 14-38f), upward lift (-2.5dp) & scale (1.035x)
-    // - "done": crisp solid white, glow fading out
-    val feather = 0.16f
+    // Continuous sweep gradient mask with feather of about 14dp equivalent
+    val feather = 0.18f
     val wordBrush = when (wordState) {
         "sing" -> Brush.horizontalGradient(
             0.0f to Color.White,
             (wordProgress - feather * 0.5f).coerceIn(0f, 1f) to Color.White,
-            (wordProgress + feather * 0.5f).coerceIn(0f, 1f) to Color.White.copy(alpha = 0.38f),
-            1.0f to Color.White.copy(alpha = 0.38f)
+            (wordProgress + feather * 0.5f).coerceIn(0f, 1f) to Color.White.copy(alpha = 0.40f),
+            1.0f to Color.White.copy(alpha = 0.40f)
         )
         else -> null
     }
 
     val density = LocalDensity.current
-    val liftPx = if (wordState == "sing") {
-        -2.5f * kotlin.math.sin(wordProgress * Math.PI.toFloat())
+    // Bright glow, lift (~1.9dp) and subtle scale (~1.03x) peaking around the middle of the word
+    val midWordFactor = if (wordState == "sing") {
+        kotlin.math.sin(wordProgress * Math.PI.toFloat()).coerceIn(0f, 1f)
     } else 0f
-    val wordScale = if (wordState == "sing") 1.035f else 1.0f
+
+    val liftPx = -1.9f * midWordFactor
+    val wordScale = 1.0f + 0.03f * midWordFactor
 
     val textShadow = when (wordState) {
         "sing" -> androidx.compose.ui.graphics.Shadow(
-            color = Color.White.copy(alpha = 0.92f),
-            blurRadius = 26f, // 14-38f halo bloom
-            offset = Offset(0f, 0f)
+            color = Color.White.copy(alpha = 0.45f + 0.50f * midWordFactor),
+            blurRadius = 10f + 20f * midWordFactor,
+            offset = Offset.Zero
         )
         "done" -> androidx.compose.ui.graphics.Shadow(
-            color = Color.White.copy(alpha = 0.20f),
-            blurRadius = 6f,
-            offset = Offset(0f, 0f)
+            color = Color.White.copy(alpha = 0.15f),
+            blurRadius = 4f,
+            offset = Offset.Zero
         )
         else -> null
     }
@@ -1837,10 +2035,12 @@ private fun SyncedWordItem(
         )
     } else {
         TextStyle(
-            color = if (wordState == "done") Color.White else Color.White.copy(alpha = 0.38f),
+            color = if (wordState == "done") Color.White else Color.White.copy(alpha = 0.40f),
             shadow = textShadow
         )
     }
+
+    val unsungBlur = if (wordState == "wait" && isCurrentLine) 0.6.dp else 0.dp
 
     Box(
         modifier = Modifier
@@ -1849,6 +2049,7 @@ private fun SyncedWordItem(
                 scaleX = wordScale
                 scaleY = wordScale
             }
+            .then(if (unsungBlur > 0.dp) Modifier.blur(unsungBlur) else Modifier)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null

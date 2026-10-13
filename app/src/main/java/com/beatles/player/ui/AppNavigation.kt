@@ -65,10 +65,7 @@ import com.beatles.player.data.UserRole
 import com.beatles.player.ui.components.AddAlbumDialog
 import com.beatles.player.ui.components.AlbumDetailSheet
 import com.beatles.player.ui.components.FluidAlbumDetailOverlay
-import com.beatles.player.ui.components.LiquidGlassSurface
 import com.beatles.player.ui.components.NowPlayingSheet
-import com.beatles.player.ui.components.TopProgressiveBlur
-import com.beatles.player.ui.components.BottomProgressiveBlur
 import com.beatles.player.ui.screens.*
 import com.beatles.player.ui.theme.isDarkTheme
 import com.beatles.player.viewmodel.PlayerViewModel
@@ -123,7 +120,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         } else {
             playerProgress.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(dampingRatio = 0.88f, stiffness = 380f)
+                animationSpec = spring(dampingRatio = 1.0f, stiffness = 380f)
             )
         }
     }
@@ -176,7 +173,14 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     PredictiveBackHandler(enabled = state.showAddAlbumDialog) { progress ->
         try { progress.collect {}; viewModel.setShowAddAlbumDialog(false) } catch (_: Exception) {}
     }
-    PredictiveBackHandler(enabled = state.isExpanded) { progress ->
+    // Sub-pages inside expanded player: Back from Queue or Lyrics returns to main player view
+    PredictiveBackHandler(enabled = state.isExpanded && state.showSeeAllSection == "next_up") { progress ->
+        try { progress.collect {}; viewModel.setSeeAllSection(null) } catch (_: Exception) {}
+    }
+    PredictiveBackHandler(enabled = state.isExpanded && state.showLyrics && state.showSeeAllSection != "next_up") { progress ->
+        try { progress.collect {}; viewModel.toggleLyrics() } catch (_: Exception) {}
+    }
+    PredictiveBackHandler(enabled = state.isExpanded && !state.showLyrics && state.showSeeAllSection != "next_up") { progress ->
         try { progress.collect {}; viewModel.setExpanded(false) } catch (_: Exception) {}
     }
 
@@ -192,7 +196,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     PredictiveBackHandler(enabled = state.currentTab == Tab.SEARCH) { progress ->
         try { progress.collect {}; viewModel.setTab(Tab.HOME) } catch (_: Exception) {}
     }
-    PredictiveBackHandler(enabled = state.showSeeAllSection != null) { progress ->
+    PredictiveBackHandler(enabled = !state.isExpanded && state.showSeeAllSection != null) { progress ->
         try { progress.collect {}; viewModel.setSeeAllSection(null) } catch (_: Exception) {}
     }
 
@@ -267,6 +271,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
             val appBg = if (isDark) GrayBlackBg else Color(0xFFF6F7F9)
             val translucentBarBg = if (isDark) Color(0xFF16171D).copy(alpha = 0.70f) else Color(0xFFFFFFFF).copy(alpha = 0.78f)
             val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.14f)
+            val translucentPillBg = if (isDark) Color(0xFF1E2026).copy(alpha = 0.85f) else Color(0xFFFFFFFF).copy(alpha = 0.88f)
+            val translucentPillBorder = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.12f)
             val translucentInnerPill = if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.10f)
             val textPrimary = if (isDark) Color.White else Color(0xFF141416)
             val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
@@ -390,17 +396,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 }
 
 
-                // ═══ 1.5. PROGRESSIVE TOP BLUR (Behind sticky header and buttons) ═══
-                if (state.selectedAlbum == null && playerProgress.value <= 0.01f && !state.isExpanded) {
-                    TopProgressiveBlur(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.TopCenter)
-                            .zIndex(6f),
-                        height = 110.dp,
-                        hazeState = hazeState
-                    )
-                }
 
                 // ═══ 2. STICKY TOP HEADER (Floating Logo + User Avatar) ═══
                 if (state.showSeeAllSection == null && state.currentTab != Tab.SEARCH && state.selectedAlbum == null && playerProgress.value <= 0.01f && !state.isExpanded) {
@@ -469,17 +464,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     }
                 }
 
-                // ═══ 2.5. PROGRESSIVE BOTTOM BLUR (Behind floating nav capsule) ═══
-                if (playerProgress.value <= 0.01f && !state.isExpanded) {
-                    BottomProgressiveBlur(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.BottomCenter)
-                            .zIndex(6f),
-                        height = 140.dp,
-                        hazeState = hazeState
-                    )
-                }
 
                 // Bottom: Mini Player + Borderless Translucent Nav
                 Column(
@@ -500,11 +484,11 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     )
                     val scrollShrinkProgress = scrollShrinkRaw.coerceIn(0f, 1f)
 
-                    val bottomBarHeight = 64.dp
-                    val circleSize = 64.dp
-                    val barCorner = 32.dp
-                    val navIconSize = 28.dp
-                    val navTextSize = 11.sp
+                    val bottomBarHeight = 56.dp
+                    val circleSize = 56.dp
+                    val barCorner = 28.dp
+                    val navIconSize = 24.dp
+                    val navTextSize = 9.sp
 
                     val isSearch = state.currentTab == Tab.SEARCH
                     val hasSong = state.currentSong != null
@@ -529,11 +513,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 val pillCorner = if (compact) barCorner else 24.dp
                                 val pillArt = if (compact) 26.dp else 33.dp
 
-                                LiquidGlassSurface(
-                                    modifier = Modifier.fillMaxSize(),
-                                    shape = RoundedCornerShape(pillCorner),
-                                    hazeState = hazeState,
-                                    interactive = false
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(pillCorner))
+                                        .background(translucentPillBg)
+                                        .border(0.5.dp, translucentPillBorder, RoundedCornerShape(pillCorner))
                                 ) {
                                     Box(
                                         modifier = Modifier
@@ -761,13 +746,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // Left Pill: shrinks to circle with active tab icon in search mode, expands to full tabs in normal mode
-                                    LiquidGlassSurface(
+                                    Box(
                                         modifier = Modifier
                                             .width(with(density) { leftWidthPx.toDp() })
-                                            .fillMaxHeight(),
-                                        shape = RoundedCornerShape(barCorner),
-                                        hazeState = hazeState,
-                                        interactive = false
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(barCorner))
+                                            .background(translucentBarBg)
+                                            .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
                                     ) {
                                         // Left Pill Content: Both layers blend smoothly with crossfade
                                         val activeTab = tabs[selectedMainTabIdx]
@@ -793,7 +778,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     .fillMaxSize()
                                                     .graphicsLayer { alpha = fullAlpha }
                                             ) {
-                                                // Sliding active liquid lens indicator
+                                                // Sliding active indicator
                                                 Box(
                                                     modifier = Modifier
                                                         .fillMaxHeight()
@@ -804,24 +789,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                             scaleY = 1f - stretchAmount * 0.4f
                                                         }
                                                         .clip(RoundedCornerShape((barCorner - 4.dp).coerceAtLeast(4.dp)))
-                                                        .background(
-                                                            Brush.verticalGradient(
-                                                                listOf(
-                                                                    Color.White.copy(alpha = if (isDark) 0.22f else 0.40f),
-                                                                    Color.White.copy(alpha = if (isDark) 0.12f else 0.25f)
-                                                                )
-                                                            )
-                                                        )
-                                                        .border(
-                                                            width = 0.5.dp,
-                                                            brush = Brush.linearGradient(
-                                                                listOf(
-                                                                    Color.White.copy(alpha = 0.55f),
-                                                                    Color.White.copy(alpha = 0.15f)
-                                                                )
-                                                            ),
-                                                            shape = RoundedCornerShape((barCorner - 4.dp).coerceAtLeast(4.dp))
-                                                        )
+                                                        .background(translucentInnerPill)
                                                 )
 
                                                 Row(
@@ -914,13 +882,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     }
 
                                     // Search Pill: contracts to circle button (normal mode) or expands into search bar (search mode)
-                                    LiquidGlassSurface(
+                                    Box(
                                         modifier = Modifier
                                             .width(with(density) { searchWidthPx.toDp() })
-                                            .fillMaxHeight(),
-                                        shape = RoundedCornerShape(barCorner),
-                                        hazeState = hazeState,
-                                        interactive = false
+                                            .fillMaxHeight()
+                                            .clip(RoundedCornerShape(barCorner))
+                                            .background(translucentBarBg)
+                                            .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
                                     ) {
                                         // Compact search button (normal mode)
                                         if (searchExpandProgress < 0.6f) {
@@ -1282,6 +1250,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
                                         onDragEnd = {
+                                            val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
+                                            if (isInSubPage) return@detectVerticalDragGestures
                                             if (playerProgress.value < 0.85f) {
                                                 viewModel.setExpanded(false)
                                             } else {
@@ -1294,7 +1264,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             }
                                         },
                                         onVerticalDrag = { _, dragAmount ->
-                                            if (state.isExpanded) {
+                                            val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
+                                            if (state.isExpanded && !isInSubPage) {
                                                 scope.launch {
                                                     val newP = (playerProgress.value - dragAmount / 450f).coerceIn(0f, 1f)
                                                     playerProgress.snapTo(newP)
@@ -1354,6 +1325,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 onRemoveFromQueue = { sId -> viewModel.removeSongFromQueue(sId) },
                                 onMoveInQueue = { from, to -> viewModel.moveSongInQueue(from, to) },
                                 onDownloadSong = { s -> viewModel.downloadSongHighestQuality(s) },
+                                downloadedSongs = state.downloadedSongs,
+                                downloadingSongId = state.downloadingSongId,
+                                downloadProgress = state.downloadProgress,
+                                downloadFailedSongId = state.downloadFailedSongId,
+                                onCancelDownload = { sId -> viewModel.cancelDownload(sId) },
+                                onRemoveDownload = { sId -> viewModel.removeDownloadedSong(sId) },
                                 onCreatePlaylist = { name, s -> viewModel.createPlaylist(name, s) },
                                 onAddToPlaylist = { pId, s -> viewModel.addSongToPlaylist(pId, s) }
                             )

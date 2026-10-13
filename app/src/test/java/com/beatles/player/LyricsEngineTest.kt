@@ -117,4 +117,102 @@ class LyricsEngineTest {
 
         assertTrue("Longer word must receive more duration than short single char word", longWordDur > shortWordDur * 5)
     }
+
+    @Test
+    fun testBinarySearchActiveLineLookup() {
+        val line1 = LyricLine(timeMs = 2000L, text = "First line")
+        val line2 = LyricLine(timeMs = 5000L, text = "Second line")
+        val line3 = LyricLine(timeMs = 9000L, text = "Third line")
+        val processed = LyricsProcessor.processSyncedLyrics(listOf(line1, line2, line3))
+
+        // Empty list -> -1
+        assertEquals(-1, LyricsProcessor.findActiveLineIndex(emptyList(), 3000L))
+
+        // Before first line -> -1
+        assertEquals(-1, LyricsProcessor.findActiveLineIndex(processed, 1000L))
+
+        // Exact start of line 1 -> index of line 1
+        val idxStart = LyricsProcessor.findActiveLineIndex(processed, 2000L)
+        assertTrue(idxStart >= 0)
+        assertEquals("First line", processed[idxStart].text)
+
+        // Mid line 1
+        val idxMid1 = LyricsProcessor.findActiveLineIndex(processed, 3500L)
+        assertEquals("First line", processed[idxMid1].text)
+
+        // Exact start of line 2
+        val idxStart2 = LyricsProcessor.findActiveLineIndex(processed, 5000L)
+        assertEquals("Second line", processed[idxStart2].text)
+
+        // Far past last line -> last index
+        val idxPast = LyricsProcessor.findActiveLineIndex(processed, 20000L)
+        assertEquals(processed.size - 1, idxPast)
+    }
+
+    @Test
+    fun testContinuousLineSweepAtWordBoundaries() {
+        val word0 = SyncedWord(text = "Hello", startMs = 1000L, endMs = 2000L)
+        val word1 = SyncedWord(text = "World", startMs = 2000L, endMs = 3000L)
+        val line = com.beatles.player.data.SyncedLyricLine(
+            timeMs = 1000L,
+            text = "Hello World",
+            words = listOf(word0, word1),
+            durationMs = 2000L
+        )
+
+        // At word 0 start (1000ms) -> sweep 0.0, word 0: 0.0, word 1: 0.0
+        val sweep0 = LyricsProcessor.calculateLineSweepProgress(line, 1000L)
+        assertEquals(0.0f, sweep0, 0.001f)
+        assertEquals(0.0f, LyricsProcessor.calculateWordProgressFromLine(0, sweep0), 0.001f)
+        assertEquals(0.0f, LyricsProcessor.calculateWordProgressFromLine(1, sweep0), 0.001f)
+
+        // Mid word 0 (1500ms) -> sweep 0.5, word 0: 0.5, word 1: 0.0
+        val sweepMid = LyricsProcessor.calculateLineSweepProgress(line, 1500L)
+        assertEquals(0.5f, sweepMid, 0.001f)
+        assertEquals(0.5f, LyricsProcessor.calculateWordProgressFromLine(0, sweepMid), 0.001f)
+        assertEquals(0.0f, LyricsProcessor.calculateWordProgressFromLine(1, sweepMid), 0.001f)
+
+        // Exact boundary between word 0 and word 1 (2000ms) -> sweep exactly 1.0f
+        // Word 0 is fully sung (1.0f) and word 1 is at start (0.0f) with zero gap and zero overlap
+        val sweepBound = LyricsProcessor.calculateLineSweepProgress(line, 2000L)
+        assertEquals(1.0f, sweepBound, 0.001f)
+        assertEquals(1.0f, LyricsProcessor.calculateWordProgressFromLine(0, sweepBound), 0.001f)
+        assertEquals(0.0f, LyricsProcessor.calculateWordProgressFromLine(1, sweepBound), 0.001f)
+
+        // Mid word 1 (2500ms) -> sweep 1.5f, word 0: 1.0f, word 1: 0.5f
+        val sweepMid1 = LyricsProcessor.calculateLineSweepProgress(line, 2500L)
+        assertEquals(1.5f, sweepMid1, 0.001f)
+        assertEquals(1.0f, LyricsProcessor.calculateWordProgressFromLine(0, sweepMid1), 0.001f)
+        assertEquals(0.5f, LyricsProcessor.calculateWordProgressFromLine(1, sweepMid1), 0.001f)
+
+        // End of line (3000ms) -> sweep 2.0f, word 0: 1.0f, word 1: 1.0f
+        val sweepEnd = LyricsProcessor.calculateLineSweepProgress(line, 3000L)
+        assertEquals(2.0f, sweepEnd, 0.001f)
+        assertEquals(1.0f, LyricsProcessor.calculateWordProgressFromLine(0, sweepEnd), 0.001f)
+        assertEquals(1.0f, LyricsProcessor.calculateWordProgressFromLine(1, sweepEnd), 0.001f)
+    }
+
+    @Test
+    fun testInstrumentalGapDetection() {
+        // Gap of 8000ms between line 1 and line 2 (>= 4000ms threshold)
+        val line1 = LyricLine(timeMs = 0L, text = "Intro line")
+        val line2 = LyricLine(timeMs = 12000L, text = "Next verse line")
+        val processed = LyricsProcessor.processSyncedLyrics(listOf(line1, line2), trackDurationMs = 20000L)
+
+        // Should contain line1, an instrumental break, and line2
+        val instrumentalLines = processed.filter { it.isInstrumental }
+        assertTrue("Instrumental break of >= 4s should be detected", instrumentalLines.isNotEmpty())
+
+        val breakLine = instrumentalLines.first()
+        assertEquals("♪", breakLine.text)
+        assertTrue(breakLine.isInstrumental)
+        assertTrue("Duration of break should be >= 4000ms", breakLine.durationMs >= 4000L)
+
+        // When gap is small (< 4000ms), no instrumental line should be inserted
+        val shortLine1 = LyricLine(timeMs = 0L, text = "Short line 1")
+        val shortLine2 = LyricLine(timeMs = 3000L, text = "Short line 2")
+        val shortProcessed = LyricsProcessor.processSyncedLyrics(listOf(shortLine1, shortLine2), trackDurationMs = 5000L)
+        val shortInstrumentals = shortProcessed.filter { it.isInstrumental }
+        assertTrue("Gap < 4s should not create an instrumental break", shortInstrumentals.isEmpty())
+    }
 }

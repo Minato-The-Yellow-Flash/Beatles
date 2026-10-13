@@ -74,6 +74,9 @@ data class PlayerUiState(
     val playlists: List<Playlist> = DEFAULT_PLAYLISTS,
     val albumSets: List<AlbumSet> = emptyList(),
     val downloadedSongs: List<Song> = emptyList(),
+    val downloadingSongId: String? = null,
+    val downloadProgress: Float = 0f,
+    val downloadFailedSongId: String? = null,
     val downloadNotice: String? = null,
     val currentSong: Song? = null,
     val isPlaying: Boolean = false,
@@ -124,6 +127,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var precomputeJob: kotlinx.coroutines.Job? = null
     private var activePlayJob: kotlinx.coroutines.Job? = null
     private var activeLyricsJob: kotlinx.coroutines.Job? = null
+    private var activeDownloadJob: kotlinx.coroutines.Job? = null
     @Volatile private var activeTargetSongId: String? = null
 
     init {
@@ -472,14 +476,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun downloadSongHighestQuality(song: Song) {
-        viewModelScope.launch {
+        activeDownloadJob?.cancel()
+        activeDownloadJob = viewModelScope.launch {
             _uiState.update { 
-                it.copy(downloadNotice = "⬇ Downloading \"${song.title}\" in highest quality...") 
+                it.copy(
+                    downloadingSongId = song.id,
+                    downloadProgress = 0.15f,
+                    downloadFailedSongId = null,
+                    downloadNotice = "⬇ Downloading \"${song.title}\" in highest quality..."
+                ) 
             }
             try {
                 val streamUrl = repo.getStreamUrl(song.id)
+                _uiState.update { it.copy(downloadProgress = 0.50f) }
                 val savedUri = DownloadHelper.downloadDirectly(getApplication(), song, streamUrl)
                 DownloadHelper.downloadToMusicFolder(getApplication(), song, streamUrl)
+                _uiState.update { it.copy(downloadProgress = 0.90f) }
 
                 val safeArtist = song.artist.replace(Regex("[^a-zA-Z0-9.-]"), "_").trim('_')
                 val safeTitle = song.title.replace(Regex("[^a-zA-Z0-9.-]"), "_").trim('_')
@@ -492,15 +504,29 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 storage.saveDownloadedSong(getApplication(), downloadedSong)
                 _uiState.update { 
                     it.copy(
+                        downloadingSongId = null,
+                        downloadProgress = 1f,
                         downloadedSongs = storage.getDownloadedSongs(getApplication()),
                         downloadNotice = "✓ Saved \"${song.title}\" for offline streaming"
                     ) 
                 }
             } catch (e: Exception) {
                 _uiState.update { 
-                    it.copy(downloadNotice = "Could not start download for \"${song.title}\"") 
+                    it.copy(
+                        downloadingSongId = null,
+                        downloadProgress = 0f,
+                        downloadFailedSongId = song.id,
+                        downloadNotice = "Could not start download for \"${song.title}\""
+                    ) 
                 }
             }
+        }
+    }
+
+    fun cancelDownload(songId: String) {
+        if (_uiState.value.downloadingSongId == songId) {
+            activeDownloadJob?.cancel()
+            _uiState.update { it.copy(downloadingSongId = null, downloadProgress = 0f) }
         }
     }
 

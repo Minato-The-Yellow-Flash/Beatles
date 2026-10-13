@@ -863,7 +863,6 @@ fun HomeScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                             .clickable { onPlay(song, allRecs, itemBounds) }
                             .padding(horizontal = 16.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -871,6 +870,7 @@ fun HomeScreen(
                         Box(
                             modifier = Modifier
                                 .size(50.dp)
+                                .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                                 .clip(RoundedCornerShape(10.dp))
                         ) {
                             AppleMusicGradientCover(
@@ -1063,7 +1063,6 @@ fun SeeAllScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                         .clickable { onPlay(song, songs, itemBounds) }
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1071,6 +1070,7 @@ fun SeeAllScreen(
                     Box(
                         modifier = Modifier
                             .size(54.dp)
+                            .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                             .clip(RoundedCornerShape(10.dp))
                     ) {
                         AppleMusicGradientCover(

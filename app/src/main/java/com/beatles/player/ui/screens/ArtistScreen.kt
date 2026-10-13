@@ -167,7 +167,6 @@ fun ArtistFeedTab(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onGloballyPositioned { rowBounds = it.boundsInRoot() }
                     .clickable { onPlay(song, allSongs, rowBounds) }
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -176,7 +175,10 @@ fun ArtistFeedTab(
                     model = song.coverUrl,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(46.dp).clip(RoundedCornerShape(8.dp))
+                    modifier = Modifier
+                        .size(46.dp)
+                        .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                        .clip(RoundedCornerShape(8.dp))
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {

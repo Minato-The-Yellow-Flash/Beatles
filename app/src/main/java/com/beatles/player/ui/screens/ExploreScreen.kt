@@ -227,7 +227,6 @@ fun ExploreScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .onGloballyPositioned { rowBounds = it.boundsInRoot() }
                                         .clickable { onPlay(song, genreTracks, rowBounds) }
                                         .padding(horizontal = 16.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -238,7 +237,10 @@ fun ExploreScreen(
                                         model = song.coverUrl,
                                         contentDescription = null,
                                         contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                                            .clip(RoundedCornerShape(8.dp))
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
@@ -330,7 +332,6 @@ fun ExploreScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .onGloballyPositioned { rowBounds = it.boundsInRoot() }
                                         .clickable { onPlay(song, state.recommendations, rowBounds) }
                                         .padding(horizontal = 16.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -341,7 +342,10 @@ fun ExploreScreen(
                                         model = song.coverUrl,
                                         contentDescription = null,
                                         contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(42.dp).clip(RoundedCornerShape(8.dp))
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                                            .clip(RoundedCornerShape(8.dp))
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
