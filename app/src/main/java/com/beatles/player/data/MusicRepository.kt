@@ -885,6 +885,107 @@ object MusicRepository {
                     Song("pr_3", "Ilahi", "Pritam", "Yeh Jawaani Hai Deewani", "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/c3/00/62/c30062df-a4bb-3ef7-4a0b-1915ea0aa9c7/886443993212.jpg/1000x1000bb.jpg", 229),
                     Song("pr_4", "Kabira", "Pritam", "Yeh Jawaani Hai Deewani", "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/c3/00/62/c30062df-a4bb-3ef7-4a0b-1915ea0aa9c7/886443993212.jpg/1000x1000bb.jpg", 223)
                 )
+            ),
+            Album(
+                id = "feat_alb_20",
+                title = "Jawan (Original Motion Picture Soundtrack)",
+                artist = "Anirudh Ravichander",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/21/04/e7/2104e76a-549d-e4fb-79f9-e3954bb04c6f/8903431945198_cover.jpg/1000x1000bb.jpg",
+                genre = "Kollywood Action",
+                releaseYear = "2023",
+                releaseDate = "Sep 07, 2023",
+                type = "Album",
+                songs = listOf(
+                    Song("ar_j1", "Chaleya", "Anirudh Ravichander", "Jawan", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/21/04/e7/2104e76a-549d-e4fb-79f9-e3954bb04c6f/8903431945198_cover.jpg/1000x1000bb.jpg", 200),
+                    Song("ar_j2", "Zinda Banda", "Anirudh Ravichander", "Jawan", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/21/04/e7/2104e76a-549d-e4fb-79f9-e3954bb04c6f/8903431945198_cover.jpg/1000x1000bb.jpg", 264),
+                    Song("ar_j3", "Not Ramaiya Vastavaiya", "Anirudh Ravichander", "Jawan", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/21/04/e7/2104e76a-549d-e4fb-79f9-e3954bb04c6f/8903431945198_cover.jpg/1000x1000bb.jpg", 203)
+                )
+            ),
+            Album(
+                id = "feat_alb_21",
+                title = "Pushpa: The Rise",
+                artist = "Devi Sri Prasad",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/27/ef/82/27ef822c-a2da-dc80-92a5-4dc9cfda4752/cover.jpg/1000x1000bb.jpg",
+                genre = "Tollywood Mass",
+                releaseYear = "2021",
+                releaseDate = "Dec 17, 2021",
+                type = "Album",
+                songs = listOf(
+                    Song("dsp_1", "Oo Antava Mawa", "Devi Sri Prasad", "Pushpa: The Rise", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/27/ef/82/27ef822c-a2da-dc80-92a5-4dc9cfda4752/cover.jpg/1000x1000bb.jpg", 223),
+                    Song("dsp_2", "Srivalli", "Devi Sri Prasad", "Pushpa: The Rise", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/27/ef/82/27ef822c-a2da-dc80-92a5-4dc9cfda4752/cover.jpg/1000x1000bb.jpg", 221),
+                    Song("dsp_3", "Saami Saami", "Devi Sri Prasad", "Pushpa: The Rise", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/27/ef/82/27ef822c-a2da-dc80-92a5-4dc9cfda4752/cover.jpg/1000x1000bb.jpg", 223)
+                )
+            ),
+            Album(
+                id = "feat_alb_22",
+                title = "Soul of Sid Sriram",
+                artist = "Sid Sriram",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/92/ff/fb/92fffb8d-6490-482a-0a79-c8c7f3e8b093/8903431872166_cover.jpg/1000x1000bb.jpg",
+                genre = "Carnatic Pop",
+                releaseYear = "2023",
+                releaseDate = "Aug 25, 2023",
+                type = "Album",
+                songs = listOf(
+                    Song("ss_1", "Srivalli (Tamil)", "Sid Sriram", "Soul of Sid Sriram", "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/92/ff/fb/92fffb8d-6490-482a-0a79-c8c7f3e8b093/8903431872166_cover.jpg/1000x1000bb.jpg", 221),
+                    Song("ss_2", "Inkem Inkem", "Sid Sriram", "Soul of Sid Sriram", "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/92/ff/fb/92fffb8d-6490-482a-0a79-c8c7f3e8b093/8903431872166_cover.jpg/1000x1000bb.jpg", 269),
+                    Song("ss_3", "Samajavaragamana", "Sid Sriram", "Soul of Sid Sriram", "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/92/ff/fb/92fffb8d-6490-482a-0a79-c8c7f3e8b093/8903431872166_cover.jpg/1000x1000bb.jpg", 214)
+                )
+            ),
+            Album(
+                id = "feat_alb_23",
+                title = "Lollipop Lagelu Hits",
+                artist = "Pawan Singh",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/fa/1c/bf/fa1cbf5c-20ce-e555-520e-6f8c0a8bc02a/8903431782298_cover.jpg/1000x1000bb.jpg",
+                genre = "Bhojpuri Hits",
+                releaseYear = "2022",
+                releaseDate = "Jul 11, 2022",
+                type = "Album",
+                songs = listOf(
+                    Song("ps_1", "Lollipop Lagelu", "Pawan Singh", "Lollipop Lagelu Hits", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/fa/1c/bf/fa1cbf5c-20ce-e555-520e-6f8c0a8bc02a/8903431782298_cover.jpg/1000x1000bb.jpg", 252),
+                    Song("ps_2", "Pudina Ae Hasina", "Pawan Singh", "Lollipop Lagelu Hits", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/fa/1c/bf/fa1cbf5c-20ce-e555-520e-6f8c0a8bc02a/8903431782298_cover.jpg/1000x1000bb.jpg", 231)
+                )
+            ),
+            Album(
+                id = "feat_alb_24",
+                title = "52 Gaj Ka Daman Hits",
+                artist = "Renuka Panwar",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/44/21/df/4421df65-8b38-d7e7-a9a5-731ff7ec56bb/cover.jpg/500x500bb.jpg",
+                genre = "Haryanvi Folk",
+                releaseYear = "2021",
+                releaseDate = "Oct 02, 2021",
+                type = "Album",
+                songs = listOf(
+                    Song("rp_1", "52 Gaj Ka Daman", "Renuka Panwar", "52 Gaj Ka Daman Hits", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/44/21/df/4421df65-8b38-d7e7-a9a5-731ff7ec56bb/cover.jpg/500x500bb.jpg", 188),
+                    Song("rp_2", "Kabootar", "Renuka Panwar", "52 Gaj Ka Daman Hits", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/44/21/df/4421df65-8b38-d7e7-a9a5-731ff7ec56bb/cover.jpg/500x500bb.jpg", 195)
+                )
+            ),
+            Album(
+                id = "feat_alb_25",
+                title = "For All the Dogs",
+                artist = "Drake",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/8a/95/96/8a959663-883a-d68a-6ce4-ea04bc999818/cover.jpg/1000x1000bb.jpg",
+                genre = "Hip-Hop",
+                releaseYear = "2023",
+                releaseDate = "Oct 06, 2023",
+                type = "Album",
+                songs = listOf(
+                    Song("dr_1", "First Person Shooter", "Drake", "For All the Dogs", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/8a/95/96/8a959663-883a-d68a-6ce4-ea04bc999818/cover.jpg/1000x1000bb.jpg", 247),
+                    Song("dr_2", "IDGAF", "Drake", "For All the Dogs", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/8a/95/96/8a959663-883a-d68a-6ce4-ea04bc999818/cover.jpg/1000x1000bb.jpg", 260)
+                )
+            ),
+            Album(
+                id = "feat_alb_26",
+                title = "Proof",
+                artist = "BTS",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/05/23/94/0523945a-37c2-f1d7-2eb1-76634563a3fe/196922060876_Cover.jpg/1000x1000bb.jpg",
+                genre = "K-Pop",
+                releaseYear = "2022",
+                releaseDate = "Jun 10, 2022",
+                type = "Album",
+                songs = listOf(
+                    Song("bts_1", "Yet To Come", "BTS", "Proof", "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/05/23/94/0523945a-37c2-f1d7-2eb1-76634563a3fe/196922060876_Cover.jpg/1000x1000bb.jpg", 193),
+                    Song("bts_2", "Dynamite", "BTS", "Proof", "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/05/23/94/0523945a-37c2-f1d7-2eb1-76634563a3fe/196922060876_Cover.jpg/1000x1000bb.jpg", 199)
+                )
             )
         )
     }
@@ -1417,8 +1518,30 @@ object MusicRepository {
                 val aLower = alb.artist.lowercase().trim()
                 userArtistNames.any { aLower.contains(it) || it.contains(aLower) }
             }
-            if (matched.isNotEmpty()) {
-                matched
+            val missingArtists = selectedArtists.filter { sa ->
+                baseAlbums.none { it.artist.contains(sa, ignoreCase = true) || sa.contains(it.artist, ignoreCase = true) }
+            }
+            val dynamicAlbums = missingArtists.mapNotNull { artistName ->
+                val artistPic = com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(artistName, ignoreCase = true) }?.imageUrl
+                if (!artistPic.isNullOrBlank()) {
+                    Album(
+                        id = "feat_dyn_${artistName.hashCode()}",
+                        title = "$artistName: Top Hits",
+                        artist = artistName,
+                        coverUrl = artistPic,
+                        genre = com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(artistName, ignoreCase = true) }?.genre ?: "Hits",
+                        releaseYear = "2024",
+                        releaseDate = "2024",
+                        type = "Album",
+                        songs = listOf(
+                            Song("dyn_1_${artistName.hashCode()}", "$artistName Hits", artistName, "$artistName: Top Hits", artistPic, 210)
+                        )
+                    )
+                } else null
+            }
+            val allMatched = (matched + dynamicAlbums).distinctBy { it.id }
+            if (allMatched.isNotEmpty()) {
+                allMatched
             } else if (langLower != "all" && langLower.isNotBlank()) {
                 baseAlbums.filter { alb ->
                     alb.genre.lowercase().contains(langLower)

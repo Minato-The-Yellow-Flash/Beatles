@@ -213,11 +213,16 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         }
     }
 
+    BackHandler(enabled = state.onboardStep in 2..3) {
+        viewModel.setOnboardStep(state.onboardStep - 1)
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         when (state.onboardStep) {
         1 -> OnboardStep1(onNext = { name -> viewModel.setUserName(name); viewModel.setOnboardStep(2) })
         2 -> OnboardStepLanguage(
             initialLanguages = state.selectedLanguages,
+            onBack = { viewModel.setOnboardStep(1) },
             onNext = { langs ->
                 viewModel.setSelectedLanguages(langs)
                 viewModel.setOnboardStep(3)
@@ -225,6 +230,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         )
         3 -> OnboardStepArtists(
             selectedLanguage = state.selectedLanguage,
+            onBack = { viewModel.setOnboardStep(2) },
             onNext = { artists ->
                 viewModel.setSelectedArtists(artists)
                 viewModel.setOnboardStep(4)
@@ -253,8 +259,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     .nestedScroll(nestedScrollConnection)
             ) {
                 
-                // Base Tab content layer
-                Box(modifier = Modifier.fillMaxSize()) {
+                // Base Tab content layer (with live backdrop blur sampling)
+                Box(modifier = Modifier.fillMaxSize().haze(state = hazeState)) {
                     when (state.userRole) {
                         UserRole.LISTENER -> {
                             AnimatedContent(

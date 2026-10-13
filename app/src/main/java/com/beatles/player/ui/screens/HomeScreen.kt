@@ -1,5 +1,7 @@
 package com.beatles.player.ui.screens
 
+import com.beatles.player.R
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -240,6 +242,12 @@ fun HomeScreen(
                         val heroGenre = (heroAlbum.genre ?: "Pop").uppercase()
                         val heroYear = heroAlbum.releaseYear ?: "2026"
                         val heroSongs = heroAlbum.songs ?: emptyList()
+                        val heroCover = remember(heroAlbum) {
+                            if (heroAlbum.coverUrl.isNotBlank() && heroAlbum.coverUrl.startsWith("http")) heroAlbum.coverUrl
+                            else heroAlbum.songs.firstOrNull { it.coverUrl.isNotBlank() && it.coverUrl.startsWith("http") }?.coverUrl
+                                ?: com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(heroAlbum.artist, ignoreCase = true) }?.imageUrl
+                                ?: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg"
+                        }
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -248,12 +256,12 @@ fun HomeScreen(
                                 .clip(RoundedCornerShape(22.dp))
                         ) {
                             AsyncImage(
-                                model = heroAlbum.coverUrl,
+                                model = heroCover,
                                 contentDescription = heroAlbum.title ?: "",
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.fillMaxSize(),
-                                fallback = androidx.compose.ui.res.painterResource(com.beatles.player.R.drawable.beatles_logo_bar),
-                                error = androidx.compose.ui.res.painterResource(com.beatles.player.R.drawable.beatles_logo_bar)
+                                fallback = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light),
+                                error = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light)
                             )
                             Box(
                                 modifier = Modifier
@@ -381,6 +389,12 @@ fun HomeScreen(
                     ) {
                         itemsIndexed(homeAlbums, key = { index, album -> "alb_${album.id}_$index" }) { _, album ->
                             val albumSongs = album.songs ?: emptyList()
+                            val resolvedAlbumCover = remember(album) {
+                                if (album.coverUrl.isNotBlank() && album.coverUrl.startsWith("http")) album.coverUrl
+                                else album.songs.firstOrNull { it.coverUrl.isNotBlank() && it.coverUrl.startsWith("http") }?.coverUrl
+                                    ?: com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(album.artist, ignoreCase = true) }?.imageUrl
+                                    ?: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg"
+                            }
                             Column(
                                 modifier = Modifier
                                     .width(152.dp)
@@ -392,12 +406,12 @@ fun HomeScreen(
                                         .clip(RoundedCornerShape(18.dp))
                                 ) {
                                     AsyncImage(
-                                        model = album.coverUrl,
+                                        model = resolvedAlbumCover,
                                         contentDescription = album.title ?: "",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize(),
-                                        fallback = androidx.compose.ui.res.painterResource(com.beatles.player.R.drawable.beatles_logo_bar),
-                                        error = androidx.compose.ui.res.painterResource(com.beatles.player.R.drawable.beatles_logo_bar)
+                                        fallback = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light),
+                                        error = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light)
                                     )
                                     Box(
                                         modifier = Modifier
