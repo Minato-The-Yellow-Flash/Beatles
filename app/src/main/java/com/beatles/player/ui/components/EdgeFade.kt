@@ -10,11 +10,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Cheap replacement for the old `Offscreen + DstIn` fade mask (which forced a full-screen
- * offscreen layer every frame and was a major scroll-lag source). Simply paints a bg-colored
- * gradient over the top/bottom edges – no offscreen compositing.
+ * Smooth subtle edge fade gradient: gently blends content at the very edges without overlapping
+ * the selection cards or header controls.
  */
-fun Modifier.edgeFade(bg: Color, top: Dp = 100.dp, bottom: Dp = 110.dp): Modifier = drawWithContent {
+fun Modifier.edgeFade(bg: Color, top: Dp = 18.dp, bottom: Dp = 32.dp): Modifier = drawWithContent {
     drawContent()
     if (size.width <= 0f || size.height <= 0f) return@drawWithContent
     val maxH = size.height / 2f

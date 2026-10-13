@@ -177,9 +177,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         var lastSongEndedTime = 0L
         player.onSongEnded = {
             val now = System.currentTimeMillis()
-            if (!autoMixEngine.isBusy && (now - lastAutoMixHandoffTime >= 3_000L) && (now - lastSongEndedTime > 1500L)) {
+            if (!autoMixEngine.isBusy && (now - lastAutoMixHandoffTime >= 2_000L) && (now - lastSongEndedTime > 1000L)) {
                 lastSongEndedTime = now
-                playNext()
+                playNext(isAutoMix = true)
             }
         }
         autoMixEngine.urlResolver = { song -> resolvePlayableUrl(song) }
@@ -742,6 +742,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         storage.addToRecentlyPlayed(getApplication(), song)
         sessionPlayedSongIds.add(song.id)
         _uiState.update { it.copy(recentlyPlayed = storage.getRecentlyPlayed(getApplication())) }
+        fetchLyrics(song)
         
         viewModelScope.launch {
             try {
@@ -755,7 +756,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
                 _uiState.update { it.copy(isLoadingStream = false) }
                 triggerCandidatePrecomputation(song)
-                fetchLyrics(song)
                 enhanceCoverArt(song)
                 
                 // Only fetch and append related songs if autoplay is enabled
@@ -830,6 +830,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 repo.detectLanguage(it).equals(currentLang, ignoreCase = true)
             } ?: state.recommendations.firstOrNull {
                 !it.isAlbum && it.id != current.id && it.id !in queued && it.id !in sessionPlayedSongIds
+            } ?: state.recommendations.firstOrNull {
+                // Continuous loop fallback: if all songs were played this session, cycle unqueued recommendations
+                !it.isAlbum && it.id != current.id && it.id !in queued
             }
         }
         return null
@@ -871,25 +874,32 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         if (!s.autoPlayEnabled) return
         val idx = s.playlist.indexOfFirst { it.id == seed.id }
         val upcoming = if (idx >= 0) s.playlist.size - idx - 1 else 0
-        if (upcoming >= 3) return
+        if (upcoming >= 4) return
         viewModelScope.launch {
             val related = try { repo.getRelatedSongs(seed) } catch (_: Exception) { emptyList() }
-            if (related.isEmpty()) return@launch
             val seedLang = repo.detectLanguage(seed)
             val seedGenre = repo.detectGenre(seed)
-            val filteredRelated = related.filter { cand ->
-                val candLang = repo.detectLanguage(cand)
-                val candGenre = repo.detectGenre(cand)
-                val langMatch = seedLang.isBlank() || candLang.isBlank() || seedLang.equals(candLang, ignoreCase = true)
-                val genreMatch = seedGenre.isBlank() || candGenre.isBlank() || seedGenre.equals(candGenre, ignoreCase = true)
-                langMatch && genreMatch
+            val candidatesToAdd = if (related.isNotEmpty()) {
+                val filteredRelated = related.filter { cand ->
+                    val candLang = repo.detectLanguage(cand)
+                    val candGenre = repo.detectGenre(cand)
+                    val langMatch = seedLang.isBlank() || candLang.isBlank() || seedLang.equals(candLang, ignoreCase = true)
+                    val genreMatch = seedGenre.isBlank() || candGenre.isBlank() || seedGenre.equals(candGenre, ignoreCase = true)
+                    langMatch && genreMatch
+                }
+                if (filteredRelated.isNotEmpty()) filteredRelated else related
+            } else {
+                try { repo.search("${seed.artist} songs").filter { !it.isAlbum } } catch (_: Exception) { emptyList() }
             }
-            val candidatesToAdd = if (filteredRelated.isNotEmpty()) filteredRelated else related
-            _uiState.update { st ->
-                val ids = st.playlist.map { it.id }.toSet()
-                st.copy(playlist = st.playlist + candidatesToAdd.filter { it.id !in ids && !it.isAlbum && it.id !in sessionPlayedSongIds })
+            if (candidatesToAdd.isNotEmpty()) {
+                _uiState.update { st ->
+                    val ids = st.playlist.map { it.id }.toSet()
+                    val fresh = candidatesToAdd.filter { it.id !in ids && !it.isAlbum && it.id !in sessionPlayedSongIds }
+                    val toAdd = if (fresh.isNotEmpty()) fresh else candidatesToAdd.filter { it.id !in ids && !it.isAlbum && it.id != seed.id }
+                    st.copy(playlist = st.playlist + toAdd)
+                }
+                triggerCandidatePrecomputation(seed)
             }
-            triggerCandidatePrecomputation(seed)
         }
     }
 

@@ -44,7 +44,7 @@ data class OnboardArtist(
 )
 
 val CURATED_ONBOARD_ARTISTS = listOf(
-    // Balanced global & diverse artists interleaved
+    // Balanced global & diverse artists across all regional and international languages
     OnboardArtist("The Weeknd", "https://cdn-images.dzcdn.net/images/artist/581693b4724a7fcfa754455101e13a44/500x500-000000-80-0-0.jpg", "Pop", "English"),
     OnboardArtist("Arijit Singh", "https://cdn-images.dzcdn.net/images/artist/ac5350cff290edd5b69fa584b8b1bd4f/500x500-000000-80-0-0.jpg", "Bollywood", "Hindi"),
     OnboardArtist("Taylor Swift", "https://cdn-images.dzcdn.net/images/artist/cc2495870fe1a792ad0cdb05501ad5ec/500x500-000000-80-0-0.jpg", "Pop", "English"),
@@ -61,8 +61,27 @@ val CURATED_ONBOARD_ARTISTS = listOf(
     OnboardArtist("Drake", "https://cdn-images.dzcdn.net/images/artist/1051e7fd110f9d3e5e88cdc69c5f227b/500x500-000000-80-0-0.jpg", "Hip-Hop", "English"),
     OnboardArtist("Pritam", "https://cdn-images.dzcdn.net/images/artist/d4914ccd414067cd5e2c108867079a85/500x500-000000-80-0-0.jpg", "Bollywood", "Hindi"),
     OnboardArtist("AP Dhillon", "https://cdn-images.dzcdn.net/images/artist/52594ac9fa763dc163ed13d21cb130ec/500x500-000000-80-0-0.jpg", "Punjabi", "Punjabi"),
+    OnboardArtist("Badshah", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/58/01/fa/5801fa04-7a91-4470-3444-eaae3b25f549/8903431976079_cover.jpg/1000x1000bb.jpg", "Indian Hip-Hop", "Hindi"),
+    OnboardArtist("Sonu Nigam", "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/28/62/1d/28621d9f-a89c-5674-3c6c-a49688a202c4/8901112440122.jpg/1000x1000bb.jpg", "Indipop Melody", "Hindi"),
+    OnboardArtist("Raftaar", "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/13/2e/51/132e5192-d9c9-5246-8149-14a9386c9d09/cover.jpg/1000x1000bb.jpg", "Desi Hip-Hop", "Hindi"),
     OnboardArtist("Renuka Panwar", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/44/21/df/4421df65-8b38-d7e7-a9a5-731ff7ec56bb/cover.jpg/500x500bb.jpg", "Haryanvi", "Haryanvi"),
-    OnboardArtist("Pawan Singh", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/fa/1c/bf/fa1cbf5c-20ce-e555-520e-6f8c0a8bc02a/8903431782298_cover.jpg/500x500bb.jpg", "Bhojpuri", "Bhojpuri")
+    OnboardArtist("Gulzaar Chhaniwala", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/3d/8b/4f/3d8b4f0d-e215-dc34-934a-9ef8684d0b2f/cover.jpg/500x500bb.jpg", "Haryanvi", "Haryanvi"),
+    OnboardArtist("Pawan Singh", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/fa/1c/bf/fa1cbf5c-20ce-e555-520e-6f8c0a8bc02a/8903431782298_cover.jpg/500x500bb.jpg", "Bhojpuri", "Bhojpuri"),
+    OnboardArtist("Khesari Lal Yadav", "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/9f/bf/02/9fbf02ef-9cb4-8a4c-5a6f-f6f87ea960e6/cover.jpg/500x500bb.jpg", "Bhojpuri", "Bhojpuri"),
+    OnboardArtist("Anirudh Ravichander", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/21/04/e7/2104e76a-549d-e4fb-79f9-e3954bb04c6f/8903431945198_cover.jpg/500x500bb.jpg", "Kollywood", "Tamil"),
+    OnboardArtist("Sid Sriram", "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/92/ff/fb/92fffb8d-6490-482a-0a79-c8c7f3e8b093/8903431872166_cover.jpg/500x500bb.jpg", "Carnatic Pop", "Tamil"),
+    OnboardArtist("Devi Sri Prasad", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/27/ef/82/27ef822c-a2da-dc80-92a5-4dc9cfda4752/cover.jpg/500x500bb.jpg", "Tollywood", "Telugu"),
+    OnboardArtist("Sushin Shyam", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/e5/26/51/e5265147-1f06-2581-c7c4-c8c8868019aa/cover.jpg/500x500bb.jpg", "Mollywood", "Malayalam"),
+    OnboardArtist("Sanjith Hegde", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/b4/0e/0f/b40e0fa7-7e61-a0c5-e51c-ef66524bf51a/cover.jpg/500x500bb.jpg", "Sandalwood", "Kannada"),
+    OnboardArtist("Anupam Roy", "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/65/56/6d/65566df9-8488-812e-13c5-f938d6fcbcae/cover.jpg/500x500bb.jpg", "Bengali Folk", "Bengali"),
+    OnboardArtist("Ajay-Atul", "https://is1-ssl.mzstatic.com/image/thumb/Music125/v4/99/31/58/993158c5-9b7e-e11a-569a-6a5ce8c843bc/cover.jpg/500x500bb.jpg", "Marathi Cinema", "Marathi"),
+    OnboardArtist("Aditya Gadhvi", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/fc/c4/81/fcc48187-54b9-8bf9-2187-e2c7a31ebf10/cover.jpg/500x500bb.jpg", "Gujarati Folk", "Gujarati"),
+    OnboardArtist("Mame Khan", "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/c3/00/62/c30062df-a4bb-3ef7-4a0b-1915ea0aa9c7/886443993212.jpg/1000x1000bb.jpg", "Rajasthani Folk", "Rajasthani"),
+    OnboardArtist("Bad Bunny", "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/5a/92/b8/5a92b8d4-5390-3404-e58f-b5dc561ea908/197188730906.jpg/500x500bb.jpg", "Latin Pop", "Spanish"),
+    OnboardArtist("BTS", "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/05/23/94/0523945a-37c2-f1d7-2eb1-76634563a3fe/196922060876_Cover.jpg/500x500bb.jpg", "K-Pop", "Korean"),
+    OnboardArtist("YOASOBI", "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/c6/16/e0/c616e00b-1793-195c-554d-7467383c27e0/cover.jpg/500x500bb.jpg", "J-Pop", "Japanese"),
+    OnboardArtist("Stromae", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/44/26/51/4426514e-4f36-3a7b-3b8c-57cae4db23d9/cover.jpg/500x500bb.jpg", "French Pop", "French"),
+    OnboardArtist("Amr Diab", "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/7d/4f/94/7d4f9468-56e1-3a2d-7186-c8088170ef58/196871341899.jpg/1000x1000bb.jpg", "Arabic Pop", "Arabic")
 )
 
 val ONBOARD_ARTISTS = CURATED_ONBOARD_ARTISTS.map { it.name to it.imageUrl }

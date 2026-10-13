@@ -179,11 +179,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
     var splashVisible by remember { mutableStateOf(true) }
     val whiteWavesAlpha = remember { Animatable(1.0f) }
-    val redLineScale = remember { Animatable(1.0f) }
+    val redLineScaleX = remember { Animatable(1.0f) }
+    val redLineScaleY = remember { Animatable(1.0f) }
     val launchAlpha = remember { Animatable(1.0f) }
 
     LaunchedEffect(Unit) {
-        delay(280)
+        delay(220)
         launch {
             whiteWavesAlpha.animateTo(
                 targetValue = 0f,
@@ -191,16 +192,22 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
             )
         }
         launch {
-            redLineScale.animateTo(
-                targetValue = 38f,
-                animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing)
+            // Expands horizontally first:
+            redLineScaleX.animateTo(
+                targetValue = 42f,
+                animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
+            )
+            // Then vertically:
+            redLineScaleY.animateTo(
+                targetValue = 55f,
+                animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)
             )
         }
-        delay(400)
+        delay(480)
         launch {
             launchAlpha.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(durationMillis = 450, easing = LinearEasing)
+                animationSpec = tween(durationMillis = 400, easing = LinearEasing)
             )
             splashVisible = false
         }
@@ -228,7 +235,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
             val isDark = isDarkTheme(state.themeMode)
             val appBg = if (isDark) GrayBlackBg else Color(0xFFF6F7F9)
             val translucentBarBg = if (isDark) Color(0xFF1E1F26).copy(alpha = 0.90f) else Color(0xFFFFFFFF).copy(alpha = 0.92f)
-            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.10f)
+            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Transparent
             val translucentInnerPill = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.08f)
             val textPrimary = if (isDark) Color.White else Color(0xFF141416)
             val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
@@ -1267,15 +1274,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         alpha = whiteWavesAlpha.value
                     }
             )
-            // Center Red Bar (expands forward 1x -> 38x to reveal app)
+            // Center Red Bar (expands horizontally first, then vertically to reveal app)
             Image(
                 painter = painterResource(id = R.drawable.beatles_logo_bar),
                 contentDescription = null,
                 modifier = Modifier
                     .size(100.dp)
                     .graphicsLayer {
-                        scaleX = redLineScale.value
-                        scaleY = redLineScale.value
+                        scaleX = redLineScaleX.value
+                        scaleY = redLineScaleY.value
                     }
             )
         }

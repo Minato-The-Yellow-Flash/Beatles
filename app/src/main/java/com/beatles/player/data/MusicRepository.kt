@@ -182,9 +182,9 @@ object MusicRepository {
             it.contains("video") || it.contains("mv") || it.contains("film") || it.contains("clip")
         }
 
-        fun extractItems(qStr: String): List<Song> {
+        fun extractItems(qStr: String, filterList: List<String>): List<Song> {
             try {
-                val extractor = ServiceList.YouTube.getSearchExtractor(qStr, listOf("all"), "")
+                val extractor = ServiceList.YouTube.getSearchExtractor(qStr, filterList, "")
                 extractor.fetchPage()
                 val items = extractor.initialPage.items
                 val list = mutableListOf<Song>()
@@ -192,10 +192,10 @@ object MusicRepository {
                     when (item) {
                         is StreamInfoItem -> {
                             val lowTitle = item.name.lowercase()
-                            // Strictly filter short clips (< 60s shorts/previews/ringtones) and noise
-                            if (item.duration < 60 || lowTitle.contains("teaser") || lowTitle.contains("trailer") ||
+                            // Strictly filter short clips (< 45s previews/ringtones) and obvious non-music noise
+                            if (item.duration < 45 || lowTitle.contains("teaser") || lowTitle.contains("trailer") ||
                                 lowTitle.contains("reaction") || lowTitle.contains("ringtone") || lowTitle.contains("status") ||
-                                (item.duration > 900 && !query.lowercase().contains("mix") && !query.lowercase().contains("album"))) {
+                                (item.duration > 1200 && !query.lowercase().contains("mix") && !query.lowercase().contains("album"))) {
                                 continue
                             }
                             val isVideo = VIDEO_EXCLUDE_REGEX.containsMatchIn(item.name) ||
@@ -216,7 +216,7 @@ object MusicRepository {
                                 isAlbum = false
                             )
 
-                            if (isExplicitVideoSearch || isAudio || !isVideo) {
+                            if (isExplicitVideoSearch || isAudio || !isVideo || filterList.contains("music_songs")) {
                                 list.add(song)
                             }
                         }
@@ -233,9 +233,16 @@ object MusicRepository {
         }
 
         if (!isExplicitVideoSearch) {
-            // First search with "audio" and direct query to surface pure studio audio releases
-            val audioResults = extractItems("$query audio")
-            val directResults = extractItems(query)
+            // First search directly in YouTube Music ("music_songs") to guarantee real studio audio tracks
+            val ytmResults = extractItems(query, listOf("music_songs"))
+            if (ytmResults.isNotEmpty()) {
+                val pureAudio = ytmResults.filter { !VIDEO_EXCLUDE_REGEX.containsMatchIn(it.title) }
+                if (pureAudio.isNotEmpty()) return pureAudio
+                return ytmResults
+            }
+            // Fallback: search with audio keyword and filter out videos
+            val audioResults = extractItems("$query audio", listOf("all"))
+            val directResults = extractItems(query, listOf("all"))
             val combined = (audioResults + directResults).distinctBy { it.id }
 
             val pureAudio = combined.filter { song ->
@@ -247,7 +254,7 @@ object MusicRepository {
             return combined
         }
 
-        return extractItems(query)
+        return extractItems(query, listOf("all"))
     }
 
     suspend fun search(query: String): List<Song> = withContext(Dispatchers.IO) {
@@ -786,6 +793,98 @@ object MusicRepository {
                     Song("sh_3", "No Love", "Shubh", "Still Rollin", "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/44/26/51/4426514e-4f36-3a7b-3b8c-57cae4db23d9/cover.jpg/500x500bb.jpg", 170),
                     Song("sh_4", "Still Rollin", "Shubh", "Still Rollin", "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/44/26/51/4426514e-4f36-3a7b-3b8c-57cae4db23d9/cover.jpg/500x500bb.jpg", 174)
                 )
+            ),
+            Album(
+                id = "feat_alb_14",
+                title = "Rockstar",
+                artist = "A.R. Rahman",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music118/v4/9c/64/74/9c647413-5683-1121-6679-b1d6d45f3c05/886443216892.jpg/1000x1000bb.jpg",
+                genre = "Bollywood Sufi",
+                releaseYear = "2011",
+                releaseDate = "Sep 30, 2011",
+                type = "Album",
+                songs = listOf(
+                    Song("ar_1", "Nadaan Parinde", "A.R. Rahman", "Rockstar", "https://is1-ssl.mzstatic.com/image/thumb/Music118/v4/9c/64/74/9c647413-5683-1121-6679-b1d6d45f3c05/886443216892.jpg/1000x1000bb.jpg", 386),
+                    Song("ar_2", "Kun Faya Kun", "A.R. Rahman", "Rockstar", "https://is1-ssl.mzstatic.com/image/thumb/Music118/v4/9c/64/74/9c647413-5683-1121-6679-b1d6d45f3c05/886443216892.jpg/1000x1000bb.jpg", 473),
+                    Song("ar_3", "Jo Bhi Main", "A.R. Rahman", "Rockstar", "https://is1-ssl.mzstatic.com/image/thumb/Music118/v4/9c/64/74/9c647413-5683-1121-6679-b1d6d45f3c05/886443216892.jpg/1000x1000bb.jpg", 275),
+                    Song("ar_4", "Phir Se Ud Chala", "A.R. Rahman", "Rockstar", "https://is1-ssl.mzstatic.com/image/thumb/Music118/v4/9c/64/74/9c647413-5683-1121-6679-b1d6d45f3c05/886443216892.jpg/1000x1000bb.jpg", 271)
+                )
+            ),
+            Album(
+                id = "feat_alb_15",
+                title = "Ek Tha Raja",
+                artist = "Badshah",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/58/01/fa/5801fa04-7a91-4470-3444-eaae3b25f549/8903431976079_cover.jpg/1000x1000bb.jpg",
+                genre = "Indian Hip-Hop",
+                releaseYear = "2024",
+                releaseDate = "Mar 18, 2024",
+                type = "Album",
+                songs = listOf(
+                    Song("bad_1", "Daaku", "Badshah", "Ek Tha Raja", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/58/01/fa/5801fa04-7a91-4470-3444-eaae3b25f549/8903431976079_cover.jpg/1000x1000bb.jpg", 178),
+                    Song("bad_2", "Soulmate", "Badshah", "Ek Tha Raja", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/58/01/fa/5801fa04-7a91-4470-3444-eaae3b25f549/8903431976079_cover.jpg/1000x1000bb.jpg", 213),
+                    Song("bad_3", "God Damn", "Badshah", "Ek Tha Raja", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/58/01/fa/5801fa04-7a91-4470-3444-eaae3b25f549/8903431976079_cover.jpg/1000x1000bb.jpg", 188)
+                )
+            ),
+            Album(
+                id = "feat_alb_16",
+                title = "Hard Drive Vol. 1",
+                artist = "Raftaar",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/13/2e/51/132e5192-d9c9-5246-8149-14a9386c9d09/cover.jpg/1000x1000bb.jpg",
+                genre = "Desi Hip-Hop",
+                releaseYear = "2022",
+                releaseDate = "Nov 16, 2022",
+                type = "Album",
+                songs = listOf(
+                    Song("raf_1", "RAASHAH", "Raftaar", "Hard Drive Vol. 1", "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/13/2e/51/132e5192-d9c9-5246-8149-14a9386c9d09/cover.jpg/1000x1000bb.jpg", 168),
+                    Song("raf_2", "No China", "Raftaar", "Hard Drive Vol. 1", "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/13/2e/51/132e5192-d9c9-5246-8149-14a9386c9d09/cover.jpg/1000x1000bb.jpg", 204),
+                    Song("raf_3", "Ice", "Raftaar", "Hard Drive Vol. 1", "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/13/2e/51/132e5192-d9c9-5246-8149-14a9386c9d09/cover.jpg/1000x1000bb.jpg", 175)
+                )
+            ),
+            Album(
+                id = "feat_alb_17",
+                title = "Deewana",
+                artist = "Sonu Nigam",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/28/62/1d/28621d9f-a89c-5674-3c6c-a49688a202c4/8901112440122.jpg/1000x1000bb.jpg",
+                genre = "Indipop Melody",
+                releaseYear = "1999",
+                releaseDate = "Jan 01, 1999",
+                type = "Album",
+                songs = listOf(
+                    Song("sn_1", "Ab Mujhe Raat Din", "Sonu Nigam", "Deewana", "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/28/62/1d/28621d9f-a89c-5674-3c6c-a49688a202c4/8901112440122.jpg/1000x1000bb.jpg", 284),
+                    Song("sn_2", "Deewana Tera", "Sonu Nigam", "Deewana", "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/28/62/1d/28621d9f-a89c-5674-3c6c-a49688a202c4/8901112440122.jpg/1000x1000bb.jpg", 270),
+                    Song("sn_3", "Iss Qadar Pyar Hai", "Sonu Nigam", "Deewana", "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/28/62/1d/28621d9f-a89c-5674-3c6c-a49688a202c4/8901112440122.jpg/1000x1000bb.jpg", 298)
+                )
+            ),
+            Album(
+                id = "feat_alb_18",
+                title = "Two Hearts Never Break the Same",
+                artist = "AP Dhillon",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/7d/5d/44/7d5d4444-245c-e40f-7649-650058b725b7/859765275822_cover.jpg/1000x1000bb.jpg",
+                genre = "Punjabi Pop",
+                releaseYear = "2022",
+                releaseDate = "Oct 07, 2022",
+                type = "Album",
+                songs = listOf(
+                    Song("ap_1", "Summer High", "AP Dhillon", "Two Hearts Never Break the Same", "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/7d/5d/44/7d5d4444-245c-e40f-7649-650058b725b7/859765275822_cover.jpg/1000x1000bb.jpg", 177),
+                    Song("ap_2", "Dil Nu", "AP Dhillon", "Two Hearts Never Break the Same", "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/7d/5d/44/7d5d4444-245c-e40f-7649-650058b725b7/859765275822_cover.jpg/1000x1000bb.jpg", 228),
+                    Song("ap_3", "Wo Noor", "AP Dhillon", "Two Hearts Never Break the Same", "https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/7d/5d/44/7d5d4444-245c-e40f-7649-650058b725b7/859765275822_cover.jpg/1000x1000bb.jpg", 188)
+                )
+            ),
+            Album(
+                id = "feat_alb_19",
+                title = "Yeh Jawaani Hai Deewani",
+                artist = "Pritam",
+                coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/c3/00/62/c30062df-a4bb-3ef7-4a0b-1915ea0aa9c7/886443993212.jpg/1000x1000bb.jpg",
+                genre = "Bollywood Hits",
+                releaseYear = "2013",
+                releaseDate = "May 31, 2013",
+                type = "Album",
+                songs = listOf(
+                    Song("pr_1", "Badtameez Dil", "Pritam", "Yeh Jawaani Hai Deewani", "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/c3/00/62/c30062df-a4bb-3ef7-4a0b-1915ea0aa9c7/886443993212.jpg/1000x1000bb.jpg", 252),
+                    Song("pr_2", "Balam Pichkari", "Pritam", "Yeh Jawaani Hai Deewani", "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/c3/00/62/c30062df-a4bb-3ef7-4a0b-1915ea0aa9c7/886443993212.jpg/1000x1000bb.jpg", 289),
+                    Song("pr_3", "Ilahi", "Pritam", "Yeh Jawaani Hai Deewani", "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/c3/00/62/c30062df-a4bb-3ef7-4a0b-1915ea0aa9c7/886443993212.jpg/1000x1000bb.jpg", 229),
+                    Song("pr_4", "Kabira", "Pritam", "Yeh Jawaani Hai Deewani", "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/c3/00/62/c30062df-a4bb-3ef7-4a0b-1915ea0aa9c7/886443993212.jpg/1000x1000bb.jpg", 223)
+                )
             )
         )
     }
@@ -1126,8 +1225,12 @@ object MusicRepository {
     }
 
     private val recordLabels = listOf("sony music", "t-series", "saregama", "zee music", "speed records", "tips", "yrf", "white hill", "geet mp3")
+    val lyricsCache = java.util.concurrent.ConcurrentHashMap<String, List<LyricLine>>()
 
     suspend fun getLyrics(title: String, artist: String, durationSeconds: Int = 0): List<LyricLine> = withContext(Dispatchers.IO) {
+        val cacheKey = "${title.trim().lowercase()}|${artist.trim().lowercase()}"
+        lyricsCache[cacheKey]?.let { return@withContext it }
+
         fun parseLrc(syncedLyrics: String): List<LyricLine> {
             return syncedLyrics.split("\n").filter { it.isNotBlank() }.mapNotNull { line ->
                 val match = "\\[(\\d+):(\\d+\\.?\\d*)]".toRegex().find(line)
@@ -1265,7 +1368,10 @@ object MusicRepository {
             for (q in queries.distinct()) {
                 if (q.length < 2) continue
                 val res = searchLrcLib(q, durationSeconds)
-                if (res != null && res.isNotEmpty()) return@withContext res
+                if (res != null && res.isNotEmpty()) {
+                    lyricsCache[cacheKey] = res
+                    return@withContext res
+                }
             }
 
             // Fallback: lyrics.ovh
@@ -1276,8 +1382,12 @@ object MusicRepository {
                     val ovhJson = gson.fromJson(bodyOvh, JsonObject::class.java)
                     val ovhLyrics = ovhJson.get("lyrics")?.asString
                     if (!ovhLyrics.isNullOrEmpty()) {
-                        return@withContext ovhLyrics.split("\n").filter { it.isNotBlank() }.mapIndexed { idx, line ->
+                        val parsed = ovhLyrics.split("\n").filter { it.isNotBlank() }.mapIndexed { idx, line ->
                             LyricLine(timeMs = idx * 3000L, text = line.trim())
+                        }
+                        if (parsed.isNotEmpty()) {
+                            lyricsCache[cacheKey] = parsed
+                            return@withContext parsed
                         }
                     }
                 }
