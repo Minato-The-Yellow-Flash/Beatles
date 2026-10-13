@@ -255,13 +255,15 @@ class AutoMixEngine(
                     extendedWindow = extendedWindow
                 )
             } else {
-                TransitionPlan(
-                    type = TransitionType.SHORT_CROSSFADE,
-                    startPositionMs = maxOf(0L, durationMs - 7_000L),
-                    durationMs = 7_000L,
-                    confidenceScore = 0.85f,
-                    incomingStartOffsetMs = 0L,
-                    tempoAdjustmentRatio = 1.0f
+                NormalAutoMixPlanner.plan(
+                    outgoing = current,
+                    outgoingDurationMs = durationMs,
+                    tail = tail,
+                    outgoingLyrics = lyrics,
+                    incoming = next,
+                    head = head,
+                    gaplessAlbum = TransitionPlanner.isGaplessAlbumPair(current, next, playlist),
+                    nowPositionMs = nowPos
                 )
             }
 

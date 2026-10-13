@@ -36,6 +36,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -62,7 +64,7 @@ fun LibraryScreen(
     headerOffset: () -> Float = { 0f },
     headerAlpha: () -> Float = { 1f },
     hazeState: HazeState? = null,
-    onPlay: (Song, List<Song>) -> Unit
+    onPlay: (Song, List<Song>, androidx.compose.ui.geometry.Rect?) -> Unit
 ) {
     var section by remember { mutableStateOf("liked songs") }
 
@@ -288,10 +290,12 @@ fun LibraryScreen(
                         }
                     } else {
                         items(songs) { song ->
+                            var rowBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onPlay(song, songs) }
+                                    .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                                    .clickable { onPlay(song, songs, rowBounds) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -330,10 +334,12 @@ fun LibraryScreen(
                         }
                     } else {
                         items(artists) { song ->
+                            var rowBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onPlay(song, songs) }
+                                    .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                                    .clickable { onPlay(song, songs, rowBounds) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -419,10 +425,12 @@ fun LibraryScreen(
                         }
                     } else {
                         items(downloads) { song ->
+                            var rowBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onPlay(song, downloads) }
+                                    .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                                    .clickable { onPlay(song, downloads, rowBounds) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {

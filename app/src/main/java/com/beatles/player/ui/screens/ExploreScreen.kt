@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -57,7 +59,7 @@ fun ExploreScreen(
     state: PlayerUiState,
     headerOffset: () -> Float = { 0f },
     headerAlpha: () -> Float = { 1f },
-    onPlay: (Song, List<Song>) -> Unit,
+    onPlay: (Song, List<Song>, androidx.compose.ui.geometry.Rect?) -> Unit,
     onSearch: (String) -> Unit
 ) {
     val isDark = isDarkTheme(state.themeMode)
@@ -189,7 +191,7 @@ fun ExploreScreen(
 
                         if (genreTracks.isNotEmpty()) {
                             IconButton(
-                                onClick = { onPlay(genreTracks.first(), genreTracks) },
+                                onClick = { onPlay(genreTracks.first(), genreTracks, null) },
                                 modifier = Modifier
                                     .align(Alignment.CenterEnd)
                                     .size(50.dp)
@@ -221,10 +223,12 @@ fun ExploreScreen(
                                 .background(cardBg, RoundedCornerShape(16.dp))
                         ) {
                             genreTracks.take(15).forEachIndexed { idx, song ->
+                                var rowBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { onPlay(song, genreTracks) }
+                                        .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                                        .clickable { onPlay(song, genreTracks, rowBounds) }
                                         .padding(horizontal = 16.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -322,10 +326,12 @@ fun ExploreScreen(
                                 .background(cardBg, RoundedCornerShape(16.dp))
                         ) {
                             state.recommendations.filter { !it.isAlbum }.take(8).forEachIndexed { idx, song ->
+                                var rowBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { onPlay(song, state.recommendations) }
+                                        .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                                        .clickable { onPlay(song, state.recommendations, rowBounds) }
                                         .padding(horizontal = 16.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {

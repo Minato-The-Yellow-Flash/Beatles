@@ -65,7 +65,10 @@ import com.beatles.player.data.UserRole
 import com.beatles.player.ui.components.AddAlbumDialog
 import com.beatles.player.ui.components.AlbumDetailSheet
 import com.beatles.player.ui.components.FluidAlbumDetailOverlay
+import com.beatles.player.ui.components.LiquidGlassSurface
 import com.beatles.player.ui.components.NowPlayingSheet
+import com.beatles.player.ui.components.TopProgressiveBlur
+import com.beatles.player.ui.components.BottomProgressiveBlur
 import com.beatles.player.ui.screens.*
 import com.beatles.player.ui.theme.isDarkTheme
 import com.beatles.player.viewmodel.PlayerViewModel
@@ -298,8 +301,20 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     .nestedScroll(nestedScrollConnection)
             ) {
                 
-                // Base Tab content layer (with live backdrop blur sampling)
-                Box(modifier = Modifier.fillMaxSize().haze(state = hazeState)) {
+                // Base Tab content layer (with live backdrop blur sampling and sheet scale-down)
+                val contentBehindScale = 1f - 0.08f * playerProgress.value.coerceIn(0f, 1f)
+                val contentBehindAlpha = 1f - 0.30f * playerProgress.value.coerceIn(0f, 1f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = contentBehindScale
+                            scaleY = contentBehindScale
+                            alpha = contentBehindAlpha
+                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.5f)
+                        }
+                        .haze(state = hazeState)
+                ) {
                     when (state.userRole) {
                         UserRole.LISTENER -> {
                             AnimatedContent(
@@ -339,7 +354,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             state = screenState,
                                             headerOffset = animatedHeaderOffset,
                                             headerAlpha = headerAlphaProvider,
-                                            onPlay = { s, pl -> viewModel.playSong(s, pl) },
+                                            onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) },
                                             onSearch = { viewModel.search(it); viewModel.setTab(Tab.SEARCH) }
                                         )
                                         Tab.LIBRARY -> LibraryScreen(
@@ -348,7 +363,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             headerOffset = animatedHeaderOffset,
                                             headerAlpha = headerAlphaProvider,
                                             hazeState = hazeState,
-                                            onPlay = { s, pl -> viewModel.playSong(s, pl) }
+                                            onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) }
                                         )
                                         Tab.SEARCH -> SearchScreen(
                                             state = screenState,
@@ -365,7 +380,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         }
 
                         UserRole.ARTIST -> {
-                            ArtistScreen(state = state, viewModel = viewModel, onPlay = { s, pl -> viewModel.playSong(s, pl) })
+                            ArtistScreen(state = state, viewModel = viewModel, onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) })
                         }
 
                         UserRole.ADMIN -> {
@@ -374,6 +389,18 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     }
                 }
 
+
+                // ═══ 1.5. PROGRESSIVE TOP BLUR (Behind sticky header and buttons) ═══
+                if (state.selectedAlbum == null && playerProgress.value <= 0.01f && !state.isExpanded) {
+                    TopProgressiveBlur(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopCenter)
+                            .zIndex(6f),
+                        height = 110.dp,
+                        hazeState = hazeState
+                    )
+                }
 
                 // ═══ 2. STICKY TOP HEADER (Floating Logo + User Avatar) ═══
                 if (state.showSeeAllSection == null && state.currentTab != Tab.SEARCH && state.selectedAlbum == null && playerProgress.value <= 0.01f && !state.isExpanded) {
@@ -442,11 +469,24 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     }
                 }
 
+                // ═══ 2.5. PROGRESSIVE BOTTOM BLUR (Behind floating nav capsule) ═══
+                if (playerProgress.value <= 0.01f && !state.isExpanded) {
+                    BottomProgressiveBlur(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .zIndex(6f),
+                        height = 140.dp,
+                        hazeState = hazeState
+                    )
+                }
+
                 // Bottom: Mini Player + Borderless Translucent Nav
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
+                        .zIndex(10f)
                         .imePadding()
                         .pointerInput(Unit) {
                             detectTapGestures { /* consume touches to prevent mistouches to the list underneath */ }
@@ -460,11 +500,11 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     )
                     val scrollShrinkProgress = scrollShrinkRaw.coerceIn(0f, 1f)
 
-                    val bottomBarHeight = 56.dp
-                    val circleSize = 56.dp
-                    val barCorner = 28.dp
-                    val navIconSize = 24.dp
-                    val navTextSize = 9.sp
+                    val bottomBarHeight = 64.dp
+                    val circleSize = 64.dp
+                    val barCorner = 32.dp
+                    val navIconSize = 28.dp
+                    val navTextSize = 11.sp
 
                     val isSearch = state.currentTab == Tab.SEARCH
                     val hasSong = state.currentSong != null
@@ -489,13 +529,16 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 val pillCorner = if (compact) barCorner else 24.dp
                                 val pillArt = if (compact) 26.dp else 33.dp
 
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .clip(RoundedCornerShape(pillCorner))
-                                        .border(0.5.dp, translucentBarBorder, RoundedCornerShape(pillCorner))
-                                        .background(translucentBarBg)
-                                        .pointerInput(Unit) {
+                                LiquidGlassSurface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    shape = RoundedCornerShape(pillCorner),
+                                    hazeState = hazeState,
+                                    interactive = false
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .pointerInput(Unit) {
                                             awaitEachGesture {
                                                 val down = awaitFirstDown(requireUnconsumed = false)
                                                 val slop = viewConfiguration.touchSlop
@@ -630,6 +673,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                             }
                         }
                     }
+                    }
                 }
 
                     // Top Mini Player: smoothly collapses height and fades out when scrolling or entering search
@@ -717,14 +761,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // Left Pill: shrinks to circle with active tab icon in search mode, expands to full tabs in normal mode
-                                    Box(
+                                    LiquidGlassSurface(
                                         modifier = Modifier
                                             .width(with(density) { leftWidthPx.toDp() })
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(barCorner))
-                                            .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
-                                            .background(translucentBarBg)
-                                            .padding(4.dp)
+                                            .fillMaxHeight(),
+                                        shape = RoundedCornerShape(barCorner),
+                                        hazeState = hazeState,
+                                        interactive = false
                                     ) {
                                         // Left Pill Content: Both layers blend smoothly with crossfade
                                         val activeTab = tabs[selectedMainTabIdx]
@@ -737,23 +780,48 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             val tabWidth = availableForTabs / tabs.size.toFloat()
                                             val indicatorFraction by animateFloatAsState(
                                                 targetValue = selectedMainTabIdx.toFloat(),
-                                                animationSpec = androidx.compose.animation.core.tween(durationMillis = 200, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                                                animationSpec = spring(
+                                                    dampingRatio = 0.82f,
+                                                    stiffness = Spring.StiffnessMediumLow
+                                                ),
                                                 label = "smoothNavIndicator"
                                             )
+                                            val stretchAmount = (kotlin.math.abs(selectedMainTabIdx - indicatorFraction) * 0.28f).coerceAtMost(0.35f)
 
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxSize()
                                                     .graphicsLayer { alpha = fullAlpha }
                                             ) {
-                                                // Sliding active indicator
+                                                // Sliding active liquid lens indicator
                                                 Box(
                                                     modifier = Modifier
                                                         .fillMaxHeight()
                                                         .width(with(density) { (tabWidth - 2).coerceAtLeast(1f).toDp() })
                                                         .offset { IntOffset((indicatorFraction * tabWidth).roundToInt(), 0) }
+                                                        .graphicsLayer {
+                                                            scaleX = 1f + stretchAmount
+                                                            scaleY = 1f - stretchAmount * 0.4f
+                                                        }
                                                         .clip(RoundedCornerShape((barCorner - 4.dp).coerceAtLeast(4.dp)))
-                                                        .background(translucentInnerPill)
+                                                        .background(
+                                                            Brush.verticalGradient(
+                                                                listOf(
+                                                                    Color.White.copy(alpha = if (isDark) 0.22f else 0.40f),
+                                                                    Color.White.copy(alpha = if (isDark) 0.12f else 0.25f)
+                                                                )
+                                                            )
+                                                        )
+                                                        .border(
+                                                            width = 0.5.dp,
+                                                            brush = Brush.linearGradient(
+                                                                listOf(
+                                                                    Color.White.copy(alpha = 0.55f),
+                                                                    Color.White.copy(alpha = 0.15f)
+                                                                )
+                                                            ),
+                                                            shape = RoundedCornerShape((barCorner - 4.dp).coerceAtLeast(4.dp))
+                                                        )
                                                 )
 
                                                 Row(
@@ -846,14 +914,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     }
 
                                     // Search Pill: contracts to circle button (normal mode) or expands into search bar (search mode)
-                                    Box(
+                                    LiquidGlassSurface(
                                         modifier = Modifier
                                             .width(with(density) { searchWidthPx.toDp() })
-                                            .fillMaxHeight()
-                                            .clip(RoundedCornerShape(barCorner))
-                                            .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
-                                            .background(translucentBarBg)
-                                            .padding(4.dp)
+                                            .fillMaxHeight(),
+                                        shape = RoundedCornerShape(barCorner),
+                                        hazeState = hazeState,
+                                        interactive = false
                                     ) {
                                         // Compact search button (normal mode)
                                         if (searchExpandProgress < 0.6f) {

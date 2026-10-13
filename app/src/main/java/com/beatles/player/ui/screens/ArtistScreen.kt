@@ -20,6 +20,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -38,12 +40,12 @@ private val DarkCardBg = Color.White.copy(alpha = 0.06f)
 fun ArtistScreen(
     state: PlayerUiState,
     viewModel: PlayerViewModel,
-    onPlay: (Song, List<Song>) -> Unit
+    onPlay: (Song, List<Song>, androidx.compose.ui.geometry.Rect?) -> Unit
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         when (state.artistTab) {
             ArtistTab.FEED -> ArtistFeedTab(state = state, viewModel = viewModel, onPlay = onPlay)
-            ArtistTab.UPLOAD -> ArtistUploadTab(state = state, viewModel = viewModel, onPlay = onPlay)
+            ArtistTab.UPLOAD -> ArtistUploadTab(state = state, viewModel = viewModel, onPlay = { s, pl -> onPlay(s, pl, null) })
             ArtistTab.ANALYTICS -> ArtistAnalyticsTab(state = state)
             ArtistTab.MESSAGES -> ArtistMessagesTab(state = state, viewModel = viewModel)
         }
@@ -54,7 +56,7 @@ fun ArtistScreen(
 fun ArtistFeedTab(
     state: PlayerUiState,
     viewModel: PlayerViewModel,
-    onPlay: (Song, List<Song>) -> Unit
+    onPlay: (Song, List<Song>, androidx.compose.ui.geometry.Rect?) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -161,10 +163,12 @@ fun ArtistFeedTab(
 
         val allSongs = state.albums.flatMap { it.songs }.ifEmpty { state.recommendations }
         items(allSongs.take(5)) { song ->
+            var rowBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onPlay(song, allSongs) }
+                    .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                    .clickable { onPlay(song, allSongs, rowBounds) }
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
