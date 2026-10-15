@@ -46,7 +46,6 @@ object BeatlesMediaCache {
             .setConnectTimeoutMs(20_000)
             .setReadTimeoutMs(25_000)
             .setDefaultRequestProperties(mapOf(
-                "Range" to "bytes=0-",
                 "Accept-Encoding" to "identity"
             ))
 

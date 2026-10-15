@@ -14,17 +14,36 @@ enum class TransitionType {
 }
 
 enum class AutoMixMode {
-    NEW, // Harmonic, Phrase & Beat matched (Red glowy accent)
-    OLD, // Classic Equal-power crossfade (Subtle red accent)
-    OFF  // Disabled / Inactive
+    ON,
+    OFF;
+
+    companion object {
+        val NEW get() = ON
+        val OLD get() = ON
+    }
+}
+
+enum class AutoMixTier {
+    TIER_1_BEAT_MATCH,
+    TIER_2_EQUAL_POWER_CROSSFADE,
+    TIER_3_GAPLESS_MICROFADE
 }
 
 enum class TransitionPhase {
     IDLE,
     ANALYZING,
-    PREPARING,
-    TRANSITION_ACTIVE,
-    HANDOFF_COMPLETE
+    PREPARED,
+    ARMED,
+    TRANSITIONING,
+    HANDOVER,
+    FALLBACK,
+    ERROR;
+
+    companion object {
+        val PREPARING get() = PREPARED
+        val TRANSITION_ACTIVE get() = TRANSITIONING
+        val HANDOFF_COMPLETE get() = HANDOVER
+    }
 }
 
 data class TimeRegion(
@@ -98,27 +117,35 @@ data class TransitionPlan(
     val incomingGainMatch: Float = 1.0f,
     /** True when the plan was built from decoded audio rather than metadata estimates. */
     val fromWaveform: Boolean = false,
-    val echoDelayMs: Int = 360
+    val echoDelayMs: Int = 360,
+    val tier: AutoMixTier = AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE
 )
 
 data class AutoMixState(
     val phase: TransitionPhase = TransitionPhase.IDLE,
     val progress: Float = 0f, // 0.0 to 1.0
     val activePlan: TransitionPlan? = null,
-    val incomingSong: Song? = null
+    val incomingSong: Song? = null,
+    val tier: AutoMixTier? = null,
+    val debugLog: String? = null
 ) {
     val isMixing: Boolean
-        get() = phase == TransitionPhase.TRANSITION_ACTIVE || phase == TransitionPhase.HANDOFF_COMPLETE
+        get() = phase == TransitionPhase.TRANSITIONING || phase == TransitionPhase.HANDOVER || phase == TransitionPhase.FALLBACK
 
     val label: String
-        get() = when (activePlan?.type) {
-            TransitionType.BEAT_MIX -> "Beat-matched mix"
-            TransitionType.DROP_TRANSITION -> "Beat drop mix"
-            TransitionType.PHRASE_MIX -> "Phrase mix"
-            TransitionType.INSTRUMENTAL_OVERLAP -> "Intro overlap"
-            TransitionType.LONG_CROSSFADE -> "Outro blend"
-            TransitionType.SILENCE_REMOVAL -> "Silence trimmed"
-            TransitionType.SHORT_CROSSFADE -> "Crossfade"
-            else -> "AutoMix"
+        get() = when (tier) {
+            AutoMixTier.TIER_1_BEAT_MATCH -> "Beat-matched mix"
+            AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE -> "Equal-power crossfade"
+            AutoMixTier.TIER_3_GAPLESS_MICROFADE -> "Gapless mix"
+            null -> when (activePlan?.type) {
+                TransitionType.BEAT_MIX -> "Beat-matched mix"
+                TransitionType.DROP_TRANSITION -> "Beat drop mix"
+                TransitionType.PHRASE_MIX -> "Phrase mix"
+                TransitionType.INSTRUMENTAL_OVERLAP -> "Intro overlap"
+                TransitionType.LONG_CROSSFADE -> "Outro blend"
+                TransitionType.SILENCE_REMOVAL -> "Silence trimmed"
+                TransitionType.SHORT_CROSSFADE -> "Crossfade"
+                else -> "AutoMix"
+            }
         }
 }

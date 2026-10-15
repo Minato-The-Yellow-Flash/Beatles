@@ -24,6 +24,7 @@ class AudioPlayerManager(private val context: Context) {
     var onShuffleModeEnabledChanged: ((Boolean) -> Unit)? = null
     var onRepeatModeChanged: ((Int) -> Unit)? = null
     var onSongEnded: (() -> Unit)? = null
+    var onPlayerError: ((Throwable) -> Unit)? = null
     private var pendingPlayAction: (() -> Unit)? = null
 
     init {
@@ -40,6 +41,9 @@ class AudioPlayerManager(private val context: Context) {
                     }
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         // Handled centrally by startPolling() on activePlayer to prevent deck-switch race conditions
+                    }
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        onPlayerError?.invoke(error)
                     }
                     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                         if (activePlayerOverride == null) {
@@ -92,7 +96,11 @@ class AudioPlayerManager(private val context: Context) {
                     if (state != lastPlaybackState) {
                         lastPlaybackState = state
                         if (state == Player.STATE_ENDED) {
-                            onSongEnded?.invoke()
+                            val pos = p?.currentPosition ?: 0L
+                            val dur = p?.duration ?: 0L
+                            if (dur <= 0L || (dur - pos <= 4000L)) {
+                                onSongEnded?.invoke()
+                            }
                         }
                     }
                     val pos = p?.currentPosition ?: 0L
@@ -111,10 +119,20 @@ class AudioPlayerManager(private val context: Context) {
         val artUri = if (song.coverUrl.isNotBlank()) {
             try { android.net.Uri.parse(song.coverUrl) } catch (_: Exception) { null }
         } else null
+        val extras = android.os.Bundle().apply {
+            putBoolean("oplus_support_lyrics", true)
+            putBoolean("coloros_support_lyrics", true)
+            putBoolean("com.oplus.lockscreen.lyrics_enabled", true)
+            putBoolean("coloros_flag_support_live_lyrics", true)
+            putBoolean("is_support_lyrics", true)
+        }
         val metadata = MediaMetadata.Builder()
             .setTitle(song.title)
             .setArtist(song.artist)
             .setAlbumTitle(song.album)
+            .setDisplayTitle(song.title)
+            .setSubtitle(song.artist)
+            .setExtras(extras)
             .apply { if (artUri != null) setArtworkUri(artUri) }
             .build()
         return MediaItem.Builder().setMediaId(song.id).setUri(streamUrl).setMediaMetadata(metadata).build()
@@ -226,12 +244,20 @@ class AudioPlayerManager(private val context: Context) {
         p?.play()
     }
     fun seekTo(pos: Long) {
-        val p = activePlayer
-        val dur = p?.duration ?: 0L
-        val safeDur = if (dur == androidx.media3.common.C.TIME_UNSET) 0L else dur
-        val clampedPos = if (safeDur > 0) pos.coerceIn(0L, safeDur) else pos.coerceAtLeast(0L)
-        p?.seekTo(clampedPos)
-        onPositionChanged?.invoke(clampedPos, safeDur)
+        val p = activePlayer ?: return
+        val dur = p.duration
+        val safeDur = if (dur != androidx.media3.common.C.TIME_UNSET && dur > 0L) dur else 0L
+        val clampedPos = if (safeDur > 0L) pos.coerceIn(0L, safeDur) else pos.coerceAtLeast(0L)
+        p.seekTo(clampedPos)
+        if (p.playWhenReady) {
+            if (p.playbackState == Player.STATE_IDLE) {
+                p.prepare()
+            }
+            p.play()
+        }
+        if (safeDur > 0L) {
+            onPositionChanged?.invoke(clampedPos, safeDur)
+        }
     }
     fun skipToNext() = activePlayer?.seekToNextMediaItem()
     fun skipToPrevious() = activePlayer?.seekToPreviousMediaItem()

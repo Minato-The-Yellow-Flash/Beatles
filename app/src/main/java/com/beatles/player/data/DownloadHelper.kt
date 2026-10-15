@@ -15,7 +15,12 @@ import java.io.FileOutputStream
 object DownloadHelper {
     private val httpClient = OkHttpClient()
 
-    suspend fun downloadDirectly(context: Context, song: Song, streamUrl: String): String? = withContext(Dispatchers.IO) {
+    suspend fun downloadDirectly(
+        context: Context, 
+        song: Song, 
+        streamUrl: String,
+        onProgress: ((Float) -> Unit)? = null
+    ): String? = withContext(Dispatchers.IO) {
         try {
             val safeArtist = song.artist.replace(Regex("[^a-zA-Z0-9.-]"), "_").trim('_')
             val safeTitle = song.title.replace(Regex("[^a-zA-Z0-9.-]"), "_").trim('_')
@@ -32,10 +37,27 @@ object DownloadHelper {
             val resp = httpClient.newCall(req).execute()
             if (!resp.isSuccessful) return@withContext null
             val body = resp.body ?: return@withContext null
+            val contentLength = body.contentLength()
+            val expectedLength = if (contentLength > 0L) contentLength else {
+                if (song.durationSeconds > 0) song.durationSeconds * 16_000L else 3_500_000L
+            }
 
             body.byteStream().use { input ->
                 FileOutputStream(targetFile).use { output ->
-                    input.copyTo(output)
+                    val buffer = ByteArray(16 * 1024)
+                    var bytesRead: Int
+                    var totalRead = 0L
+                    var lastPercent = -1
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        totalRead += bytesRead
+                        val percent = ((totalRead * 100L) / expectedLength).toInt().coerceIn(0, 99)
+                        if (percent != lastPercent) {
+                            lastPercent = percent
+                            onProgress?.invoke(percent / 100f)
+                        }
+                    }
+                    onProgress?.invoke(1.0f)
                 }
             }
 

@@ -1,11 +1,10 @@
 package com.beatles.player.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -13,53 +12,199 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.beatles.player.data.Song
+import kotlinx.coroutines.async
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.beatles.player.data.MusicRepository
-import com.beatles.player.data.Song
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.material.icons.filled.Shuffle
+import com.beatles.player.ui.components.FrostedButton
+import com.beatles.player.ui.components.FrostedIconButton
 import com.beatles.player.ui.components.edgeFade
 import com.beatles.player.ui.theme.isDarkTheme
+import com.beatles.player.ui.theme.LocalDynamicBottomPadding
 import com.beatles.player.viewmodel.PlayerUiState
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val AccentRed = Color(0xFFF82C38)
-private val GENRES = listOf(
-    "Punjabi" to Color(0xFFE67E22),
-    "Bollywood" to Color(0xFFC0392B),
-    "Hip-Hop" to Color(0xFF8E44AD),
-    "Pop" to Color(0xFFE74C3C),
-    "Lo-Fi" to Color(0xFF2980B9),
-    "Indie" to Color(0xFF16A085),
-    "Ghazal" to Color(0xFF27AE60),
-    "Classical" to Color(0xFF34495E),
-    "Electronic" to Color(0xFF1ABC9C),
-    "R&B" to Color(0xFF9B59B6)
+
+data class GenrePalette(
+    val name: String,
+    val primaryColor: Color,
+    val secondaryColor: Color,
+    val accentColor: Color
 )
+
+val GENRE_PALETTES = listOf(
+    GenrePalette("Punjabi", Color(0xFFFF5E36), Color(0xFFFF9500), Color(0xFFFF2A6D)),
+    GenrePalette("Bollywood", Color(0xFFE50914), Color(0xFFFF3366), Color(0xFF8E44AD)),
+    GenrePalette("Hip-Hop", Color(0xFF8A2387), Color(0xFFE94057), Color(0xFFF27121)),
+    GenrePalette("Pop", Color(0xFFFF0844), Color(0xFFFFB199), Color(0xFF7F00FF)),
+    GenrePalette("Lo-Fi", Color(0xFF2980B9), Color(0xFF6DD5FA), Color(0xFF8E44AD)),
+    GenrePalette("Indie", Color(0xFF11998E), Color(0xFF38EF7D), Color(0xFF0575E6)),
+    GenrePalette("Ghazal", Color(0xFF134E5E), Color(0xFF71B280), Color(0xFF2C3E50)),
+    GenrePalette("Classical", Color(0xFF4B1248), Color(0xFFF0C27B), Color(0xFF702963)),
+    GenrePalette("Electronic", Color(0xFF00F260), Color(0xFF0575E6), Color(0xFF00C9FF)),
+    GenrePalette("R&B", Color(0xFF654EA3), Color(0xFFEAAFC8), Color(0xFF9B51E0))
+)
+
+val GENRES = GENRE_PALETTES.map { it.name to it.primaryColor }
+
+@Composable
+fun LiveMorphingGradientCard(
+    palette: GenrePalette,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "genreCardGradient")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 7000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "phase"
+    )
+
+    BoxWithConstraints(modifier = modifier) {
+        val w = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val h = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+
+        val startX = (0.1f + 0.35f * phase) * w
+        val startY = (0.1f + 0.3f * (1f - phase)) * h
+        val endX = (0.9f - 0.3f * phase) * w
+        val endY = (0.9f - 0.25f * (1f - phase)) * h
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            palette.primaryColor,
+                            palette.secondaryColor,
+                            palette.accentColor
+                        ),
+                        start = Offset(startX, startY),
+                        end = Offset(endX, endY)
+                    )
+                )
+        )
+        // Moving sheen / soft radial highlight
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.25f), Color.Transparent),
+                        center = Offset(
+                            x = (0.25f + 0.5f * (1f - phase)) * w,
+                            y = (0.2f + 0.6f * phase) * h
+                        ),
+                        radius = (w * 0.85f)
+                    )
+                )
+        )
+    }
+}
+
+@Composable
+fun LiveMorphingGradientBackground(
+    palette: GenrePalette,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "genreBgGradient")
+    val phase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 8000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "phase"
+    )
+
+    BoxWithConstraints(modifier = modifier) {
+        val w = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val h = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+
+        val startX = (0.1f + 0.4f * phase) * w
+        val startY = (0.1f + 0.35f * (1f - phase)) * h
+        val endX = (0.9f - 0.35f * phase) * w
+        val endY = (0.9f - 0.3f * (1f - phase)) * h
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            palette.primaryColor.copy(alpha = 0.85f),
+                            palette.secondaryColor.copy(alpha = 0.75f),
+                            palette.accentColor.copy(alpha = 0.80f)
+                        ),
+                        start = Offset(startX, startY),
+                        end = Offset(endX, endY)
+                    )
+                )
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            palette.accentColor.copy(alpha = 0.55f),
+                            Color.Transparent
+                        ),
+                        center = Offset(
+                            x = (0.7f - 0.4f * phase) * w,
+                            y = (0.3f + 0.4f * phase) * h
+                        ),
+                        radius = (w * 0.95f)
+                    )
+                )
+        )
+    }
+}
 
 @Composable
 fun ExploreScreen(
     state: PlayerUiState,
     headerOffset: () -> Float = { 0f },
     headerAlpha: () -> Float = { 1f },
-    onPlay: (Song, List<Song>, androidx.compose.ui.geometry.Rect?) -> Unit,
+    onPlay: (Song, List<Song>, Rect?) -> Unit,
     onSearch: (String) -> Unit
 ) {
     val isDark = isDarkTheme(state.themeMode)
@@ -69,33 +214,34 @@ fun ExploreScreen(
     val cardBg = if (isDark) Color.White.copy(alpha = 0.05f) else Color.White
     val dividerColor = if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.06f)
 
-    var selectedGenre by remember { mutableStateOf<String?>("All") }
-    var genreTracks by remember { mutableStateOf<List<Song>>(emptyList()) }
-    var isGenreLoading by remember { mutableStateOf(false) }
+    var selectedGenreForDetail by remember { mutableStateOf<String?>(null) }
+    var selectedGenreOriginBounds by remember { mutableStateOf<Rect?>(null) }
+
+    var selectedChartGenre by remember { mutableStateOf("Global") }
+    var isTopChartsExpanded by remember { mutableStateOf(false) }
+    var isChartRefreshing by remember { mutableStateOf(false) }
+    var dynamicChartSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    val chartGenres = remember { listOf("Global", "Punjabi", "Bollywood", "Pop", "Hip-Hop", "Lo-Fi") }
     val scope = rememberCoroutineScope()
 
-    // Dynamically filter or fetch tracks when user selects a genre
-    LaunchedEffect(selectedGenre) {
-        val genre = selectedGenre
-        if (genre != null && genre != "All") {
-            isGenreLoading = true
-            val local = (state.recommendations + state.recentlyPlayed + state.albums.flatMap { it.songs })
-                .filter { s ->
-                    s.genre.contains(genre, ignoreCase = true) ||
-                    s.title.contains(genre, ignoreCase = true) ||
-                    s.artist.contains(genre, ignoreCase = true)
-                }.distinctBy { it.id }
-            genreTracks = local
-            scope.launch {
-                try {
-                    val fetched = MusicRepository.search("$genre music hits")
-                    genreTracks = (local + fetched).distinctBy { it.id }
-                } catch (_: Exception) {}
-                isGenreLoading = false
-            }
+    LaunchedEffect(selectedChartGenre) {
+        if (selectedChartGenre == "Global") {
+            dynamicChartSongs = emptyList()
         } else {
-            genreTracks = emptyList()
-            isGenreLoading = false
+            isChartRefreshing = true
+            try {
+                val q = when (selectedChartGenre) {
+                    "Punjabi" -> "top punjabi songs 2024"
+                    "Bollywood" -> "top bollywood songs 2024"
+                    "Pop" -> "top pop hits 2024"
+                    "Hip-Hop" -> "top hip hop songs 2024"
+                    "Lo-Fi" -> "lofi chill beats songs"
+                    else -> "$selectedChartGenre hits"
+                }
+                val fetched = MusicRepository.search(q)
+                if (fetched.isNotEmpty()) dynamicChartSongs = fetched
+            } catch (_: Exception) {}
+            isChartRefreshing = false
         }
     }
 
@@ -104,7 +250,7 @@ fun ExploreScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .edgeFade(if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)),
-            contentPadding = PaddingValues(top = 180.dp, bottom = 120.dp)
+            contentPadding = PaddingValues(top = 185.dp, bottom = LocalDynamicBottomPadding.current)
         ) {
             // Horizontal Genre Selector Pills
             item {
@@ -113,41 +259,30 @@ fun ExploreScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    item {
-                        val isAllSelected = selectedGenre == null || selectedGenre == "All"
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(if (isAllSelected) AccentRed else if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f))
-                                .clickable { selectedGenre = "All" }
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                "All Genres",
-                                color = if (isAllSelected) Color.White else textSecondary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-
                     items(GENRES) { (name, color) ->
-                        val isSelected = selectedGenre == name
+                        var pillBounds by remember { mutableStateOf<Rect?>(null) }
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(if (isSelected) color else if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f))
-                                .clickable { selectedGenre = if (isSelected) "All" else name }
+                                .background(if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f))
+                                .onGloballyPositioned { pillBounds = it.boundsInRoot() }
+                                .clickable {
+                                    selectedGenreOriginBounds = pillBounds
+                                    selectedGenreForDetail = name
+                                }
                                 .padding(horizontal = 14.dp, vertical = 8.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (isSelected) {
-                                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(color)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     name,
-                                    color = if (isSelected) Color.White else textSecondary,
+                                    color = textSecondary,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -158,225 +293,650 @@ fun ExploreScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Genre-Specific Content View (when a genre is selected)
-            if (selectedGenre != null && selectedGenre != "All") {
-                val currentGenre = selectedGenre!!
-                val genreColor = GENRES.find { it.first == currentGenre }?.second ?: AccentRed
-
-                item {
-                    // Hero Banner for Selected Genre
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .height(120.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(genreColor, genreColor.copy(alpha = 0.65f), Color(0xFF141416))
-                                )
-                            )
-                            .padding(20.dp)
-                    ) {
-                        Column(modifier = Modifier.align(Alignment.CenterStart)) {
-                            Text("EXPLORING GENRE", color = Color.White.copy(alpha = 0.70f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(currentGenre, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
-                            Text(
-                                if (isGenreLoading) "Fetching latest tracks..." else "${genreTracks.size} tracks curated for you",
-                                color = Color.White.copy(alpha = 0.80f),
-                                fontSize = 12.sp
-                            )
-                        }
-
-                        if (genreTracks.isNotEmpty()) {
-                            IconButton(
-                                onClick = { onPlay(genreTracks.first(), genreTracks, null) },
-                                modifier = Modifier
-                                    .align(Alignment.CenterEnd)
-                                    .size(50.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White)
-                            ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = "Play Genre", tint = Color.Black, modifier = Modifier.size(28.dp))
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(20.dp))
-                }
-
-                // Genre Tracklist
-                if (genreTracks.isNotEmpty()) {
-                    item {
-                        Text(
-                            "$currentGenre Top Hits",
-                            color = textPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .background(cardBg, RoundedCornerShape(16.dp))
+            // All Genres 2-Column Grid
+            item {
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    for (i in GENRES.indices step 2) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            genreTracks.take(15).forEachIndexed { idx, song ->
-                                var rowBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-                                Row(
+                            for (j in i until minOf(i + 2, GENRES.size)) {
+                                val (name, _) = GENRES[j]
+                                val palette = GENRE_PALETTES.find { it.name.equals(name, ignoreCase = true) }
+                                    ?: GenrePalette(name, AccentRed, AccentRed, Color(0xFFFF5E36))
+                                var cardBounds by remember { mutableStateOf<Rect?>(null) }
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { onPlay(song, genreTracks, rowBounds) }
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .weight(1f)
+                                        .height(96.dp)
                                 ) {
-                                    Text("${idx + 1}", color = textMuted, fontSize = 13.sp, modifier = Modifier.width(22.dp))
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    AsyncImage(
-                                        model = song.coverUrl,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .onGloballyPositioned { rowBounds = it.boundsInRoot() }
-                                            .clip(RoundedCornerShape(8.dp))
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(song.title, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                        Text(song.artist, color = textSecondary, fontSize = 12.sp, maxLines = 1)
-                                    }
-                                    val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
-                                    Text(dur, color = textMuted, fontSize = 12.sp)
-                                }
-                                if (idx < minOf(14, genreTracks.size - 1)) {
-                                    HorizontalDivider(color = dividerColor)
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(24.dp))
-                    }
-                } else if (isGenreLoading) {
-                    item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(color = AccentRed, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
-                        }
-                    }
-                }
-            } else {
-                // All Genres Grid
-                item {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                        for (i in GENRES.indices step 2) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                for (j in i until minOf(i + 2, GENRES.size)) {
-                                    val (name, color) = GENRES[j]
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(96.dp)
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(color)
-                                            .clickable { selectedGenre = name }
-                                    ) {
+                                    // Ambient color blur bleed into canvas: only in dark mode to prevent rectangular blur bleed in light mode
+                                    if (isDark) {
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .background(
-                                                    Brush.linearGradient(
-                                                        listOf(Color.White.copy(alpha = 0.15f), Color.Transparent)
-                                                    )
-                                                )
+                                                .blur(14.dp)
+                                                .background(palette.primaryColor.copy(alpha = 0.40f), RoundedCornerShape(18.dp))
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(18.dp))
+                                            .border(1.dp, if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
+                                            .onGloballyPositioned { cardBounds = it.boundsInRoot() }
+                                            .clickable {
+                                                selectedGenreOriginBounds = cardBounds
+                                                selectedGenreForDetail = name
+                                            }
+                                    ) {
+                                        LiveMorphingGradientCard(
+                                            palette = palette,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.15f))
                                         )
                                         Text(
                                             name,
                                             color = Color.White,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp,
-                                            modifier = Modifier.padding(14.dp)
+                                            fontSize = 17.sp,
+                                            modifier = Modifier.padding(16.dp)
                                         )
                                     }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(12.dp))
                         }
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
                 }
+            }
 
-                // Top Charts
-                if (state.recommendations.isNotEmpty()) {
-                    item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "Top Charts",
-                            color = textPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Column(
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp)
-                                .background(cardBg, RoundedCornerShape(16.dp))
-                        ) {
-                            state.recommendations.filter { !it.isAlbum }.take(8).forEachIndexed { idx, song ->
-                                var rowBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { onPlay(song, state.recommendations, rowBounds) }
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("${idx + 1}", color = textMuted, fontSize = 13.sp, modifier = Modifier.width(20.dp))
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    AsyncImage(
-                                        model = song.coverUrl,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .onGloballyPositioned { rowBounds = it.boundsInRoot() }
-                                            .clip(RoundedCornerShape(8.dp))
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(song.title, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                                        Text(song.artist, color = textSecondary, fontSize = 12.sp, maxLines = 1)
+            // Top Charts Section with Multiple Charts, Refresh, and See More
+            val currentChartList = if (selectedChartGenre == "Global" || dynamicChartSongs.isEmpty()) {
+                state.recommendations.filter { !it.isAlbum }
+            } else {
+                dynamicChartSongs
+            }
+
+            if (currentChartList.isNotEmpty() || isChartRefreshing) {
+                item {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "Top Charts",
+                                color = textPrimary,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            IconButton(
+                                onClick = {
+                                    scope.launch {
+                                        isChartRefreshing = true
+                                        try {
+                                            val q = when (selectedChartGenre) {
+                                                "Global" -> "global top 50 hits 2024"
+                                                "Punjabi" -> "top punjabi songs 2024"
+                                                "Bollywood" -> "top bollywood songs 2024"
+                                                "Pop" -> "top pop hits 2024"
+                                                "Hip-Hop" -> "top hip hop songs 2024"
+                                                "Lo-Fi" -> "lofi chill beats songs"
+                                                else -> "$selectedChartGenre hits"
+                                            }
+                                            val fresh = MusicRepository.search(q)
+                                            if (fresh.isNotEmpty()) dynamicChartSongs = fresh
+                                        } catch (_: Exception) {}
+                                        isChartRefreshing = false
                                     }
-                                    val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
-                                    Text(dur, color = textMuted, fontSize = 12.sp)
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                if (isChartRefreshing) {
+                                    CircularProgressIndicator(
+                                        color = AccentRed,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                } else {
+                                    Icon(
+                                        Icons.Default.Refresh,
+                                        contentDescription = "Refresh Charts",
+                                        tint = textSecondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
-                                if (idx < 7) HorizontalDivider(color = dividerColor)
                             }
+                        }
+                        if (currentChartList.size > 8) {
+                            Text(
+                                text = if (isTopChartsExpanded) "See Less" else "See More",
+                                color = AccentRed,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.clickable { isTopChartsExpanded = !isTopChartsExpanded }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Language / Genre Chart Selector Chips
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(chartGenres) { g ->
+                            val isSelected = selectedChartGenre == g
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (isSelected) AccentRed else (if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f)))
+                                    .clickable {
+                                        selectedChartGenre = g
+                                        isTopChartsExpanded = false
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = g,
+                                    color = if (isSelected) Color.White else textSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Column(
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp)
+                            .background(cardBg, RoundedCornerShape(16.dp))
+                    ) {
+                        val tracksToShow = if (isTopChartsExpanded) currentChartList else currentChartList.take(8)
+                        for ((idx, song) in tracksToShow.withIndex()) {
+                            var rowBounds by remember { mutableStateOf<Rect?>(null) }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onPlay(song, currentChartList, rowBounds) }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("${idx + 1}", color = textMuted, fontSize = 13.sp, modifier = Modifier.width(20.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                AsyncImage(
+                                    model = song.coverUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                                        .clip(RoundedCornerShape(8.dp))
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(song.title, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                                    Text(song.artist, color = textSecondary, fontSize = 12.sp, maxLines = 1)
+                                }
+                                val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
+                                Text(dur, color = textMuted, fontSize = 12.sp)
+                            }
+                            if (idx < tracksToShow.size - 1) HorizontalDivider(color = dividerColor)
                         }
                     }
                 }
             }
         }
 
-        // Header Title
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .offset { IntOffset(0, (headerOffset() * 0.85f).roundToInt()) }
-                .graphicsLayer { alpha = headerAlpha() }
-                .padding(top = 100.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
-        ) {
-            Text("Browse", color = textPrimary, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text(
-                if (selectedGenre != null && selectedGenre != "All") "Genre: $selectedGenre" else "Discover something new",
-                color = textSecondary,
-                fontSize = 13.sp
+        // Header: "Browse" Title (Hidden when category detail overlay is open)
+        if (selectedGenreForDetail == null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { IntOffset(0, (headerOffset() * 0.85f).roundToInt()) }
+                    .graphicsLayer { alpha = headerAlpha() }
+                    .padding(top = 110.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
+            ) {
+                Text("Browse", color = textPrimary, fontSize = 31.sp, fontWeight = FontWeight.Black)
+                Text(
+                    "Discover something new",
+                    color = textSecondary,
+                    fontSize = 13.sp
+                )
+            }
+        }
+
+        // Fluid Genre Detail Overlay: expanding animation matching expanded album page, page color matching artwork/genre
+        FluidGenreDetailOverlay(
+            genre = selectedGenreForDetail,
+            sourceBounds = selectedGenreOriginBounds,
+            state = state,
+            onClose = { selectedGenreForDetail = null },
+            onPlay = onPlay
+        )
+    }
+}
+
+@Composable
+fun FluidGenreDetailOverlay(
+    genre: String?,
+    sourceBounds: Rect?,
+    state: PlayerUiState,
+    onClose: () -> Unit,
+    onPlay: (Song, List<Song>, Rect?) -> Unit
+) {
+    val density = LocalDensity.current
+    val config = LocalConfiguration.current
+    val isDark = isDarkTheme(state.themeMode)
+
+    var currentGenre by remember { mutableStateOf<String?>(null) }
+    var currentOriginBounds by remember { mutableStateOf<Rect?>(null) }
+    val progress = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+
+    var genreTracks by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var isGenreLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(genre) {
+        if (genre != null) {
+            currentGenre = genre
+            if (sourceBounds != null) {
+                currentOriginBounds = sourceBounds
+            }
+            isGenreLoading = true
+            val local = (state.recommendations + state.recentlyPlayed + state.albums.flatMap { it.songs })
+                .filter { s ->
+                    s.genre.contains(genre, ignoreCase = true) ||
+                    s.title.contains(genre, ignoreCase = true) ||
+                    s.artist.contains(genre, ignoreCase = true)
+                }.distinctBy { it.id }
+            genreTracks = local
+            scope.launch {
+                try {
+                    val (q1, q2) = when (genre.lowercase().trim()) {
+                        "punjabi" -> "top punjabi songs 2024" to "latest punjabi hits"
+                        "bollywood" -> "top bollywood songs 2024" to "hindi romantic hits"
+                        "hip-hop" -> "top hip hop songs 2024" to "rap drill hits"
+                        "pop" -> "top pop hits 2024" to "viral pop songs"
+                        "lo-fi" -> "lofi chill beats songs" to "lofi study beats"
+                        "indie" -> "top indie songs 2024" to "best indie folk"
+                        "ghazal" -> "best ghazals hits" to "jagjit singh ghazals"
+                        "classical" -> "indian classical music hits" to "classical instrumental"
+                        "electronic" -> "electronic dance music hits" to "edm festival hits"
+                        "r&b" -> "top r&b soul songs" to "modern r&b playlist"
+                        else -> "$genre hits 2024" to "best $genre tracks"
+                    }
+                    val d1 = async { MusicRepository.search(q1) }
+                    val d2 = async { MusicRepository.search(q2) }
+                    val combined = (local + d1.await() + d2.await()).distinctBy { it.id }
+                    if (combined.isNotEmpty()) {
+                        genreTracks = combined
+                    }
+                } catch (_: Exception) {}
+                isGenreLoading = false
+            }
+            progress.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(dampingRatio = 0.84f, stiffness = 320f)
             )
+        } else {
+            progress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 240, easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f))
+            )
+            currentGenre = null
+            currentOriginBounds = null
+            genreTracks = emptyList()
         }
     }
+
+    val p = progress.value
+    val curGenre = currentGenre
+
+    BackHandler(enabled = (p > 0.01f || genre != null)) {
+        scope.launch {
+            progress.animateTo(0f, tween(200))
+            onClose()
+        }
+    }
+
+    if (curGenre != null && p > 0.001f) {
+        val genreColor = GENRES.find { it.first.equals(curGenre, ignoreCase = true) }?.second ?: AccentRed
+        val screenWpx = with(density) { config.screenWidthDp.dp.toPx() }.coerceAtLeast(100f)
+        val screenHpx = with(density) { config.screenHeightDp.dp.toPx() }.coerceAtLeast(100f)
+
+        val origin = currentOriginBounds ?: Rect(
+            screenWpx / 2f - 120f,
+            screenHpx / 2f - 120f,
+            screenWpx / 2f + 120f,
+            screenHpx / 2f + 120f
+        )
+
+        // Interpolate container bounds exactly like FluidAlbumDetailOverlay
+        val curLeft = origin.left * (1f - p)
+        val curTop = origin.top * (1f - p)
+        val curWidth = (origin.width + (screenWpx - origin.width) * p).coerceAtLeast(20f)
+        val curHeight = (origin.height + (screenHpx - origin.height) * p).coerceAtLeast(20f)
+        val curCorner = with(density) { (18.dp.toPx() * (1f - p)).coerceAtLeast(0f).toDp() }
+
+        val palette = GENRE_PALETTES.find { it.name.equals(curGenre, ignoreCase = true) }
+            ?: GenrePalette(curGenre, genreColor, genreColor, AccentRed)
+
+        val listState = rememberLazyListState()
+
+        // Scroll-driven swipe up parallax and blur calculation for the hero album artwork
+        val scrollOffset = if (listState.firstVisibleItemIndex == 0) {
+            listState.firstVisibleItemScrollOffset.toFloat()
+        } else {
+            listState.firstVisibleItemScrollOffset.toFloat() + 800f
+        }
+        val artTranslateY = (-scrollOffset * 0.75f).coerceAtLeast(-400f) * p
+        val artBlur = ((scrollOffset / 14f) * p).coerceIn(0f, 24f).dp
+        val artScale = (1f - (scrollOffset / 1400f) * p).coerceIn(0.72f, 1f)
+        val artAlpha = (1f - (scrollOffset / 340f) * p).coerceIn(0f, 1f)
+
+        var dragY by remember { mutableFloatStateOf(0f) }
+        val pageOpaqueBg = if (isDark) Color(0xFF0F0F12) else Color(0xFFF6F7F9)
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 1. Scrim
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.40f * p))
+            )
+
+            // 2. Morphing Card Container
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(curLeft.roundToInt(), (curTop + dragY).roundToInt()) }
+                    .size(with(density) { curWidth.toDp() }, with(density) { curHeight.toDp() })
+                    .clip(RoundedCornerShape(curCorner))
+                    .background(pageOpaqueBg)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (dragY > 200f) {
+                                    scope.launch {
+                                        progress.animateTo(0f, tween(200))
+                                        onClose()
+                                    }
+                                } else {
+                                    dragY = 0f
+                                }
+                            },
+                            onVerticalDrag = { _, dragAmount ->
+                                if (dragAmount > 0 || dragY > 0) {
+                                    dragY = (dragY + dragAmount).coerceAtLeast(0f)
+                                }
+                            }
+                        )
+                    }
+            ) {
+                // If closing, show category preview
+                if (p < 0.22f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Brush.linearGradient(listOf(genreColor, palette.secondaryColor))),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(curGenre, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    }
+                }
+
+                if (p > 0.05f) {
+                    val contentAlpha = ((p - 0.18f) / 0.82f).coerceIn(0f, 1f)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { alpha = contentAlpha }
+                    ) {
+                        // Ambient Blurred Artwork Backdrop inside morphing card
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            LiveMorphingGradientBackground(
+                                palette = palette,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .blur(80.dp)
+                                    .graphicsLayer { alpha = 0.65f }
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = if (isDark) 0.65f else 0.35f))
+                            )
+                        }
+
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(top = 44.dp, bottom = LocalDynamicBottomPadding.current + 28.dp)
+                        ) {
+                    // Album Page Hero Section: Centered 200dp Cover with shadow + LiveMorphingGradient + Parallax & Blur
+                    item {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(200.dp)
+                                    .graphicsLayer {
+                                        scaleX = artScale
+                                        scaleY = artScale
+                                        alpha = artAlpha
+                                        translationY = artTranslateY
+                                    }
+                                    .then(if (artBlur > 0.dp) Modifier.blur(artBlur) else Modifier)
+                                    .shadow(18.dp, RoundedCornerShape(22.dp))
+                                    .clip(RoundedCornerShape(22.dp))
+                            ) {
+                                LiveMorphingGradientCard(
+                                    palette = palette,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.12f))
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(20.dp))
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .graphicsLayer {
+                                        alpha = (1f - (scrollOffset / 320f) * p).coerceIn(0f, 1f)
+                                        translationY = (-scrollOffset * 0.4f).coerceAtLeast(-200f) * p
+                                    },
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    "GENRE SPOTLIGHT",
+                                    color = palette.accentColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 2.sp
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    curGenre,
+                                    color = Color.White,
+                                    fontSize = 32.sp,
+                                    fontWeight = FontWeight.Black,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    if (isGenreLoading) "Fetching curated tracks..." else "${genreTracks.size} tracks curated for you",
+                                    color = Color.White.copy(alpha = 0.70f),
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+
+                    // Action Controls Row: Shuffle & Large Center Play (matching AlbumDetailSheet borderless circular buttons)
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp, vertical = 20.dp),
+                            horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val buttonBg = if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.08f)
+                            val buttonIconTint = Color.White
+                            val playBtnBg = Color.White
+                            val playBtnIconTint = Color.Black
+
+                            // Shuffle Button (50dp borderless circle)
+                            Box(
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .clip(CircleShape)
+                                    .background(buttonBg)
+                                    .clickable {
+                                        if (genreTracks.isNotEmpty()) {
+                                            val shuffled = genreTracks.shuffled()
+                                            onPlay(shuffled.first(), shuffled, null)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Shuffle,
+                                    contentDescription = "Shuffle",
+                                    tint = buttonIconTint,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
+                            // Large Center Play Button (64dp borderless circle)
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(playBtnBg)
+                                    .clickable {
+                                        if (genreTracks.isNotEmpty()) onPlay(genreTracks.first(), genreTracks, null)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.PlayArrow,
+                                    contentDescription = "Play",
+                                    tint = playBtnIconTint,
+                                    modifier = Modifier.size(38.dp)
+                                )
+                            }
+
+                            // Save Button (50dp borderless circle on right side)
+                            var isGenreSaved by remember { mutableStateOf(false) }
+                            val context = androidx.compose.ui.platform.LocalContext.current
+                            Box(
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .clip(CircleShape)
+                                    .background(buttonBg)
+                                    .clickable {
+                                        isGenreSaved = !isGenreSaved
+                                        if (isGenreSaved && genreTracks.isNotEmpty()) {
+                                            for (s in genreTracks.take(15)) {
+                                                com.beatles.player.data.LocalStorage.saveFavorite(context, s)
+                                            }
+                                            android.widget.Toast.makeText(context, "Saved category tracks to Library", android.widget.Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            android.widget.Toast.makeText(context, "Removed from Library", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    if (isGenreSaved) Icons.Default.Bookmark else Icons.Default.BookmarkAdd,
+                                    contentDescription = "Save to Library",
+                                    tint = if (isGenreSaved) Color(0xFFF82C38) else buttonIconTint,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Tracklist (matching AlbumDetailSheet styling)
+                    if (genreTracks.isNotEmpty()) {
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                                    .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
+                            ) {
+                                for ((idx, song) in genreTracks.withIndex()) {
+                                    var rowBounds by remember { mutableStateOf<Rect?>(null) }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { onPlay(song, genreTracks, rowBounds) }
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("${idx + 1}", color = Color.White.copy(alpha = 0.55f), fontSize = 13.sp, modifier = Modifier.width(24.dp))
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        AsyncImage(
+                                            model = song.coverUrl,
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(46.dp)
+                                                .onGloballyPositioned { rowBounds = it.boundsInRoot() }
+                                                .clip(RoundedCornerShape(8.dp))
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                            Text(song.artist, color = Color.White.copy(alpha = 0.70f), fontSize = 12.sp, maxLines = 1)
+                                        }
+                                        val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
+                                        Text(dur, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
+                                    }
+                                    if (idx < genreTracks.size - 1) {
+                                        HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                                    }
+                                }
+                            }
+                        }
+                    } else if (isGenreLoading) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 48.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = AccentRed, strokeWidth = 2.5.dp, modifier = Modifier.size(32.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+}
 }

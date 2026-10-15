@@ -6,6 +6,11 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
 import com.beatles.player.ui.theme.AppTheme
+import com.beatles.player.ui.theme.QualityManager
+import com.beatles.player.ui.theme.VisualQuality
+import android.os.Build
+import androidx.compose.ui.graphics.asComposeRenderEffect
+import com.beatles.player.ui.motion.LiquidMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -47,12 +52,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
@@ -114,7 +122,7 @@ fun NowPlayingSheet(
     onPlayFromQueue: (Song) -> Unit,
     autoPlayEnabled: Boolean = true,
     onToggleAutoPlay: () -> Unit = {},
-    autoMixMode: com.beatles.player.player.automix.AutoMixMode = com.beatles.player.player.automix.AutoMixMode.NEW,
+    autoMixMode: com.beatles.player.player.automix.AutoMixMode = com.beatles.player.player.automix.AutoMixMode.ON,
     autoMixEnabled: Boolean = true,
     onToggleAutoMix: () -> Unit = {},
     onGoToAlbum: (Song) -> Unit = {},
@@ -131,7 +139,10 @@ fun NowPlayingSheet(
     onCreatePlaylist: (String, Song) -> Unit = { _, _ -> },
     onAddToPlaylist: (String, Song) -> Unit = { _, _ -> },
     morphProgress: Float = 1f,
-    sourceOriginBounds: Rect? = null
+    sourceOriginBounds: Rect? = null,
+    queueTitle: String? = null,
+    isArtistMixLoading: Boolean = false,
+    onPlayArtistMix: (String) -> Unit = {}
 ) {
     var isHeartAnimating by remember { mutableStateOf(false) }
     val heartScale by animateFloatAsState(targetValue = if (isHeartAnimating) 1.5f else 1f, animationSpec = spring(dampingRatio = 0.4f, stiffness = 400f), label = "heartScale")
@@ -218,10 +229,28 @@ fun NowPlayingSheet(
                 )
             }
     ) {
-        val backgroundBlurAmount by animateDpAsState(targetValue = if (showLyrics || showNextUp) 85.dp else 70.dp, label = "bgBlur")
-        val sheetBackgroundAlpha = (morphProgress / 0.70f).coerceIn(0f, 1f)
+        val backgroundBlurAmount by animateDpAsState(targetValue = ((if (showLyrics || showNextUp) 20.dp else 16.dp) * morphProgress).coerceAtLeast(0.dp), label = "bgBlur")
+        val sheetBackgroundAlpha = 1f
 
         val infiniteDrift = rememberInfiniteTransition(label = "driftingAmbient")
+        val liveBlurScale by infiniteDrift.animateFloat(
+            initialValue = 1.02f,
+            targetValue = 1.08f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(16000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "liveBlurScale"
+        )
+        val liveBlurRot by infiniteDrift.animateFloat(
+            initialValue = -1.0f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(20000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "liveBlurRot"
+        )
         val lyricsDriftX by infiniteDrift.animateFloat(
             initialValue = -25f,
             targetValue = 25f,
@@ -311,8 +340,13 @@ fun NowPlayingSheet(
                         if (showLyrics && !showNextUp) {
                             translationX = lyricsDriftX
                             translationY = lyricsDriftY
-                            scaleX = 1.12f
-                            scaleY = 1.12f
+                            scaleX = 1.12f * liveBlurScale
+                            scaleY = 1.12f * liveBlurScale
+                            rotationZ = liveBlurRot
+                        } else {
+                            scaleX = liveBlurScale
+                            scaleY = liveBlurScale
+                            rotationZ = liveBlurRot
                         }
                     }
             ) {
@@ -340,6 +374,17 @@ fun NowPlayingSheet(
 
         val isLyricsActive = showLyrics && !showNextUp
         val isNextUpActive = showNextUp
+
+        val lyricsProgress by animateFloatAsState(
+            targetValue = if (isLyricsActive) 1f else 0f,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
+            label = "lyricsProgress"
+        )
+        val nextUpProgress by animateFloatAsState(
+            targetValue = if (isNextUpActive) 1f else 0f,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
+            label = "nextUpProgress"
+        )
 
         var dragOffsetX by remember { mutableFloatStateOf(0f) }
         val animatedDragX by animateFloatAsState(
@@ -376,26 +421,11 @@ fun NowPlayingSheet(
             label = "controlsAlpha"
         )
 
-        val coverSize by animateDpAsState(
-            targetValue = if (isCompactCover) 68.dp else defaultCoverSize,
-            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
-            label = "coverSize"
-        )
-        val coverLeft by animateDpAsState(
-            targetValue = if (isCompactCover) 24.dp else defaultCoverLeft,
-            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
-            label = "coverLeft"
-        )
-        val coverTop by animateDpAsState(
-            targetValue = if (isCompactCover) 54.dp else defaultCoverTop,
-            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
-            label = "coverTop"
-        )
-        val coverCorner by animateDpAsState(
-            targetValue = if (isCompactCover) 14.dp else 22.dp,
-            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
-            label = "coverCorner"
-        )
+        val compactProgress = maxOf(lyricsProgress, nextUpProgress)
+        val coverSize = defaultCoverSize + (68.dp - defaultCoverSize) * compactProgress
+        val coverLeft = defaultCoverLeft + (24.dp - defaultCoverLeft) * compactProgress
+        val coverTop = defaultCoverTop + (54.dp - defaultCoverTop) * compactProgress
+        val coverCorner = 22.dp + (14.dp - 22.dp) * compactProgress
         val coverAlpha by animateFloatAsState(
             targetValue = 1f,
             animationSpec = tween(220),
@@ -424,24 +454,35 @@ fun NowPlayingSheet(
         val currentCoverTop = originArtTop + (coverTop - originArtTop) * morphProgress
         val currentCoverSize = originArtSize + (coverSize - originArtSize) * morphProgress
         val currentCoverCorner = originArtCorner + (coverCorner - originArtCorner) * morphProgress
+        val morphMotionFactor = (4f * morphProgress * (1f - morphProgress)).coerceIn(0f, 1f)
+        val artStretchY = 1f + (0.09f * morphMotionFactor)
+        val artSqueezeX = 1f - (0.04f * morphMotionFactor)
+
+        val baseCoverSize = defaultCoverSize.coerceAtLeast(100.dp)
+        val coverScale = (currentCoverSize / baseCoverSize).coerceAtLeast(0.01f)
 
         // Apple Music-Style Interactive Foreground Album Artwork (glides to top-left when Next Up or Lyrics is active, morphs to mini player when closing)
         if (coverAlpha > 0.01f && morphProgress > 0.0001f) {
             Box(
                 modifier = Modifier
-                    .offset(x = currentCoverLeft, y = currentCoverTop)
-                    .size(currentCoverSize.coerceAtLeast(1.dp))
+                    .offset { IntOffset(with(density) { currentCoverLeft.roundToPx() }, with(density) { currentCoverTop.roundToPx() }) }
+                    .size(baseCoverSize)
                     .graphicsLayer {
                         alpha = coverAlpha
+                        transformOrigin = TransformOrigin(0f, 0f)
                         if (!isCompactCover && morphProgress >= 0.98f) {
-                            translationX = animatedDragX
                             val dampScale = 1f - (kotlin.math.abs(animatedDragX) / 3000f).coerceIn(0f, 0.05f)
-                            scaleX = dampScale
-                            scaleY = dampScale
+                            scaleX = coverScale * dampScale
+                            scaleY = coverScale * dampScale
+                            translationX = animatedDragX
+                        } else {
+                            scaleX = coverScale * artSqueezeX
+                            scaleY = coverScale * artStretchY
                         }
+                        shadowElevation = if (isCompactCover) 4.dp.toPx() else (16.dp.toPx() * morphProgress)
+                        shape = RoundedCornerShape(currentCoverCorner)
+                        clip = true
                     }
-                    .clip(RoundedCornerShape(currentCoverCorner))
-                    .shadow(if (isCompactCover) 4.dp else (18.dp * morphProgress), RoundedCornerShape(currentCoverCorner))
             ) {
                 if (currentCoverUrl.isNotBlank()) {
                     AsyncImage(
@@ -462,16 +503,18 @@ fun NowPlayingSheet(
         }
 
         // Header beside the left-glided cover (Next Up or Lyrics)
-        if (isCompactCover) {
+        val compactHeaderAlpha = maxOf(lyricsProgress, nextUpProgress)
+        if (compactHeaderAlpha > 0.01f) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 104.dp, end = 20.dp, top = 54.dp),
+                    .padding(start = 104.dp, end = 20.dp, top = 54.dp)
+                    .graphicsLayer { alpha = compactHeaderAlpha },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        if (isLyricsActive) "LYRICS" else "PLAYING NEXT",
+                        if (isLyricsActive) "LYRICS" else (queueTitle?.uppercase() ?: "PLAYING NEXT"),
                         color = AccentRed,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
@@ -483,12 +526,14 @@ fun NowPlayingSheet(
             }
         }
 
-        if (!isLyricsActive && !isNextUpActive) {
+        val mainViewAlpha = (1f - maxOf(lyricsProgress, nextUpProgress)).coerceIn(0f, 1f)
+        if (mainViewAlpha > 0.01f) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = 60.dp, bottom = 220.dp)
                     .graphicsLayer {
+                        alpha = mainViewAlpha
                         translationX = animatedDragX
                         val dampScale = 1f - (kotlin.math.abs(animatedDragX) / 3000f).coerceIn(0f, 0.05f)
                         scaleX = dampScale
@@ -646,6 +691,26 @@ fun NowPlayingSheet(
                             contentPadding = PaddingValues(top = 10.dp, bottom = 40.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            if (queueTitle != null) {
+                                item {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 20.dp, vertical = 4.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(Color.White.copy(alpha = 0.12f))
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Radio, contentDescription = null, tint = AccentRed, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(queueTitle, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                        if (isArtistMixLoading) {
+                                            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White.copy(alpha = 0.7f), strokeWidth = 2.dp)
+                                        }
+                                    }
+                                }
+                            }
                             item {
                                 Row(
                                     modifier = Modifier
@@ -714,15 +779,20 @@ fun NowPlayingSheet(
                     }
                 }
             }
-        } else if (isLyricsActive) {
+        }
+
+        if (lyricsProgress > 0.001f) {
+            val lyrStretchY = 1.0f + 0.08f * (1f - lyricsProgress)
+            val lyrTransY = with(density) { 36.dp.toPx() * (1f - lyricsProgress) }
+
             // Apple Music Synced Word-by-Word Lyrics View
             val processedLyrics = remember(lyrics, duration) { LyricsProcessor.processSyncedLyrics(lyrics, trackDurationMs = duration) }
 
             // High-refresh (60/120fps) frame clock interpolating position from audio playback with ~35ms latency compensation
             var livePositionMs by remember { mutableLongStateOf(currentPosition) }
-            LaunchedEffect(isPlaying, currentPosition) {
+            LaunchedEffect(isPlaying, currentPosition, isLyricsActive) {
                 livePositionMs = currentPosition
-                if (isPlaying) {
+                if (isPlaying && isLyricsActive) {
                     val anchorRealtime = SystemClock.elapsedRealtime()
                     val anchorPos = currentPosition
                     while (isActive) {
@@ -739,6 +809,12 @@ fun NowPlayingSheet(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = 130.dp, bottom = if (isLyricsActive && !controlsVisible) 30.dp else 180.dp)
+                    .graphicsLayer {
+                        scaleY = lyrStretchY
+                        translationY = lyrTransY
+                        alpha = lyricsProgress.coerceIn(0f, 1f)
+                        transformOrigin = TransformOrigin(0.5f, 1.0f)
+                    }
                     .pointerInput(Unit) {
                         var totalDx = 0f
                         detectHorizontalDragGestures(
@@ -755,19 +831,13 @@ fun NowPlayingSheet(
                             }
                         )
                     }
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = {
-                                lastLyricsInteractionTime = System.currentTimeMillis()
-                                controlsVisible = true
-                            }
-                        )
-                    }
             ) {
                 if (processedLyrics.isNotEmpty()) {
                     val listState = rememberLazyListState()
-                    val currentIdx = remember(processedLyrics, livePositionMs) {
-                        LyricsProcessor.findActiveLineIndex(processedLyrics, livePositionMs)
+                    val currentIdx by remember(processedLyrics) {
+                        derivedStateOf {
+                            LyricsProcessor.findActiveLineIndex(processedLyrics, livePositionMs)
+                        }
                     }
 
                     val isLyricsDragged by listState.interactionSource.collectIsDraggedAsState()
@@ -778,40 +848,39 @@ fun NowPlayingSheet(
                             manualScrolled = true
                             lastLyricsInteractionTime = System.currentTimeMillis()
                             controlsVisible = true
-                        } else if (manualScrolled) {
-                            // Resume auto-scroll after ~3s idle
-                            delay(3000L)
+                        }
+                    }
+
+                    LaunchedEffect(manualScrolled) {
+                        if (manualScrolled) {
+                            // Resume auto-scroll after ~6s idle
+                            delay(6000L)
                             manualScrolled = false
                         }
                     }
 
-                    // Auto-scroll active line to top anchor (~24% viewport) smoothly
+                    val anchorSpotDp = 72.dp
+                    val anchorSpotPx = with(density) { anchorSpotDp.roundToPx() }
+
+                    // Auto-scroll active line smoothly into the fixed anchor spot
                     LaunchedEffect(currentIdx, manualScrolled) {
                         if (currentIdx in processedLyrics.indices && !manualScrolled && !isLyricsDragged) {
-                            val viewportHeight = listState.layoutInfo.viewportSize.height
-                            if (viewportHeight > 0) {
-                                val topAnchor = (viewportHeight * 0.24f).toInt()
-                                val item = listState.layoutInfo.visibleItemsInfo.find { it.index == currentIdx }
-                                if (item != null) {
-                                    val delta = item.offset - topAnchor
-                                    if (kotlin.math.abs(delta) > 4) {
-                                        listState.animateScrollBy(
-                                            value = delta.toFloat(),
-                                            animationSpec = spring(
-                                                dampingRatio = 0.85f,
-                                                stiffness = Spring.StiffnessMediumLow
-                                            )
+                            val item = listState.layoutInfo.visibleItemsInfo.find { it.index == currentIdx }
+                            if (item != null) {
+                                val delta = item.offset - anchorSpotPx
+                                if (kotlin.math.abs(delta) > 2) {
+                                    listState.animateScrollBy(
+                                        value = delta.toFloat(),
+                                        animationSpec = spring(
+                                            dampingRatio = 0.52f,
+                                            stiffness = 260f
                                         )
-                                    }
-                                } else {
-                                    listState.animateScrollToItem(
-                                        index = currentIdx,
-                                        scrollOffset = -topAnchor
                                     )
                                 }
                             } else {
                                 listState.animateScrollToItem(
-                                    index = currentIdx
+                                    index = (currentIdx - 1).coerceAtLeast(0),
+                                    scrollOffset = 0
                                 )
                             }
                         }
@@ -820,11 +889,12 @@ fun NowPlayingSheet(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTapGestures {
-                                    lastLyricsInteractionTime = System.currentTimeMillis()
-                                    controlsVisible = true
-                                }
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                lastLyricsInteractionTime = System.currentTimeMillis()
+                                controlsVisible = !controlsVisible
                             }
                             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                             .drawWithContent {
@@ -832,8 +902,12 @@ fun NowPlayingSheet(
                                 drawRect(
                                     brush = Brush.verticalGradient(
                                         0.0f to Color.Transparent,
-                                        0.07f to Color.Black,
-                                        0.88f to Color.Black,
+                                        0.04f to Color.Black.copy(alpha = 0.30f),
+                                        0.09f to Color.Black.copy(alpha = 0.75f),
+                                        0.15f to Color.Black,
+                                        0.84f to Color.Black,
+                                        0.90f to Color.Black.copy(alpha = 0.75f),
+                                        0.96f to Color.Black.copy(alpha = 0.30f),
                                         1.0f to Color.Transparent
                                     ),
                                     blendMode = BlendMode.DstIn
@@ -845,7 +919,7 @@ fun NowPlayingSheet(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(start = 28.dp, end = 28.dp),
-                            contentPadding = PaddingValues(top = 16.dp, bottom = if (isLyricsActive && !controlsVisible) 120.dp else 260.dp),
+                            contentPadding = PaddingValues(top = anchorSpotDp, bottom = if (isLyricsActive && !controlsVisible) 220.dp else 360.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             itemsIndexed(processedLyrics, key = { idx, line -> "lyric_${line.timeMs}_$idx" }) { idx, line ->
@@ -853,23 +927,38 @@ fun NowPlayingSheet(
                                 val distance = if (currentIdx >= 0) kotlin.math.abs(idx - currentIdx) else 1
                                 val cappedDistance = distance.coerceAtMost(4)
 
-                                val targetScale = if (isActive) 1.02f else 1.0f
+                                val targetScale = if (isActive) 1.05f else 1.0f
                                 val targetAlpha = if (isActive) 1.0f else (0.50f - cappedDistance * 0.08f).coerceAtLeast(0.20f)
                                 val targetBlur = if (isActive) 0.dp else (cappedDistance.coerceAtMost(2) * 0.8f).dp
+                                val targetBounceY = if (isActive) (-6).dp else 0.dp
 
+                                val lineBounceY by animateDpAsState(
+                                    targetValue = targetBounceY,
+                                    animationSpec = spring(
+                                        dampingRatio = 0.44f,
+                                        stiffness = 240f
+                                    ),
+                                    label = "lineBounceY_$idx"
+                                )
                                 val lineScale by animateFloatAsState(
                                     targetValue = targetScale,
-                                    animationSpec = tween(450, easing = FastOutSlowInEasing),
+                                    animationSpec = spring(
+                                        dampingRatio = 0.70f,
+                                        stiffness = 320f
+                                    ),
                                     label = "lineScale_$idx"
                                 )
                                 val lineAlpha by animateFloatAsState(
                                     targetValue = targetAlpha,
-                                    animationSpec = tween(450, easing = FastOutSlowInEasing),
+                                    animationSpec = spring(
+                                        dampingRatio = 0.70f,
+                                        stiffness = 400f
+                                    ),
                                     label = "lineAlpha_$idx"
                                 )
                                 val lineBlur by animateDpAsState(
                                     targetValue = targetBlur,
-                                    animationSpec = tween(450, easing = FastOutSlowInEasing),
+                                    animationSpec = tween(300),
                                     label = "lineBlur_$idx"
                                 )
 
@@ -877,6 +966,7 @@ fun NowPlayingSheet(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .graphicsLayer {
+                                            translationY = lineBounceY.toPx()
                                             scaleX = lineScale
                                             scaleY = lineScale
                                             alpha = lineAlpha
@@ -899,7 +989,7 @@ fun NowPlayingSheet(
                                         // Animated Instrumental Interlude: "♪" + 3 dots filling in across the duration
                                         val breakElapsed = (livePositionMs - line.timeMs).coerceIn(0L, line.durationMs)
                                         val breakProgress = if (line.durationMs > 0) (breakElapsed.toFloat() / line.durationMs).coerceIn(0f, 1f) else 0f
-                                        val breathScale = if (isActive) (1.0f + 0.04f * kotlin.math.sin(breakElapsed / 350.0).toFloat()) else 1.0f
+                                        val breathScale = if (isActive) (1.0f + 0.012f * kotlin.math.sin(breakElapsed / 700.0).toFloat()) else 1.0f
 
                                         val dot1Active = if (isActive) (breakProgress >= 0.15f) else (currentIdx >= 0 && idx < currentIdx)
                                         val dot2Active = if (isActive) (breakProgress >= 0.50f) else (currentIdx >= 0 && idx < currentIdx)
@@ -976,30 +1066,6 @@ fun NowPlayingSheet(
                                 }
                             }
                         }
-
-                        // Ambient upper & bottom progressive blur fade
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
-                                .align(Alignment.TopCenter)
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(Color.Black.copy(alpha = 0.60f), Color.Transparent)
-                                    )
-                                )
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(90.dp)
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.70f))
-                                    )
-                                )
-                        )
                     }
                 } else {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1018,25 +1084,26 @@ fun NowPlayingSheet(
                 .graphicsLayer {
                     alpha = controlsVisibilityAlpha
                 }
-                .then(
-                    if (controlsAlpha < 0.1f) Modifier.pointerInput(Unit) {
-                        detectTapGestures {
-                            lastLyricsInteractionTime = System.currentTimeMillis()
-                            controlsVisible = true
-                        }
-                    } else Modifier
-                )
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.Bottom
         ) {
-            if (!showLyrics && !showNextUp) {
-                // Song title + artist + Language & Genre badge (shifted 6px up)
+            val songInfoProgress = (1f - maxOf(lyricsProgress, nextUpProgress)).coerceIn(0f, 1f)
+            if (songInfoProgress > 0.001f) {
                 Column(
                     modifier = Modifier
-                        .offset(y = (-6).dp)
-                        .padding(horizontal = 24.dp)
-                        .padding(top = 10.dp)
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            alpha = songInfoProgress
+                            translationY = -20f * (1f - songInfoProgress)
+                        }
                 ) {
+                    // Song title + artist + Language & Genre badge (shifted 6px up)
+                    Column(
+                        modifier = Modifier
+                            .offset(y = (-6).dp)
+                            .padding(horizontal = 24.dp)
+                            .padding(top = 10.dp)
+                    ) {
                     Text(song.title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1076,126 +1143,171 @@ fun NowPlayingSheet(
                     val isDownloading = downloadingSongId == song.id
                     val isDownloadFailed = downloadFailedSongId == song.id
 
+                    val dlProgressAnim by animateFloatAsState(
+                        targetValue = if (isDownloading) downloadProgress.coerceIn(0f, 1f) else if (isDownloaded) 1f else 0f,
+                        animationSpec = androidx.compose.animation.core.tween(durationMillis = 100, easing = androidx.compose.animation.core.LinearEasing),
+                        label = "dlProgressAnim"
+                    )
+
+                    val checkmarkScale by animateFloatAsState(
+                        targetValue = if (isDownloaded) 1f else 0.8f,
+                        animationSpec = LiquidMotion.Lens,
+                        label = "checkmarkLensScale"
+                    )
+
                     if (isLocalTrack) {
                         Spacer(modifier = Modifier.weight(1f))
                     } else {
                         val dlBg = when {
-                            isDownloaded -> Color.White.copy(alpha = 0.28f)
-                            isDownloading -> Color.White.copy(alpha = 0.22f)
-                            isDownloadFailed -> Color(0xFFE74C3C).copy(alpha = 0.25f)
-                            else -> Color.White.copy(alpha = 0.20f)
+                            isDownloaded -> Color.White.copy(alpha = 0.85f)
+                            isDownloading -> Color.White.copy(alpha = 0.20f)
+                            isDownloadFailed -> Color(0xFFE74C3C).copy(alpha = 0.22f)
+                            else -> Color.White.copy(alpha = 0.16f)
                         }
-                        val dlTint = when {
-                            isDownloaded -> Color.White
-                            isDownloading -> Color.White
-                            isDownloadFailed -> Color(0xFFFF6B6B)
-                            else -> Color.White
+                        val dlBorderColor = when {
+                            isDownloaded -> Color.Transparent
+                            isDownloadFailed -> Color(0xFFE74C3C).copy(alpha = 0.45f)
+                            else -> Color.White.copy(alpha = 0.25f)
                         }
+
+                        var isDlPressed by remember { mutableStateOf(false) }
+                        val dlPressScale by animateFloatAsState(
+                            targetValue = if (isDlPressed) 0.96f else 1.0f,
+                            animationSpec = LiquidMotion.Lens,
+                            label = "dlPressScale"
+                        )
 
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(38.dp)
+                                .graphicsLayer {
+                                    scaleX = dlPressScale
+                                    scaleY = dlPressScale
+                                }
                                 .clip(RoundedCornerShape(19.dp))
                                 .background(dlBg)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) {
-                                    Haptics.confirm(view)
-                                    when {
-                                        isDownloading -> onCancelDownload(song.id)
-                                        isDownloaded -> onRemoveDownload(song.id)
-                                        else -> onDownloadSong(song)
+                                .semantics {
+                                    contentDescription = when {
+                                        isDownloaded -> "Downloaded song"
+                                        isDownloading -> "Downloading song ${(dlProgressAnim * 100).toInt()}%"
+                                        isDownloadFailed -> "Retry download"
+                                        else -> "Download song"
                                     }
                                 }
-                                .padding(horizontal = 12.dp),
+                                .pointerInput(isDownloading, isDownloaded, isDownloadFailed) {
+                                    detectTapGestures(
+                                        onPress = {
+                                            isDlPressed = true
+                                            tryAwaitRelease()
+                                            isDlPressed = false
+                                        },
+                                        onTap = {
+                                            Haptics.confirm(view)
+                                            when {
+                                                isDownloading -> onCancelDownload(song.id)
+                                                isDownloaded -> onRemoveDownload(song.id)
+                                                else -> onDownloadSong(song)
+                                            }
+                                        }
+                                    )
+                                }
+                                .padding(horizontal = 10.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center
                             ) {
-                                when {
-                                    isDownloading -> {
-                                        CircularProgressIndicator(
-                                            progress = { downloadProgress },
-                                            modifier = Modifier.size(16.dp),
-                                            color = Color.White,
-                                            strokeWidth = 2.dp,
-                                            trackColor = Color.White.copy(alpha = 0.25f)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            "Downloading",
-                                            color = Color.White,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Icon(
-                                            Icons.Default.Close,
-                                            contentDescription = "Cancel",
-                                            tint = Color.White.copy(alpha = 0.7f),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                    }
-                                    isDownloaded -> {
-                                        Icon(
-                                            Icons.Default.Check,
-                                            contentDescription = "Downloaded",
-                                            tint = dlTint,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            "Downloaded",
-                                            color = dlTint,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1
-                                        )
-                                    }
-                                    isDownloadFailed -> {
-                                        Icon(
-                                            Icons.Default.Refresh,
-                                            contentDescription = "Retry Download",
-                                            tint = dlTint,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            "Retry",
-                                            color = dlTint,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1
-                                        )
-                                    }
-                                    else -> {
-                                        Icon(
-                                            Icons.Default.Download,
-                                            contentDescription = "Download",
-                                            tint = dlTint,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            "Download",
-                                            color = dlTint,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1
-                                        )
+                                // 24-28dp Live Circular Progress Ring (5 States: R3)
+                                Box(
+                                    modifier = Modifier.size(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    when {
+                                        // State 2: Queued / Starting
+                                        isDownloading && downloadProgress <= 0.01f -> {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(22.dp),
+                                                color = Color.White,
+                                                strokeWidth = 2.dp,
+                                                trackColor = Color.White.copy(alpha = 0.20f)
+                                            )
+                                        }
+                                        // State 3: Downloading (Determinate smooth progress arc + cancel cross)
+                                        isDownloading -> {
+                                            CircularProgressIndicator(
+                                                progress = { dlProgressAnim },
+                                                modifier = Modifier.size(22.dp),
+                                                color = Color.White,
+                                                strokeWidth = 2.dp,
+                                                trackColor = Color.White.copy(alpha = 0.20f)
+                                            )
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Cancel",
+                                                tint = Color.White.copy(alpha = 0.85f),
+                                                modifier = Modifier.size(10.dp)
+                                            )
+                                        }
+                                        // State 4: Done / Downloaded (Lens pulse checkmark without circle)
+                                        isDownloaded -> {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = "Downloaded",
+                                                tint = Color(0xFF151515),
+                                                modifier = Modifier
+                                                    .size(16.dp)
+                                                    .graphicsLayer {
+                                                        scaleX = checkmarkScale
+                                                        scaleY = checkmarkScale
+                                                    }
+                                            )
+                                        }
+                                        // State 5: Error / Failed (Retry icon without circle)
+                                        isDownloadFailed -> {
+                                            Icon(
+                                                Icons.Default.Refresh,
+                                                contentDescription = "Retry Download",
+                                                tint = Color(0xFFFF6B6B),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        // State 1: Idle (Raw download icon without circle)
+                                        else -> {
+                                            Icon(
+                                                Icons.Default.Download,
+                                                contentDescription = "Download",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                     }
                                 }
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                val labelText = when {
+                                    isDownloaded -> "Downloaded"
+                                    isDownloading && downloadProgress > 0.01f -> "${(dlProgressAnim * 100).toInt()}%"
+                                    isDownloading -> "Queued"
+                                    isDownloadFailed -> "Retry"
+                                    else -> "Download"
+                                }
+
+                                Text(
+                                    labelText,
+                                    color = if (isDownloaded) Color(0xFF151515) else if (isDownloadFailed) Color(0xFFFF6B6B) else Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1
+                                )
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.width(8.dp))
-                    val heartBg = if (isFavorite) Color.White else Color.White.copy(alpha = 0.20f)
+                    val heartBg = if (isFavorite) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
                     val heartTint = if (isFavorite) AccentRed else Color.White
                     Box(
                         modifier = Modifier
@@ -1222,15 +1334,11 @@ fun NowPlayingSheet(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Triple-state AutoMix Toggle (New: AutoMix, Old: AutoMix Pro, Off: AutoMix Off)
-                    val autoMixLabel = when (autoMixMode) {
-                        com.beatles.player.player.automix.AutoMixMode.NEW -> "AutoMix"
-                        com.beatles.player.player.automix.AutoMixMode.OLD -> "AutoMix Pro"
-                        com.beatles.player.player.automix.AutoMixMode.OFF -> "AutoMix Off"
-                    }
-                    val isAutoMixActive = autoMixMode != com.beatles.player.player.automix.AutoMixMode.OFF
-                    val autoMixBg = if (isAutoMixActive) Color.White else Color.White.copy(alpha = 0.20f)
-                    val autoMixContentTint = if (isAutoMixActive) Color(0xFF141416) else Color.White
+                    // AutoMix Toggle (Classic smooth AutoMix; clean ON/OFF, no Pro or Inactive text)
+                    val autoMixLabel = "AutoMix"
+                    val isAutoMixActive = autoMixMode == com.beatles.player.player.automix.AutoMixMode.ON
+                    val autoMixBg = if (isAutoMixActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
+                    val autoMixContentTint = if (isAutoMixActive) Color(0xFF151515) else Color.White
 
                     Box(
                         modifier = Modifier
@@ -1290,6 +1398,8 @@ fun NowPlayingSheet(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(14.dp))
+
                 // Custom Canvas Seekbar (no vertical thumb bar, no active glow while moving, starry white glow during AutoMix)
                 Column(modifier = Modifier.padding(horizontal = 20.dp)) {
                     var isDraggingSlider by remember { mutableStateOf(false) }
@@ -1320,50 +1430,53 @@ fun NowPlayingSheet(
                         label = "automixPulse"
                     )
 
+                    var lastHapticSec by remember { mutableLongStateOf(-1L) }
+
+                    val effectiveDuration = if (duration > 0L) duration else ((song.durationSeconds.toLong() * 1000L).takeIf { it > 0L } ?: 1L)
+
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(28.dp)
-                            .pointerInput(duration) {
-                                val maxDur = kotlin.math.max(1f, duration.toFloat())
-                                detectTapGestures { offset ->
-                                    val fraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                    val safeMax = if (duration > 0) duration else Long.MAX_VALUE
-                                    val newPos = (fraction * maxDur).toLong().coerceIn(0L, safeMax)
-                                    sliderPos = newPos.toFloat()
-                                    pendingSeek = true
-                                    Haptics.tick(view)
-                                    onSeek(newPos)
-                                }
-                            }
-                            .pointerInput(duration) {
-                                val maxDur = kotlin.math.max(1f, duration.toFloat())
-                                detectHorizontalDragGestures(
-                                    onDragStart = { offset ->
-                                        isDraggingSlider = true
-                                        val fraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                        sliderPos = (fraction * maxDur).coerceIn(0f, maxDur)
-                                    },
-                                    onDragEnd = {
-                                        isDraggingSlider = false
-                                        pendingSeek = true
-                                        val safeMax = if (duration > 0) duration else Long.MAX_VALUE
-                                        val clampedSeek = sliderPos.toLong().coerceIn(0L, safeMax)
-                                        onSeek(clampedSeek)
-                                    },
-                                    onDragCancel = {
-                                        isDraggingSlider = false
-                                    },
-                                    onHorizontalDrag = { change, _ ->
-                                        val fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                        sliderPos = (fraction * maxDur).coerceIn(0f, maxDur)
+                            .pointerInput(effectiveDuration) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val maxDur = effectiveDuration.toFloat()
+                                    val w = size.width.toFloat().coerceAtLeast(1f)
+                                    val initialFraction = (down.position.x / w).coerceIn(0f, 1f)
+                                    var currentDragPos = (initialFraction * maxDur).coerceIn(0f, maxDur)
+                                    sliderPos = currentDragPos
+                                    isDraggingSlider = true
+                                    Haptics.lightScrubTick(view)
+
+                                    var activePointerId = down.id
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == activePointerId } ?: break
+                                        if (!change.pressed) {
+                                            change.consume()
+                                            break
+                                        }
+                                        val fraction = (change.position.x / w).coerceIn(0f, 1f)
+                                        currentDragPos = (fraction * maxDur).coerceIn(0f, maxDur)
+                                        sliderPos = currentDragPos
+                                        val sec = (currentDragPos / 1000f).toLong()
+                                        if (sec != lastHapticSec) {
+                                            lastHapticSec = sec
+                                            Haptics.lightScrubTick(view)
+                                        }
+                                        change.consume()
                                     }
-                                )
+                                    isDraggingSlider = false
+                                    pendingSeek = true
+                                    val clampedSeek = currentDragPos.toLong().coerceIn(0L, effectiveDuration)
+                                    onSeek(clampedSeek)
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
                         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxWidth().height(20.dp)) {
-                            val maxDur = kotlin.math.max(1f, duration.toFloat())
+                            val maxDur = effectiveDuration.toFloat()
                             val currentFraction = (sliderPos / maxDur).coerceIn(0f, 1f)
                             val w = size.width
                             val h = trackAnimHeight.toPx()
@@ -1389,6 +1502,7 @@ fun NowPlayingSheet(
                                 cornerRadius = corner
                             )
 
+
                             if (activeWidth > 0f) {
                                 // Clip active track inside the EXACT pill shape of the inactive track so rounded corners match 100%
                                 val inactiveTrackPath = androidx.compose.ui.graphics.Path().apply {
@@ -1404,30 +1518,13 @@ fun NowPlayingSheet(
                                     )
                                 }
                                 clipPath(inactiveTrackPath) {
-                                    if (autoMixActive) {
-                                        // Starry white crystalline active track with pulsating starry brightness
-                                        drawRoundRect(
-                                            brush = Brush.horizontalGradient(
-                                                listOf(
-                                                    Color(0xFFE2E8F0),
-                                                    Color.White,
-                                                    Color(0xFFE0E7FF),
-                                                    Color.White
-                                                )
-                                            ),
-                                            topLeft = Offset(0f, centerY - h / 2f),
-                                            size = Size(activeWidth, h),
-                                            cornerRadius = corner
-                                        )
-                                    } else {
-                                        // Clean solid white active track
-                                        drawRoundRect(
-                                            color = Color.White.copy(alpha = 0.95f),
-                                            topLeft = Offset(0f, centerY - h / 2f),
-                                            size = Size(activeWidth, h),
-                                            cornerRadius = corner
-                                        )
-                                    }
+                                    // 85% white active track with blur
+                                    drawRoundRect(
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        topLeft = Offset(0f, centerY - h / 2f),
+                                        size = Size(activeWidth, h),
+                                        cornerRadius = corner
+                                    )
                                 }
                             }
                         }
@@ -1438,7 +1535,7 @@ fun NowPlayingSheet(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val safeDur = duration.coerceAtLeast(0L)
+                        val safeDur = effectiveDuration
                         val rawPos = if (isDraggingSlider) sliderPos.toLong() else currentPosition
                         val displayPos = if (safeDur > 0) rawPos.coerceIn(0L, safeDur) else rawPos.coerceAtLeast(0L)
                         Text(
@@ -1447,30 +1544,12 @@ fun NowPlayingSheet(
                             fontSize = 12.sp
                         )
                         if (autoMixActive && autoMixLabel != null) {
-                            val pulseTransition = rememberInfiniteTransition(label = "pulse")
-                            val pulseScale by pulseTransition.animateFloat(
-                                initialValue = 1f, targetValue = 1.25f,
-                                animationSpec = infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-                                label = "scale"
+                            Text(
+                                autoMixLabel,
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
-                            val pulseAlpha by pulseTransition.animateFloat(
-                                initialValue = 1f, targetValue = 0.5f,
-                                animationSpec = infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-                                label = "alpha"
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Box(modifier = Modifier.size(6.dp).graphicsLayer(scaleX = pulseScale, scaleY = pulseScale, alpha = pulseAlpha).clip(CircleShape).background(Color.White))
-                                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color.White))
-                                }
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    autoMixLabel,
-                                    color = Color.White.copy(alpha = pulseAlpha.coerceAtLeast(0.7f)),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
                         }
                         val rem = if (safeDur > 0) (safeDur - displayPos).coerceAtLeast(0L) else 0L
                         Text(
@@ -1481,76 +1560,162 @@ fun NowPlayingSheet(
                     }
                 }
                 Spacer(modifier = Modifier.height(18.dp))
-            } else {
-                Spacer(modifier = Modifier.height(18.dp))
             }
+        }
 
-            // Controls Row
+            // Controls Row (Mathematically and optically centered across all screens)
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = {
-                    Haptics.tick(view)
-                    onToggleShuffle()
-                }) {
-                    Icon(Icons.Default.Shuffle, contentDescription = null, tint = if (shuffleEnabled) AccentRed else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(28.dp))
-                }
-                IconButton(onClick = {
-                    spillDirection = -1
-                    Haptics.click(view)
-                    onPrevious()
-                }, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = null, tint = Color.White, modifier = Modifier.size(46.dp))
-                }
-                IconButton(onClick = {
-                    Haptics.click(view)
-                    onTogglePlay()
-                }, modifier = Modifier.size(80.dp)) {
-                    if (isLoadingStream) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(44.dp),
-                            color = Color.White,
-                            strokeWidth = 3.dp
+                // Slot 1: Shuffle
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                Haptics.tick(view)
+                                onToggleShuffle()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.Shuffle,
+                            contentDescription = "Shuffle",
+                            tint = if (shuffleEnabled) Color.White else Color.White.copy(alpha = 0.40f),
+                            modifier = Modifier.size(26.dp)
                         )
-                    } else {
-                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(56.dp))
                     }
                 }
-                IconButton(onClick = {
-                    spillDirection = 1
-                    Haptics.click(view)
-                    onNext()
-                }, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Default.SkipNext, contentDescription = null, tint = Color.White, modifier = Modifier.size(46.dp))
+
+                // Slot 2: Skip Previous
+                Box(
+                    modifier = Modifier.weight(1.15f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    IconButton(
+                        onClick = {
+                            spillDirection = -1
+                            Haptics.click(view)
+                            onPrevious()
+                        },
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(Icons.Rounded.SkipPrevious, contentDescription = null, tint = Color.White, modifier = Modifier.size(44.dp))
+                    }
                 }
-                IconButton(onClick = {
-                    Haptics.tick(view)
-                    onToggleRepeat()
-                }) {
-                    Icon(
-                        if (repeatMode == 2) Icons.Default.RepeatOne else Icons.Default.Repeat,
-                        contentDescription = null,
-                        tint = if (repeatMode != 0) AccentRed else Color.White.copy(alpha = 0.4f),
-                        modifier = Modifier.size(28.dp)
-                    )
+
+                // Slot 3: Center Play / Pause Button (Anchored to exact center)
+                Box(
+                    modifier = Modifier.weight(1.6f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(modifier = Modifier.size(92.dp), contentAlignment = Alignment.Center) {
+                        if (playPausePulseAnim.value < 0.99f) {
+                            val p = playPausePulseAnim.value
+                            val pulseScale = 1.0f + 0.45f * p
+                            val pulseAlpha = (1f - p) * 0.16f
+                            Box(
+                                modifier = Modifier
+                                    .size(90.dp)
+                                    .graphicsLayer {
+                                        scaleX = pulseScale
+                                        scaleY = pulseScale
+                                        alpha = pulseAlpha
+                                    }
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.15f))
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                Haptics.click(view)
+                                onTogglePlay()
+                            },
+                            modifier = Modifier.size(92.dp)
+                        ) {
+                            if (isLoadingStream) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(48.dp),
+                                    color = Color.White,
+                                    strokeWidth = 3.dp
+                                )
+                            } else {
+                                Icon(
+                                    if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = if (isPlaying) "Pause" else "Play",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(68.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Slot 4: Skip Next
+                Box(
+                    modifier = Modifier.weight(1.15f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    IconButton(
+                        onClick = {
+                            spillDirection = 1
+                            Haptics.click(view)
+                            onNext()
+                        },
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(Icons.Rounded.SkipNext, contentDescription = null, tint = Color.White, modifier = Modifier.size(44.dp))
+                    }
+                }
+
+                // Slot 5: Repeat
+                val isRepeatActive = repeatMode != 0
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                Haptics.tick(view)
+                                onToggleRepeat()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            if (repeatMode == 2) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                            contentDescription = "Repeat",
+                            tint = if (isRepeatActive) Color.White else Color.White.copy(alpha = 0.40f),
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Lyrics + Next Up pills (Strictly mutually exclusive, bright frosted glass overlay)
+            // Lyrics + Next Up pills (Strictly mutually exclusive, 85% white without border when active)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val lyricsBg = if (isLyricsActive) Color.White else Color.White.copy(alpha = 0.20f)
-                val lyricsBorder = if (isLyricsActive) Color.White else Color.White.copy(alpha = 0.32f)
-                val lyricsText = if (isLyricsActive) Color.Black else Color.White
+                val lyricsBg = if (isLyricsActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
+                val lyricsText = if (isLyricsActive) Color(0xFF151515) else Color.White
 
-                val nextUpBg = if (isNextUpActive) Color.White else Color.White.copy(alpha = 0.20f)
-                val nextUpBorder = if (isNextUpActive) Color.White else Color.White.copy(alpha = 0.32f)
-                val nextUpText = if (isNextUpActive) Color.Black else Color.White
+                val nextUpBg = if (isNextUpActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
+                val nextUpText = if (isNextUpActive) Color(0xFF151515) else Color.White
 
                 Box(
                     modifier = Modifier
@@ -1660,6 +1825,25 @@ fun NowPlayingSheet(
                                 Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
                             }
 
+                            HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
+
+                            // Option 3: Play Artist Mix
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        Haptics.confirm(view)
+                                        showMiniMenu = false
+                                        onPlayArtistMix(song.artist)
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Radio, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text("Play Artist Mix", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
+                            }
 
                             HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
 
@@ -1778,25 +1962,7 @@ fun NowPlayingSheet(
             }
         }
 
-        // Center expansion blur pulse from the middle on Play / Pause
-        if (playPausePulseAnim.value < 0.99f) {
-            val p = playPausePulseAnim.value
-            val pulseScale = 0.85f + 0.45f * p
-            val pulseAlpha = (1f - p) * 0.28f
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(99f)
-                    .graphicsLayer {
-                        scaleX = pulseScale
-                        scaleY = pulseScale
-                        alpha = pulseAlpha
-                    }
-                    .blur(24.dp)
-                    .background(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.45f), Color.Transparent))),
-                contentAlignment = Alignment.Center
-            ) {}
-        }
+
     }
 }
 
@@ -2016,13 +2182,13 @@ private fun SyncedWordItem(
 
     val textShadow = when (wordState) {
         "sing" -> androidx.compose.ui.graphics.Shadow(
-            color = Color.White.copy(alpha = 0.45f + 0.50f * midWordFactor),
-            blurRadius = 10f + 20f * midWordFactor,
+            color = Color.White.copy(alpha = 0.45f + 0.35f * midWordFactor),
+            blurRadius = 2f + 4f * midWordFactor,
             offset = Offset.Zero
         )
         "done" -> androidx.compose.ui.graphics.Shadow(
             color = Color.White.copy(alpha = 0.15f),
-            blurRadius = 4f,
+            blurRadius = 2f,
             offset = Offset.Zero
         )
         else -> null
@@ -2040,7 +2206,7 @@ private fun SyncedWordItem(
         )
     }
 
-    val unsungBlur = if (wordState == "wait" && isCurrentLine) 0.6.dp else 0.dp
+    val unsungBlur = 0.dp
 
     Box(
         modifier = Modifier

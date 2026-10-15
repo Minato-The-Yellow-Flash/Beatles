@@ -6,8 +6,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -20,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -112,10 +115,12 @@ fun ProfileScreen(
                 }
             }
 
+            val profileScrollState = rememberScrollState()
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .verticalScroll(profileScrollState)
                     .padding(horizontal = 16.dp)
             ) {
                 Spacer(modifier = Modifier.height(12.dp))
@@ -325,6 +330,86 @@ fun ProfileScreen(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // App Updates Section
+                val context = LocalContext.current
+                Text(
+                    "APP UPDATES",
+                    color = AppTheme.fg(0.45f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                )
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(AppTheme.fg(0.05f), RoundedCornerShape(20.dp))
+                        .border(1.dp, AppTheme.fg(0.08f), RoundedCornerShape(20.dp))
+                        .padding(16.dp)
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Beatles Version", color = AppTheme.fg(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    if (state.isCheckingUpdate) "Checking GitHub for updates..."
+                                    else if (state.availableUpdate != null) "New version v${state.availableUpdate.versionName} available!"
+                                    else "v1.0 (Latest)",
+                                    color = if (state.availableUpdate != null) ListenerRed else AppTheme.fg(0.55f),
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+
+                            if (state.availableUpdate != null) {
+                                Button(
+                                    onClick = { viewModel.downloadAndInstallUpdate(context) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = ListenerRed),
+                                    shape = RoundedCornerShape(50),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                    enabled = state.updateDownloadProgress == null
+                                ) {
+                                    if (state.updateDownloadProgress != null) {
+                                        Text("${(state.updateDownloadProgress * 100).toInt()}%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    } else {
+                                        Text("Update", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            } else {
+                                Button(
+                                    onClick = { viewModel.checkForUpdates(silent = false) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = AppTheme.fg(0.12f)),
+                                    shape = RoundedCornerShape(50),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                    enabled = !state.isCheckingUpdate
+                                ) {
+                                    if (state.isCheckingUpdate) {
+                                        CircularProgressIndicator(modifier = Modifier.size(14.dp), color = AppTheme.fg(), strokeWidth = 2.dp)
+                                    } else {
+                                        Text("Check", color = AppTheme.fg(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+                        }
+
+                        if (state.updateNotice != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(state.updateNotice!!, color = Color(0xFF2ECC71), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                        if (state.updateErrorMessage != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(state.updateErrorMessage!!, color = Color(0xFFE74C3C), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(28.dp))
 
                 // Sign out button
@@ -345,6 +430,19 @@ fun ProfileScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Sign Out / Reset Mode", color = AppTheme.fg(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Text(
+                    text = "Crafted by team Beatles (Aashirvad, Tarun, Yash)",
+                    color = AppTheme.fg(0.40f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 36.dp)
+                )
             }
         }
 

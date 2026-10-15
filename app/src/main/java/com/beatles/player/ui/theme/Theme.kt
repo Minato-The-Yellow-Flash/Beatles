@@ -15,6 +15,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import com.beatles.player.data.ThemeMode
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+
+val LocalDynamicBottomPadding = compositionLocalOf<Dp> { 144.dp }
 
 val LightBackground = Color(0xFFF6F7F9)
 val LightSurface = Color(0xFFFFFFFF)

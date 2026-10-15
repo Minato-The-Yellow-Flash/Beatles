@@ -1,5 +1,6 @@
 package com.beatles.player.ui.screens
 import com.beatles.player.ui.theme.AppTheme
+import com.beatles.player.ui.theme.LocalDynamicBottomPadding
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -60,7 +61,7 @@ fun ArtistFeedTab(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 110.dp, bottom = 120.dp)
+        contentPadding = PaddingValues(top = 110.dp, bottom = LocalDynamicBottomPadding.current)
     ) {
         // Hero Artist Card
         item {
@@ -204,7 +205,7 @@ fun ArtistUploadTab(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 110.dp, bottom = 120.dp)
+        contentPadding = PaddingValues(top = 110.dp, bottom = LocalDynamicBottomPadding.current)
     ) {
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -368,7 +369,7 @@ fun ArtistUploadTab(
 fun ArtistAnalyticsTab(state: PlayerUiState) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 110.dp, bottom = 120.dp)
+        contentPadding = PaddingValues(top = 110.dp, bottom = LocalDynamicBottomPadding.current)
     ) {
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -421,7 +422,7 @@ fun ArtistMessagesTab(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(top = 110.dp, bottom = 100.dp)
+            .padding(top = 110.dp, bottom = LocalDynamicBottomPadding.current)
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             Text("Fan Messages & Feedback", color = AppTheme.fg(), fontSize = 22.sp, fontWeight = FontWeight.Bold)

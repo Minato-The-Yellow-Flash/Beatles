@@ -1,5 +1,6 @@
 package com.beatles.player.ui.screens
 import com.beatles.player.ui.theme.AppTheme
+import com.beatles.player.ui.theme.LocalDynamicBottomPadding
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -50,7 +51,7 @@ fun AdminScreen(
 fun AdminDashboardTab(state: PlayerUiState) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 110.dp, bottom = 120.dp)
+        contentPadding = PaddingValues(top = 110.dp, bottom = LocalDynamicBottomPadding.current)
     ) {
         // Hero Admin Card
         item {
@@ -153,7 +154,7 @@ fun AdminUsersTab(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 110.dp, bottom = 120.dp)
+        contentPadding = PaddingValues(top = 110.dp, bottom = LocalDynamicBottomPadding.current)
     ) {
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -260,7 +261,7 @@ fun AdminContentTab(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 110.dp, bottom = 120.dp)
+        contentPadding = PaddingValues(top = 110.dp, bottom = LocalDynamicBottomPadding.current)
     ) {
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -335,7 +336,7 @@ fun AdminSettingsTab() {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 110.dp, bottom = 120.dp)
+        contentPadding = PaddingValues(top = 110.dp, bottom = LocalDynamicBottomPadding.current)
     ) {
         item {
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {

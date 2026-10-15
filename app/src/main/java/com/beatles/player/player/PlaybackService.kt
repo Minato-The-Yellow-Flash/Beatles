@@ -28,7 +28,7 @@ class PlaybackService : MediaSessionService() {
 
     private fun createPlayer(): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(15_000, 50_000, 500, 1_000)
+            .setBufferDurationsMs(15_000, 50_000, 250, 750)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -49,9 +49,8 @@ class PlaybackService : MediaSessionService() {
                 addListener(object : androidx.media3.common.Player.Listener {
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                         android.util.Log.e("PlaybackService", "ExoPlayer error: ${error.errorCodeName} - ${error.message}")
-                        if (playWhenReady) {
-                            prepare()
-                            play()
+                        currentMediaItem?.mediaId?.let { id ->
+                            com.beatles.player.data.MusicRepository.clearStreamCache(id)
                         }
                     }
                 })
@@ -150,6 +149,36 @@ class PlaybackService : MediaSessionService() {
         } catch (e: Throwable) {
             android.util.Log.e("PlaybackService", "Error in restoreDefaultPlayer: ${e.message}")
         }
+    }
+
+    fun updateSessionLyrics(song: com.beatles.player.data.Song, lrcText: String, currentLine: String) {
+        val extras = android.os.Bundle().apply {
+            val jsonPayload = try {
+                org.json.JSONObject().apply {
+                    put("songName", song.title)
+                    put("artist", song.artist)
+                    put("lyric", lrcText)
+                    put("rawLyric", lrcText)
+                    put("songId", song.id)
+                }.toString()
+            } catch (_: Exception) { "" }
+            putString("lyricInfo", jsonPayload)
+            putString("lyric", lrcText)
+            putString("rawLyric", lrcText)
+            putString("com.oplus.media.lyric", lrcText)
+            putString("oplus:media:lyric", lrcText)
+            putString("com.coloros.media.lyric", lrcText)
+            putString("android.media.metadata.LYRIC", lrcText)
+            putString("currentLyric", currentLine)
+            putBoolean("oplus_support_lyrics", true)
+            putBoolean("coloros_support_lyrics", true)
+            putBoolean("com.oplus.lockscreen.lyrics_enabled", true)
+            putBoolean("coloros_flag_support_live_lyrics", true)
+            putBoolean("is_support_lyrics", true)
+        }
+        try {
+            mediaSession?.setSessionExtras(extras)
+        } catch (_: Throwable) {}
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession

@@ -17,6 +17,7 @@ import com.beatles.player.player.AudioPlayerManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
@@ -53,6 +54,21 @@ class AutoMixEngine(
     var extendedWindow: Boolean = true
     var harmonicMode: Boolean = true
 
+    /** Callback invoked by the 500ms watchdog if secondary deck is stalled or unrecoverable. */
+    var onWatchdogRecover: ((Song) -> Unit)? = null
+    /** Callback invoked when the secondary deck finishes playing a song (STATE_ENDED). */
+    var onSongEnded: (() -> Unit)? = null
+
+    private val _debugLogs = MutableStateFlow<List<String>>(emptyList())
+    val debugLogs = _debugLogs.asStateFlow()
+
+    fun logTransition(msg: String) {
+        val timestamp = System.currentTimeMillis() % 100000
+        val line = "[$timestamp] $msg"
+        Log.i("AutoMix", line)
+        _debugLogs.update { (it + line).takeLast(30) }
+    }
+
     private var plannedForSongId: String? = null
     private var incoming: Song? = null
     private var incomingUrl: String? = null
@@ -66,6 +82,7 @@ class AutoMixEngine(
     private var preloadJob: Job? = null
     private var transitionJob: Job? = null
     private var precisionStartJob: Job? = null
+    private var watchdogJob: Job? = null
 
     @Volatile private var transitioning = false
     @Volatile private var handingOff = false
@@ -96,7 +113,7 @@ class AutoMixEngine(
     private fun initMixer() {
         try {
             val loadControl = DefaultLoadControl.Builder()
-                .setBufferDurationsMs(15_000, 50_000, 500, 1_000)
+                .setBufferDurationsMs(15_000, 50_000, 250, 750)
                 .setPrioritizeTimeOverSizeThresholds(true)
                 .build()
             val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
@@ -122,6 +139,14 @@ class AutoMixEngine(
                             if (playWhenReady) {
                                 prepare()
                                 play()
+                            }
+                        }
+                        override fun onPlaybackStateChanged(playbackState: Int) {
+                            if (playbackState == Player.STATE_ENDED) {
+                                if (!isBusy && activeDeckIndex == 1) {
+                                    Log.i("AutoMixEngine", "Mixer Deck B reached STATE_ENDED; advancing playback")
+                                    onSongEnded?.invoke()
+                                }
                             }
                         }
                     })
@@ -153,7 +178,7 @@ class AutoMixEngine(
         onHandoff: (Song, Long) -> Unit
     ) {
         if (isBusy) return
-        if (currentSong == null || durationMs < 30_000L || durationMs == C.TIME_UNSET) return
+        if (currentSong == null || durationMs < 5_000L || durationMs == C.TIME_UNSET) return
 
         if (plannedForSongId != currentSong.id) {
             resetPlanning()
@@ -165,12 +190,13 @@ class AutoMixEngine(
         if (incoming != null && incoming?.id != nextSong.id) resetPlanning(keepSongId = true)
 
         val remaining = durationMs - posMs
-        if (activePlan == null && preloadJob == null && remaining in 6_000L..55_000L) {
+        val prepTriggerWindow = if (durationMs < 30_000L) (durationMs * 0.5f).toLong() else 25_000L
+        if (activePlan == null && preloadJob == null && remaining <= prepTriggerWindow && remaining >= 1_200L) {
             preloadJob = scope.launch { analyzeAndPrepare(currentSong, durationMs, posMs, nextSong, lyrics, playlist) }
         }
 
         val plan = activePlan ?: return
-        if (plan.type == TransitionType.NO_TRANSITION) return
+        if (plan.type == TransitionType.NO_TRANSITION && plan.tier != AutoMixTier.TIER_3_GAPLESS_MICROFADE) return
 
         val untilStart = plan.startPositionMs - posMs
 
@@ -179,6 +205,7 @@ class AutoMixEngine(
                 startTransition(plan, nextSong, onHandoff)
             }
             untilStart < 400L && precisionStartJob == null -> {
+                _autoMixState.value = AutoMixState(TransitionPhase.ARMED, 0f, plan, nextSong, tier = plan.tier, debugLog = "Armed transition for ${nextSong.title}")
                 precisionStartJob = scope.launch {
                     val delayMs = untilStart.coerceAtLeast(0L)
                     delay(delayMs)
@@ -200,7 +227,7 @@ class AutoMixEngine(
     ) {
         try {
             incoming = next
-            _autoMixState.value = AutoMixState(TransitionPhase.ANALYZING, 0f, null, next)
+            _autoMixState.value = AutoMixState(TransitionPhase.ANALYZING, 0f, null, next, debugLog = "Analyzing ${next.title}")
 
             val resolver = urlResolver
             val (outUrl, inUrl) = withContext(Dispatchers.IO) {
@@ -209,8 +236,10 @@ class AutoMixEngine(
                 o to i
             }
             if (inUrl == null) {
-                Log.w("AutoMix", "Could not resolve incoming stream; skipping AutoMix")
-                _autoMixState.value = AutoMixState()
+                logTransition("Could not resolve incoming stream for ${next.title}, activating Tier 3 fallback")
+                val fallback = NormalAutoMixPlanner.createFallbackPlan(durationMs, posMs, 0L, AutoMixTier.TIER_3_GAPLESS_MICROFADE)
+                activePlan = fallback
+                _autoMixState.value = AutoMixState(TransitionPhase.FALLBACK, 0f, fallback, next, tier = AutoMixTier.TIER_3_GAPLESS_MICROFADE, debugLog = "Tier 3 Gapless Fallback")
                 return
             }
             incomingUrl = inUrl
@@ -267,11 +296,11 @@ class AutoMixEngine(
                 )
             }
 
-            Log.i("AutoMix", "Musical Plan [${plan.type}]: start=${plan.startPositionMs}ms duration=${plan.durationMs}ms in@${plan.incomingStartOffsetMs}ms tempo=${plan.tempoAdjustmentRatio} score=${plan.confidenceScore}")
+            logTransition("Musical Plan [${plan.tier} / ${plan.type}]: start=${plan.startPositionMs}ms duration=${plan.durationMs}ms in@${plan.incomingStartOffsetMs}ms tempo=${plan.tempoAdjustmentRatio} score=${plan.confidenceScore}")
 
             activePlan = plan
-            if (plan.type == TransitionType.NO_TRANSITION) {
-                _autoMixState.value = AutoMixState(TransitionPhase.IDLE, 0f, plan, next)
+            if (plan.type == TransitionType.NO_TRANSITION && plan.tier != AutoMixTier.TIER_3_GAPLESS_MICROFADE) {
+                _autoMixState.value = AutoMixState(TransitionPhase.IDLE, 0f, plan, next, tier = plan.tier)
                 return
             }
 
@@ -292,12 +321,14 @@ class AutoMixEngine(
                 }
             }
             incomingPrepared = true
-            _autoMixState.value = AutoMixState(TransitionPhase.IDLE, 0f, plan, next)
+            _autoMixState.value = AutoMixState(TransitionPhase.PREPARED, 0f, plan, next, tier = plan.tier, debugLog = "Prepared for ${next.title}")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w("AutoMix", "Analysis error: ${e.message}")
-            _autoMixState.value = AutoMixState()
+            logTransition("Analysis error: ${e.message}, falling back to Tier 2")
+            val fallback = NormalAutoMixPlanner.createFallbackPlan(durationMs, posMs, 0L, AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE)
+            activePlan = fallback
+            _autoMixState.value = AutoMixState(TransitionPhase.FALLBACK, 0f, fallback, next, tier = AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE, debugLog = "Fallback: ${e.message}")
         }
     }
 
@@ -309,6 +340,7 @@ class AutoMixEngine(
         if (transitioning) return
         transitioning = true
         precisionStartJob?.cancel(); precisionStartJob = null
+        armWatchdog(song)
 
         transitionJob = scope.launch {
             try {
@@ -328,13 +360,35 @@ class AutoMixEngine(
                     nextActiveDeck.play()
                 }
 
+                // Wait up to 4500ms for secondary deck to be buffered & ready before beginning crossfade
+                var waitCount = 0
+                var isReady = false
+                while (isActive && waitCount < 90) {
+                    isReady = withContext(Dispatchers.Main.immediate) {
+                        val state = nextActiveDeck.playbackState
+                        state == Player.STATE_READY || (nextActiveDeck.isPlaying && state != Player.STATE_BUFFERING)
+                    }
+                    if (isReady) break
+                    delay(50)
+                    waitCount++
+                }
+
+                if (!isReady) {
+                    logTransition("Secondary deck not ready after 4.5s, gracefully continuing current track")
+                    abortTransition()
+                    return@launch
+                }
+                disarmWatchdog()
+
                 val t0 = SystemClock.elapsedRealtime()
-                val len = plan.durationMs.coerceAtLeast(1_000L).toFloat()
+                val len = plan.durationMs.coerceAtLeast(6_000L).toFloat()
                 var handoffNotified = false
+
+                _autoMixState.value = AutoMixState(TransitionPhase.TRANSITIONING, 0f, plan, song, tier = plan.tier, debugLog = "Transitioning [${plan.tier}] to ${song.title}")
 
                 while (isActive && transitioning) {
                     val t = ((SystemClock.elapsedRealtime() - t0) / len).coerceIn(0f, 1f)
-                    val (gOut, gIn) = gains(plan.type, t)
+                    val (gOut, gIn) = gains(plan.type, t, plan.incomingGainMatch)
 
                     withContext(Dispatchers.Main.immediate) {
                         // Linear software volume gains only inside the 20ms loop -> 100% click & crackle free
@@ -356,6 +410,8 @@ class AutoMixEngine(
                                 primaryPlayerManager.activePlayerOverride = null
                                 com.beatles.player.player.PlaybackService.instance?.restoreDefaultPlayer()
                             }
+                            _autoMixState.value = AutoMixState(TransitionPhase.HANDOVER, t, plan, song, tier = plan.tier, debugLog = "Handover to ${song.title}")
+                            logTransition("Handover reached at t=$t to ${song.title} at ${inPos}ms")
                             scope.launch {
                                 delay(400)
                                 handingOff = false
@@ -363,7 +419,13 @@ class AutoMixEngine(
                         }
                     }
 
-                    _autoMixState.value = AutoMixState(TransitionPhase.TRANSITION_ACTIVE, t, plan, song)
+                    _autoMixState.value = AutoMixState(
+                        if (handoffNotified) TransitionPhase.HANDOVER else TransitionPhase.TRANSITIONING,
+                        t,
+                        plan,
+                        song,
+                        tier = plan.tier
+                    )
                     if (t >= 1f) break
                     delay(20)
                 }
@@ -393,13 +455,18 @@ class AutoMixEngine(
                     }
                 }
 
-                _autoMixState.value = AutoMixState(TransitionPhase.HANDOFF_COMPLETE, 1f, plan, song)
+                disarmWatchdog()
+                _autoMixState.value = AutoMixState(TransitionPhase.IDLE, 1f, plan, song, tier = plan.tier, debugLog = "Transition complete to ${song.title}")
+                logTransition("Transition completed to ${song.title}")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e("AutoMix", "Transition error: ${e.message}", e)
+                logTransition("Transition error: ${e.message}")
+                _autoMixState.value = AutoMixState(TransitionPhase.ERROR, 0f, plan, song, tier = plan.tier, debugLog = "Error: ${e.message}")
+                onWatchdogRecover?.invoke(song)
                 abortTransition()
             } finally {
+                disarmWatchdog()
                 transitioning = false
                 activePlan = null
                 incoming = null
@@ -409,19 +476,53 @@ class AutoMixEngine(
         }
     }
 
+    private fun armWatchdog(incomingSong: Song) {
+        watchdogJob?.cancel()
+        watchdogJob = scope.launch {
+            // Generous grace period of 4500ms for network streams to buffer
+            delay(4500)
+            val nextActiveDeck = if (activeDeckIndex == 0) deckB else deckA
+            val isPlaying = try { nextActiveDeck?.isPlaying == true } catch (_: Throwable) { false }
+            val isReadyOrBuffering = try {
+                val s = nextActiveDeck?.playbackState
+                s == Player.STATE_READY || s == Player.STATE_BUFFERING
+            } catch (_: Throwable) { false }
+            if (!isPlaying && !isReadyOrBuffering) {
+                logTransition("Watchdog rescue: secondary deck stalled after 4.5s, recovering gracefully")
+                withContext(Dispatchers.Main.immediate) {
+                    onWatchdogRecover?.invoke(incomingSong)
+                    abortTransition()
+                }
+            }
+        }
+    }
+
+    private fun disarmWatchdog() {
+        watchdogJob?.cancel()
+        watchdogJob = null
+    }
+
     /**
      * Seamless Equal-Power DJ Gain Curves:
-     * Continuous sinusoidal curves where outgoing track sustains naturally,
-     * ducking gently to let incoming establish presence, without premature cutoffs or clipping clicks.
+     * Sinusoidal curves with 3 dB headroom soft limiter and onset micro-fade.
      */
-    private fun gains(type: TransitionType, t: Float): Pair<Float, Float> {
+    private fun gains(type: TransitionType, t: Float, gainMatch: Float = 1.0f): Pair<Float, Float> {
         val halfPi = (PI / 2).toFloat()
-        val gOut = cos(t * halfPi).coerceIn(0f, 1f)
-        val gIn = sin(t * halfPi).coerceIn(0f, 1f)
-        return gOut to gIn
+        val rawOut = cos(t * halfPi).coerceIn(0f, 1f)
+        val rawIn = (sin(t * halfPi) * gainMatch).coerceIn(0f, 1.25f)
+
+        // Equal-power sinusoidal sum with soft limiter to guarantee headroom and prevent clipping
+        val sum = rawOut + rawIn
+        val scale = if (sum > 1.0f) 1.0f / (1.0f + 0.35f * (sum - 1.0f)) else 1.0f
+
+        // Micro-fade (2-5ms) at onset to prevent clicks
+        val microFade = if (t < 0.005f) (t / 0.005f) else 1.0f
+
+        return (rawOut * scale).coerceIn(0f, 1f) to (rawIn * scale * microFade).coerceIn(0f, 1f)
     }
 
     private fun resetPlanning(keepSongId: Boolean = false) {
+        disarmWatchdog()
         preloadJob?.cancel(); preloadJob = null
         precisionStartJob?.cancel(); precisionStartJob = null
         activePlan = null
@@ -439,6 +540,7 @@ class AutoMixEngine(
     /** User override (seek, skip, pick a song, pause, AutoMix off): cancel transition, restore active volume. */
     fun abortTransition() {
         val wasBusy = isBusy
+        disarmWatchdog()
         transitionJob?.cancel(); transitionJob = null
         precisionStartJob?.cancel(); precisionStartJob = null
         transitioning = false

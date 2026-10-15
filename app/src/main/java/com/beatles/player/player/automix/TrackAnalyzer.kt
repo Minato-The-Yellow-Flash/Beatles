@@ -12,7 +12,8 @@ object TrackAnalyzer {
     private val KEY_SCALES = listOf("MAJOR", "MINOR")
 
     fun analyzeTrack(song: Song, lyrics: List<LyricLine> = emptyList()): TrackAnalysis {
-        analysisCache[song.id]?.let { return it }
+        val cacheKey = "${song.id}_${lyrics.hashCode()}"
+        analysisCache[cacheKey]?.let { return it }
 
         val durationMs = if (song.durationSeconds > 0) song.durationSeconds * 1000L else 210000L
 

@@ -220,4 +220,31 @@ class NormalAutoMixPlannerTest {
             plan.startPositionMs >= 170_000L
         )
     }
+
+    @Test
+    fun testNaturalOutroWindowNotTooEarly() {
+        val song1 = Song(id = "1", title = "Track 1", artist = "Artist", album = "Album", coverUrl = "", durationSeconds = 180)
+        val song2 = Song(id = "2", title = "Track 2", artist = "Artist", album = "Album", coverUrl = "", durationSeconds = 180)
+
+        val plan = NormalAutoMixPlanner.plan(
+            outgoing = song1,
+            outgoingDurationMs = 180_000L,
+            tail = null,
+            outgoingLyrics = emptyList(),
+            incoming = song2,
+            head = null,
+            gaplessAlbum = false,
+            nowPositionMs = 120_000L
+        )
+
+        // Must start within the final 14 seconds of the track (>= 166,000ms), NEVER 30+ seconds early
+        assertTrue(
+            "Transition start ${plan.startPositionMs} must be in the natural outro (>= 166,000ms), not premature",
+            plan.startPositionMs >= 166_000L
+        )
+        assertTrue(
+            "Transition duration ${plan.durationMs} must provide a smooth equal-power blend (>= 4,000ms)",
+            plan.durationMs >= 4_000L
+        )
+    }
 }

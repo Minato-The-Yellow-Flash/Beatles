@@ -40,39 +40,70 @@ object NormalAutoMixPlanner {
                 incomingStartOffsetMs = 0L,
                 tempoAdjustmentRatio = 1.0f,
                 confidenceScore = 1.0f,
-                description = "Gapless Album Transition"
+                description = "Gapless Album Transition",
+                tier = AutoMixTier.TIER_3_GAPLESS_MICROFADE
+            )
+        }
+
+        // 2. Very short tracks (< 20s) safety handling
+        if (outgoingDurationMs < 20_000L) {
+            val isMicro = outgoingDurationMs < 10_000L
+            val durMs = if (isMicro) 200L else min(3_000L, outgoingDurationMs / 4)
+            val startMs = max(0L, outgoingDurationMs - durMs - 250L)
+            return TransitionPlan(
+                type = if (isMicro) TransitionType.NO_TRANSITION else TransitionType.SHORT_CROSSFADE,
+                startPositionMs = startMs,
+                durationMs = durMs,
+                incomingStartOffsetMs = head?.firstSoundMs ?: 0L,
+                tempoAdjustmentRatio = 1.0f,
+                outgoingTempoAdjustmentRatio = 1.0f,
+                bassSwapTimestampMs = startMs + (durMs / 2),
+                confidenceScore = 0.80f,
+                description = if (isMicro) "Tier 3: Short Track Microfade" else "Tier 2: Short Track Equal-Power Blend",
+                tier = if (isMicro) AutoMixTier.TIER_3_GAPLESS_MICROFADE else AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE
             )
         }
 
         val outInfo = TrackAnalyzer.analyzeTrack(outgoing, outgoingLyrics)
         val inInfo = TrackAnalyzer.analyzeTrack(incoming, emptyList())
 
-        // 2. Real waveform tempo or acoustic analysis
+        // 3. Real waveform tempo or acoustic analysis
+        val isOutReliable = if (tail != null) tail.hasReliableTempo else true
+        val isInReliable = if (head != null) head.hasReliableTempo else true
+
         val outBpm = tail?.bpm?.takeIf { tail.hasReliableTempo } ?: outInfo.globalBpm
         val inBpm = head?.bpm?.takeIf { head.hasReliableTempo } ?: inInfo.globalBpm
 
-        val match = BeatGridMatcher.calculateBeatMatch(
-            outgoingBpm = outBpm,
-            incomingBpm = inBpm,
-            outgoingPhaseMs = tail?.beatPhaseMs ?: outInfo.downbeats.firstOrNull() ?: 0L,
-            incomingPhaseMs = head?.beatPhaseMs ?: inInfo.downbeats.firstOrNull() ?: 0L
-        )
+        val match = if (isOutReliable && isInReliable) {
+            BeatGridMatcher.calculateBeatMatch(
+                outgoingBpm = outBpm,
+                incomingBpm = inBpm,
+                outgoingPhaseMs = tail?.beatPhaseMs ?: outInfo.downbeats.firstOrNull() ?: 0L,
+                incomingPhaseMs = head?.beatPhaseMs ?: inInfo.downbeats.firstOrNull() ?: 0L
+            )
+        } else {
+            BeatGridMatcher.calculateBeatMatch(0f, 0f)
+        }
 
-        // 3. Harmonic Key analysis via Camelot wheel
+        // 4. Harmonic Key analysis via Camelot wheel
         val keyOut = CamelotKey.from(outInfo.keyTonic, outInfo.keyScale)
         val keyIn = CamelotKey.from(inInfo.keyTonic, inInfo.keyScale)
         val harmonicallyCompatible = CamelotKey.areHarmonicallyCompatible(keyOut, keyIn)
 
-        // 4. LUFS Loudness normalization
+        // 5. LUFS Loudness normalization
         val gainMatch = 10f.pow(((outInfo.integratedLUFS - inInfo.integratedLUFS) / 20f).coerceIn(-3f, 3f))
             .coerceIn(0.75f, 1.30f)
 
-        // 5. Select Outro Phrase Boundary
+        // 6. Select Natural Outro Boundary (ensure transition blends in the final 8-10 seconds, never cutting off mid-song)
         val dur = outgoingDurationMs
-        val safeEarliestStart = max(dur * 0.70f, (dur - 38_000L).toFloat()).toLong()
-        val minOutroStart = max(safeEarliestStart, outInfo.vocalEndMs)
+        val targetDurationMs = 7_500L
+        val effectiveLastSound = tail?.lastSoundMs ?: (dur - outInfo.trailingSilenceMs)
+        
+        // Start transition in natural outro: within final 9-11 seconds of the track
+        val safeStartMs = (dur - targetDurationMs - 1_200L).coerceAtLeast(0L)
+        val minOutroStart = max(outInfo.vocalEndMs, max(0L, dur - 12_000L))
 
-        // Phrase boundary (every 4 bars)
+        // Phrase boundary aligned with outro
         val phraseAlignedStart = BeatGridMatcher.findNextPhraseBoundary(
             minPositionMs = minOutroStart,
             bpm = outBpm,
@@ -80,15 +111,13 @@ object NormalAutoMixPlanner {
             barsPerPhrase = 4
         )
 
-        // 6. Transition length calculation
-        val barMs = (60_000f / match.sharedBpm) * 4f
-        val requestedBars = transitionLengthBars.coerceIn(2, 8)
-        val targetDurationMs = (barMs * requestedBars).toLong().coerceIn(4_000L, 24_000L)
-
-        // Ensure transition finishes before the song's audio drops into total trailing silence
-        val effectiveLastSound = tail?.lastSoundMs ?: (dur - outInfo.trailingSilenceMs)
-        val finalStartMs = min(phraseAlignedStart, max(0L, effectiveLastSound - targetDurationMs))
-        val actualDurationMs = min(targetDurationMs, max(3_000L, effectiveLastSound - finalStartMs))
+        // Lock start to natural outro window so it never starts 30+ seconds early
+        val finalStartMs = phraseAlignedStart.coerceIn(
+            max(0L, dur - 12_000L),
+            max(0L, dur - targetDurationMs - 600L)
+        ).takeIf { it > 0L } ?: safeStartMs
+        
+        val actualDurationMs = min(targetDurationMs, max(4_000L, effectiveLastSound - finalStartMs))
 
         // 7. Incoming Start Offset (skip leading silence)
         val leadingSilence = head?.firstSoundMs ?: inInfo.leadingSilenceMs
@@ -107,23 +136,73 @@ object NormalAutoMixPlanner {
                 bassSwapTimestampMs = bassSwapMs,
                 confidenceScore = if (harmonicallyCompatible) 0.95f else 0.88f,
                 incomingGainMatch = gainMatch,
-                description = "Apple Beat-Mix: ${match.sharedBpm.toInt()} BPM (${keyOut} -> ${keyIn})"
+                description = "Tier 1: Apple Beat-Mix ${match.sharedBpm.toInt()} BPM (${keyOut} -> ${keyIn})",
+                tier = AutoMixTier.TIER_1_BEAT_MATCH
             )
         } else {
-            // Equal-power crossfade fallback when BPM gap > 8.5%
-            val fallbackDuration = min(actualDurationMs, 7_500L)
+            // Equal-power crossfade fallback with generous smooth fade
+            val fallbackDuration = actualDurationMs.coerceIn(6_000L, 8_000L)
+            val fallbackStart = (dur - fallbackDuration - 800L).coerceAtLeast(0L)
             TransitionPlan(
                 type = TransitionType.SHORT_CROSSFADE,
-                startPositionMs = max(0L, dur - fallbackDuration - 1200L),
+                startPositionMs = fallbackStart,
                 durationMs = fallbackDuration,
                 incomingStartOffsetMs = leadingSilence,
                 tempoAdjustmentRatio = 1.0f,
                 outgoingTempoAdjustmentRatio = 1.0f,
-                bassSwapTimestampMs = max(0L, dur - (fallbackDuration / 2) - 1200L),
-                confidenceScore = 0.80f,
+                bassSwapTimestampMs = fallbackStart + (fallbackDuration / 2),
+                confidenceScore = 0.85f,
                 incomingGainMatch = gainMatch,
-                description = "Equal-Power Dissolve: ${outBpm.toInt()} -> ${inBpm.toInt()} BPM"
+                description = "Tier 2: Equal-Power Dissolve ${outBpm.toInt()} -> ${inBpm.toInt()} BPM",
+                tier = AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE
             )
+        }
+    }
+
+    /**
+     * Creates an immediate safe fallback plan when incoming track preparation has delayed or errored.
+     */
+    fun createFallbackPlan(
+        outgoingDurationMs: Long,
+        nowPositionMs: Long,
+        incomingLeadingSilenceMs: Long = 0L,
+        tier: AutoMixTier = AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE
+    ): TransitionPlan {
+        val dur = outgoingDurationMs.coerceAtLeast(1000L)
+        return when (tier) {
+            AutoMixTier.TIER_1_BEAT_MATCH,
+            AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE -> {
+                val fadeDur = min(6000L, max(3000L, dur / 4))
+                val startMs = max(nowPositionMs, dur - fadeDur - 500L).coerceAtMost(max(0L, dur - 1000L))
+                val actualFade = max(2500L, dur - startMs)
+                TransitionPlan(
+                    type = TransitionType.SHORT_CROSSFADE,
+                    startPositionMs = startMs,
+                    durationMs = actualFade,
+                    incomingStartOffsetMs = incomingLeadingSilenceMs,
+                    tempoAdjustmentRatio = 1.0f,
+                    outgoingTempoAdjustmentRatio = 1.0f,
+                    bassSwapTimestampMs = startMs + actualFade / 2,
+                    confidenceScore = 0.75f,
+                    description = "Tier 2: Equal-Power Safety Fallback (${actualFade / 1000f}s)",
+                    tier = AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE
+                )
+            }
+            AutoMixTier.TIER_3_GAPLESS_MICROFADE -> {
+                val fadeDur = 200L
+                val startMs = max(nowPositionMs, dur - fadeDur).coerceAtMost(max(0L, dur - 50L))
+                TransitionPlan(
+                    type = TransitionType.NO_TRANSITION,
+                    startPositionMs = startMs,
+                    durationMs = fadeDur,
+                    incomingStartOffsetMs = incomingLeadingSilenceMs,
+                    tempoAdjustmentRatio = 1.0f,
+                    outgoingTempoAdjustmentRatio = 1.0f,
+                    confidenceScore = 0.70f,
+                    description = "Tier 3: Gapless Safety Microfade (200ms)",
+                    tier = AutoMixTier.TIER_3_GAPLESS_MICROFADE
+                )
+            }
         }
     }
 }

@@ -215,4 +215,53 @@ class LyricsEngineTest {
         val shortInstrumentals = shortProcessed.filter { it.isInstrumental }
         assertTrue("Gap < 4s should not create an instrumental break", shortInstrumentals.isEmpty())
     }
+
+    @Test
+    fun testMultiTimestampLrcParsing() {
+        val rawLrc = """
+            [ti:Example Song]
+            [ar:Artist Name]
+            [00:12.50]First verse line
+            [00:25.00][01:15.50]Repeated chorus line
+            [01:45:20]Colon centisecond line
+        """.trimIndent()
+
+        val timestampRegex = Regex("\\[(\\d{1,2}):(\\d{2}(?:[.:]\\d{1,3})?)\\]")
+        val parsed = mutableListOf<LyricLine>()
+
+        for (rawLine in rawLrc.split("\n")) {
+            val line = rawLine.trim()
+            if (line.isEmpty() || line.startsWith("[ti:") || line.startsWith("[ar:") ||
+                line.startsWith("[al:") || line.startsWith("[by:") || line.startsWith("[offset:") ||
+                line.startsWith("[length:") || line.startsWith("[re:") || line.startsWith("[ve:")) {
+                continue
+            }
+            val matches = timestampRegex.findAll(line).toList()
+            if (matches.isEmpty()) continue
+            val text = timestampRegex.replace(line, "").trim()
+            if (text.isEmpty()) continue
+            for (match in matches) {
+                val min = match.groupValues[1].toLongOrNull() ?: 0L
+                val secPart = match.groupValues[2].replace(':', '.')
+                val secDouble = secPart.toDoubleOrNull() ?: 0.0
+                val ms = min * 60000L + (secDouble * 1000).toLong()
+                parsed.add(LyricLine(ms, text))
+            }
+        }
+        val sorted = parsed.sortedBy { it.timeMs }
+
+        // Must have 4 lines: 12500ms, 25000ms, 75500ms, 105200ms
+        assertEquals(4, sorted.size)
+        assertEquals(12500L, sorted[0].timeMs)
+        assertEquals("First verse line", sorted[0].text)
+
+        assertEquals(25000L, sorted[1].timeMs)
+        assertEquals("Repeated chorus line", sorted[1].text)
+
+        assertEquals(75500L, sorted[2].timeMs)
+        assertEquals("Repeated chorus line", sorted[2].text)
+
+        assertEquals(105200L, sorted[3].timeMs)
+        assertEquals("Colon centisecond line", sorted[3].text)
+    }
 }

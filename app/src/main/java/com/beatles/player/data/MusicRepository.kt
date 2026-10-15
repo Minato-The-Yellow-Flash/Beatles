@@ -1,6 +1,9 @@
 package com.beatles.player.data
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
@@ -96,22 +99,23 @@ object MusicRepository {
     }
 
     private val NOISE_TERMS = listOf(
-        "cover", "karaoke", "remix", "slowed", "reverb", "8d", "instrumental", "lofi", "lo-fi", "sped up",
-        "nightcore", "bass boosted", "reaction", "tutorial", "status", "ringtone", "mashup", "shorts",
-        "official video", "music video", "full video", "video song", "official music video", "full hd video", "4k video", "video", "skit", "teaser", "trailer"
+        "reaction", "tutorial", "status", "ringtone", "shorts",
+        "skit", "teaser", "trailer", "unboxing", "review", "gameplay", "parody", "behind the scenes", "making of",
+        "full lyrics", "full lyrics version", "lyrics version", "full video", "full song", "lyric video", "lyrics video",
+        "status video", "hd video", "4k video", "video song"
     )
 
     private val VIDEO_EXCLUDE_REGEX = Regex("(?i)\\b(official\\s+video|music\\s+video|video\\s+song|full\\s+video|lyrical\\s+video|lyrics\\s+video|official\\s+music\\s+video|full\\s+hd\\s+video|4k\\s+video|hd\\s+video|visualizer|lyric\\s+video|dance\\s+video|short\\s+film|behind\\s+the\\s+scenes|making\\s+of)\\b")
 
     fun cleanSongTitle(raw: String): String {
         var t = raw
-        // 1. Strip bracketed text containing video/audio/resolution tags: [Official Video], (8K Video), [Full Video], etc.
-        t = t.replace(Regex("(?i)\\s*[\\[\\(]([^)\\]]*?(?:official|music\\s*video|full\\s*video|video\\s*song|video|audio|lyric|lyrics|8k|4k|hd|hq|1080p|720p|remaster|visualizer|teaser|trailer|clip)[^)\\]]*?)[\\]\\)]"), "")
-        // 2. Strip trailing pipe/dash/slash tags: | 8K Video, | Full Video, | Official Video, etc.
-        t = t.replace(Regex("(?i)\\s*(\\||//|/|•|–|-)\\s*(?:8k|4k|hd|hq|full\\s*hd|1080p)?\\s*(?:official\\s*video|music\\s*video|full\\s*video|video\\s*song|video|official\\s*audio|audio\\s*song|audio|lyric\\s*video|visualizer)\\s*.*$"), "")
-        // 3. Strip standalone resolution and video junk
+        // 1. Strip bracketed text containing video/audio/resolution/lyrics noise
+        t = t.replace(Regex("(?i)\\s*[\\[\\(]([^)\\]]*?(?:official|music\\s*video|full\\s*video|video\\s*song|video|audio|lyric|lyrics|full\\s*lyrics|8k|4k|hd|hq|1080p|720p|remaster|visualizer|teaser|trailer|clip)[^)\\]]*?)[\\]\\)]"), "")
+        // 2. Strip trailing pipe/dash/slash tags
+        t = t.replace(Regex("(?i)\\s*(\\||//|/|•|–|-)\\s*(?:8k|4k|hd|hq|full\\s*hd|1080p)?\\s*(?:official\\s*video|music\\s*video|full\\s*video|video\\s*song|video|official\\s*audio|audio\\s*song|audio|lyric\\s*video|lyrics\\s*video|visualizer|full\\s*lyrics|full\\s*song)\\s*.*$"), "")
+        // 3. Strip standalone resolution, lyrics, and video junk
         t = t.replace(Regex("(?i)\\b(?:8k|4k|1080p|720p)\\s*(?:uhd|video|video\\s*song|full\\s*video)?\\b"), "")
-        t = t.replace(Regex("(?i)\\b(?:full\\s+video|official\\s+video|video\\s+song)\\b"), "")
+        t = t.replace(Regex("(?i)\\b(?:full\\s+video|official\\s+video|video\\s+song|full\\s+lyrics\\s+version|full\\s+lyrics|lyrics\\s+version|full\\s+song|lyric\\s+video|lyrics\\s+video|status\\s+video|hd\\s+video|4k\\s+video|full\\s+hd)\\b"), "")
         // 4. Clean leading/trailing punctuation & excess whitespace
         t = t.replace(Regex("^[\\s\\|\\-\\–/:•]+|[\\s\\|\\-\\–/:•]+$"), "")
         t = t.replace(Regex("\\s+"), " ").trim()
@@ -162,15 +166,15 @@ object MusicRepository {
         if ("$title $artist" == q || "$artist $title" == q) score += 40.0
         else if ("$title $artist".contains(q) || "$artist $title".contains(q)) score += 15.0
 
-        // Penalize noise terms (karaoke, status, ringtone, reaction) unless query specifically asks for them
+        // Penalize noise terms (karaoke, status, ringtone, reaction, full lyrics) unless query specifically asks for them
         for (t in NOISE_TERMS) {
-            if (title.contains(t) && !q.contains(t)) score -= 15.0
+            if (title.contains(t) && !q.contains(t)) score -= 18.0
         }
 
         // Tie-breaker bonus for studio audio / official topic track ONLY if song already matches query!
         if (tMatch >= 0.5) {
             if (song.artist.contains("Topic", ignoreCase = true) || title.contains("audio")) {
-                score += 3.0
+                score += 5.0
             }
         }
 
@@ -195,15 +199,10 @@ object MusicRepository {
                             // Strictly filter short clips (< 45s previews/ringtones) and obvious non-music noise
                             if (item.duration < 45 || lowTitle.contains("teaser") || lowTitle.contains("trailer") ||
                                 lowTitle.contains("reaction") || lowTitle.contains("ringtone") || lowTitle.contains("status") ||
+                                lowTitle.contains("status video") ||
                                 (item.duration > 1200 && !query.lowercase().contains("mix") && !query.lowercase().contains("album"))) {
                                 continue
                             }
-                            val isVideo = VIDEO_EXCLUDE_REGEX.containsMatchIn(item.name) ||
-                                    lowTitle.contains("official video") || lowTitle.contains("video song") ||
-                                    lowTitle.contains("music video") || lowTitle.contains("full video")
-                            val isAudio = item.uploaderName.contains("Topic", ignoreCase = true) ||
-                                    lowTitle.contains("audio") || lowTitle.contains("provided to youtube")
-
                             val highRes = getBestThumbnailUrl(item.thumbnails.firstOrNull()?.url ?: "")
                             val cleanTitle = cleanSongTitle(item.name)
                             val song = Song(
@@ -216,9 +215,7 @@ object MusicRepository {
                                 isAlbum = false
                             )
 
-                            if (isExplicitVideoSearch || isAudio || !isVideo || filterList.contains("music_songs")) {
-                                list.add(song)
-                            }
+                            list.add(song)
                         }
                         is PlaylistInfoItem -> {
                             val highRes = getBestThumbnailUrl(item.thumbnails.firstOrNull()?.url ?: "")
@@ -232,53 +229,57 @@ object MusicRepository {
             }
         }
 
-        if (!isExplicitVideoSearch) {
-            // First search directly in YouTube Music ("music_songs") to guarantee real studio audio tracks
-            val ytmResults = extractItems(query, listOf("music_songs"))
-            if (ytmResults.isNotEmpty()) {
-                val pureAudio = ytmResults.filter { !VIDEO_EXCLUDE_REGEX.containsMatchIn(it.title) }
-                if (pureAudio.isNotEmpty()) return pureAudio
-                return ytmResults
-            }
-            // Fallback: search with audio keyword and filter out videos
-            val audioResults = extractItems("$query audio", listOf("all"))
-            val directResults = extractItems(query, listOf("all"))
-            val combined = (audioResults + directResults).distinctBy { it.id }
-
-            val pureAudio = combined.filter { song ->
-                song.artist.contains("Topic", ignoreCase = true) ||
-                song.title.contains("audio", ignoreCase = true) ||
-                !VIDEO_EXCLUDE_REGEX.containsMatchIn(song.title)
-            }
-            if (pureAudio.isNotEmpty()) return pureAudio
-            return combined
+        // 1. Prioritize YouTube Music pure audio tracks first!
+        val ytmResults = if (!isExplicitVideoSearch) extractItems(query, listOf("music_songs")) else emptyList()
+        if (ytmResults.isNotEmpty()) {
+            return ytmResults
         }
 
-        return extractItems(query, listOf("all"))
+        // 2. Fall back to general YouTube ONLY if YouTube Music has no results
+        val directResults = extractItems(query, listOf("all"))
+        if (directResults.isNotEmpty()) return directResults
+        return extractItems("$query audio", listOf("all"))
     }
+
+    private val querySearchCache = java.util.concurrent.ConcurrentHashMap<String, Pair<List<Song>, Long>>()
 
     suspend fun search(query: String): List<Song> = withContext(Dispatchers.IO) {
         val q = query.trim().replace(Regex("\\s+"), " ")
         if (q.isEmpty()) return@withContext emptyList()
+        val cacheKey = q.lowercase()
+        val now = System.currentTimeMillis()
+        querySearchCache[cacheKey]?.let { (cachedList, cachedTime) ->
+            if (now - cachedTime < 30 * 60 * 1000L) {
+                return@withContext cachedList
+            }
+        }
         try {
             var songs = try { fetchSongs(q, "all") } catch (_: Exception) { emptyList() }
 
             val bestMatch = songs.take(5).maxOfOrNull { tokenMatch(q, it) } ?: 0.0
             if (songs.size < 3 || bestMatch < 0.5) {
-                val corrected = getSearchSuggestions(q).firstOrNull()
-                if (!corrected.isNullOrBlank() && !corrected.equals(q, ignoreCase = true)) {
-                    val fixed = try { fetchSongs(corrected, "all") } catch (_: Exception) { emptyList() }
-                    if (fixed.isNotEmpty()) songs = fixed + songs
+                val isMashup = q.contains(" x ", ignoreCase = true) || q.contains(" vs ", ignoreCase = true) || q.contains("mashup", ignoreCase = true)
+                if (!isMashup) {
+                    val corrected = getSearchSuggestions(q).firstOrNull()
+                    if (!corrected.isNullOrBlank() && !corrected.equals(q, ignoreCase = true)) {
+                        val fixed = try { fetchSongs(corrected, "all") } catch (_: Exception) { emptyList() }
+                        if (fixed.isNotEmpty()) songs = songs + fixed
+                    }
                 }
             }
 
             val total = songs.size
-            songs.withIndex()
+            val ranked = songs.withIndex()
                 .map { (i, s) -> s to relevance(q, s, i, total) }
                 .sortedByDescending { it.second }
                 .map { it.first }
                 .distinctBy { normalizeForMatch(it.title) + "|" + normalizeForMatch(it.artist) }
                 .distinctBy { it.id }
+
+            if (ranked.isNotEmpty()) {
+                querySearchCache[cacheKey] = ranked to now
+            }
+            ranked
         } catch (e: Exception) { emptyList() }
     }
 
@@ -307,8 +308,8 @@ object MusicRepository {
 
         var targetUrl = url
 
-        // Prioritize pure studio audio / Topic track over music videos, or resolve non-direct YouTube IDs
-        if (fallbackSong != null && (!isDirectYt || fallbackSong.title.lowercase().contains("video"))) {
+        // Only resolve non-direct YouTube IDs via search fallback
+        if (fallbackSong != null && !isDirectYt) {
             try {
                 val cleanTitle = cleanSongTitle(fallbackSong.title)
                 val cleanArtist = fallbackSong.artist.replace(" - Topic", "").trim()
@@ -329,36 +330,63 @@ object MusicRepository {
         }
 
         try {
-            val fullUrl = when {
+            val rawFullUrl = when {
                 targetUrl.startsWith("http") -> targetUrl
                 targetUrl.startsWith("/") -> "https://www.youtube.com$targetUrl"
                 targetUrl.contains("watch?v=") -> "https://www.youtube.com/$targetUrl"
                 else -> "https://www.youtube.com/watch?v=$targetUrl"
             }
+            val fullUrl = rawFullUrl.replace("music.youtube.com", "www.youtube.com")
             val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, fullUrl)
-            val extractedUrl = streamInfo.audioStreams.maxByOrNull { it.bitrate }?.content
+            val audioStreams = streamInfo.audioStreams
+            // Prefer stable M4A / AAC audio stream first (hardware decoded, no WebM/Opus 403 CDN errors)
+            val m4aStream = audioStreams.filter { 
+                it.format?.name?.contains("m4a", ignoreCase = true) == true ||
+                it.codec?.contains("mp4a", ignoreCase = true) == true ||
+                it.codec?.contains("aac", ignoreCase = true) == true
+            }.maxByOrNull { it.bitrate }
+
+            val extractedUrl = m4aStream?.content
+                ?: audioStreams.maxByOrNull { it.bitrate }?.content
                 ?: streamInfo.videoStreams.maxByOrNull { it.resolution }?.content
                 ?: throw Exception("No stream found")
             streamUrlCache[url] = extractedUrl to now
             streamUrlCache[targetUrl] = extractedUrl to now
             extractedUrl
         } catch (e: Exception) {
-            // Secondary fallback: Search YouTube for pure audio / Topic track if direct extraction failed
+            // Secondary fallback: Search YouTube with multiple candidate attempts
             if (fallbackSong != null) {
                 try {
                     val cleanTitle = cleanSongTitle(fallbackSong.title)
                     val cleanArtist = fallbackSong.artist.replace(" - Topic", "").trim()
-                    val searchQ = "$cleanTitle $cleanArtist"
-                    val results = search(searchQ)
-                    val topMatch = results.firstOrNull { !it.isAlbum && it.id != targetUrl }
-                    if (topMatch != null) {
-                        val fbUrl = if (topMatch.id.startsWith("http")) topMatch.id else "https://www.youtube.com/watch?v=${topMatch.id}"
-                        val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, fbUrl)
-                        val fbExtracted = streamInfo.audioStreams.maxByOrNull { it.bitrate }?.content
-                            ?: streamInfo.videoStreams.maxByOrNull { it.resolution }?.content
-                            ?: throw Exception("No fallback stream")
-                        streamUrlCache[url] = fbExtracted to now
-                        return@withContext fbExtracted
+                    val candidateQueries = listOfNotNull(
+                        if (cleanArtist.isNotBlank()) "$cleanTitle $cleanArtist" else null,
+                        if (cleanArtist.isNotBlank()) "$cleanTitle $cleanArtist Topic" else null,
+                        "$cleanTitle audio"
+                    ).distinct()
+
+                    for (searchQ in candidateQueries) {
+                        val results = search(searchQ)
+                        val candidates = results.filter { !it.isAlbum && it.id != targetUrl && it.id != url }.take(4)
+                        for (candidate in candidates) {
+                            try {
+                                val fbRawUrl = when {
+                                    candidate.id.startsWith("http") -> candidate.id
+                                    candidate.id.startsWith("/") -> "https://www.youtube.com${candidate.id}"
+                                    candidate.id.contains("watch?v=") -> "https://www.youtube.com/${candidate.id}"
+                                    else -> "https://www.youtube.com/watch?v=${candidate.id}"
+                                }
+                                val fbUrl = fbRawUrl.replace("music.youtube.com", "www.youtube.com")
+                                val streamInfo = StreamInfo.getInfo(ServiceList.YouTube, fbUrl)
+                                val fbExtracted = streamInfo.audioStreams.maxByOrNull { it.bitrate }?.content
+                                    ?: streamInfo.videoStreams.maxByOrNull { it.resolution }?.content
+                                if (fbExtracted != null) {
+                                    streamUrlCache[url] = fbExtracted to now
+                                    streamUrlCache[candidate.id] = fbExtracted to now
+                                    return@withContext fbExtracted
+                                }
+                            } catch (_: Exception) {}
+                        }
                     }
                 } catch (_: Exception) {}
             }
@@ -434,10 +462,15 @@ object MusicRepository {
         null
     }
 
+    val albumLookupCache = java.util.concurrent.ConcurrentHashMap<String, Album>()
+
     suspend fun lookupAlbumById(collectionId: String): Album? = withContext(Dispatchers.IO) {
+        val cleanId = collectionId.removePrefix("alb_").trim()
+        if (cleanId.isEmpty()) return@withContext null
+        albumLookupCache[cleanId]?.let { return@withContext it }
         try {
             val trackReq = Request.Builder()
-                .url("https://itunes.apple.com/lookup?id=$collectionId&entity=song")
+                .url("https://itunes.apple.com/lookup?id=$cleanId&entity=song")
                 .header("User-Agent", "BeatlesApp/2.0 (Android; en-US)")
                 .build()
             val trackResp = httpClient.newCall(trackReq).execute()
@@ -479,8 +512,8 @@ object MusicRepository {
                 }
             }
 
-            Album(
-                id = "alb_$collectionId",
+            val alb = Album(
+                id = "alb_$cleanId",
                 title = albumName,
                 artist = artistName,
                 coverUrl = hqCover,
@@ -490,6 +523,10 @@ object MusicRepository {
                 type = "Album",
                 songs = songs
             )
+            if (songs.isNotEmpty()) {
+                albumLookupCache[cleanId] = alb
+            }
+            alb
         } catch (_: Exception) { null }
     }
 
@@ -578,8 +615,11 @@ object MusicRepository {
         }
         val res = search(query)
         res.map { s ->
-            val hq = getHighResCover(s.title, s.artist, s.coverUrl)
-            s.copy(coverUrl = hq)
+            val upgraded = s.coverUrl
+                .replace("hqdefault.jpg", "maxresdefault.jpg")
+                .replace("mqdefault.jpg", "hqdefault.jpg")
+                .replace("default.jpg", "hqdefault.jpg")
+            s.copy(coverUrl = upgraded)
         }
     }
 
@@ -1333,16 +1373,33 @@ object MusicRepository {
         lyricsCache[cacheKey]?.let { return@withContext it }
 
         fun parseLrc(syncedLyrics: String): List<LyricLine> {
-            return syncedLyrics.split("\n").filter { it.isNotBlank() }.mapNotNull { line ->
-                val match = "\\[(\\d+):(\\d+\\.?\\d*)]".toRegex().find(line)
-                if (match != null) {
+            val timestampRegex = Regex("\\[(\\d{1,2}):(\\d{2}(?:[.:]\\d{1,3})?)\\]")
+            val result = mutableListOf<LyricLine>()
+
+            for (rawLine in syncedLyrics.split("\n")) {
+                val line = rawLine.trim()
+                if (line.isEmpty() || line.startsWith("[ti:") || line.startsWith("[ar:") ||
+                    line.startsWith("[al:") || line.startsWith("[by:") || line.startsWith("[offset:") ||
+                    line.startsWith("[length:") || line.startsWith("[re:") || line.startsWith("[ve:")) {
+                    continue
+                }
+
+                val matches = timestampRegex.findAll(line).toList()
+                if (matches.isEmpty()) continue
+
+                val text = timestampRegex.replace(line, "").trim()
+                if (text.isEmpty()) continue
+
+                for (match in matches) {
                     val min = match.groupValues[1].toLongOrNull() ?: 0L
-                    val sec = match.groupValues[2].toDoubleOrNull() ?: 0.0
-                    val ms = min * 60000L + (sec * 1000).toLong()
-                    val text = line.substring(match.range.last + 1).trim()
-                    if (text.isNotEmpty()) LyricLine(ms, text) else null
-                } else null
+                    val secPart = match.groupValues[2].replace(':', '.')
+                    val secDouble = secPart.toDoubleOrNull() ?: 0.0
+                    val ms = min * 60000L + (secDouble * 1000).toLong()
+                    result.add(LyricLine(ms, text))
+                }
             }
+
+            return result.sortedBy { it.timeMs }
         }
 
         suspend fun fetchExactLrcLib(track: String, art: String, dur: Int): List<LyricLine>? {
@@ -1366,7 +1423,9 @@ object MusicRepository {
             return null
         }
 
-        suspend fun searchLrcLibDirect(url: String, targetDur: Int = 0): List<LyricLine>? {
+        data class LrcFetchResult(val synced: List<LyricLine>?, val plain: List<LyricLine>?)
+
+        suspend fun searchLrcLibDirect(url: String, targetDur: Int = 0): LrcFetchResult? {
             try {
                 val req = Request.Builder()
                     .url(url)
@@ -1380,38 +1439,40 @@ object MusicRepository {
                         obj.get("syncedLyrics")?.isJsonNull == false && !obj.get("syncedLyrics").asString.isNullOrBlank()
                     }.map { it.asJsonObject }
 
-                    val bestMatch = if (syncedItems.isNotEmpty()) {
-                        if (targetDur > 0) {
+                    var parsedSynced: List<LyricLine>? = null
+                    if (syncedItems.isNotEmpty()) {
+                        val best = if (targetDur > 0) {
                             syncedItems.minByOrNull {
                                 val d = it.get("duration")?.asDouble ?: 0.0
                                 kotlin.math.abs(d - targetDur)
                             } ?: syncedItems.first()
-                        } else {
-                            syncedItems.first()
+                        } else syncedItems.first()
+
+                        val sStr = best.get("syncedLyrics")?.takeIf { !it.isJsonNull }?.asString
+                        if (!sStr.isNullOrEmpty()) {
+                            val parsed = parseLrc(sStr)
+                            if (parsed.isNotEmpty()) parsedSynced = parsed
                         }
-                    } else {
-                        arr.find { it.asJsonObject.get("plainLyrics")?.isJsonNull == false }?.asJsonObject
                     }
-                    
-                    if (bestMatch != null) {
-                        val syncedLyrics = bestMatch.get("syncedLyrics")?.takeIf { !it.isJsonNull }?.asString
-                        val plainLyrics = bestMatch.get("plainLyrics")?.takeIf { !it.isJsonNull }?.asString
-                        
-                        if (!syncedLyrics.isNullOrEmpty()) {
-                            val parsed = parseLrc(syncedLyrics)
-                            if (parsed.isNotEmpty()) return parsed
-                        } else if (!plainLyrics.isNullOrEmpty()) {
-                            return plainLyrics.split("\n").filter { it.isNotBlank() }.mapIndexed { idx, line ->
-                                LyricLine(timeMs = idx * 3000L, text = line.trim())
-                            }
+
+                    var parsedPlain: List<LyricLine>? = null
+                    val plainItem = arr.find { it.asJsonObject.get("plainLyrics")?.isJsonNull == false }?.asJsonObject
+                    val pStr = plainItem?.get("plainLyrics")?.takeIf { !it.isJsonNull }?.asString
+                    if (!pStr.isNullOrEmpty()) {
+                        parsedPlain = pStr.split("\n").filter { it.isNotBlank() }.mapIndexed { idx, line ->
+                            LyricLine(timeMs = idx * 3000L, text = line.trim())
                         }
+                    }
+
+                    if (parsedSynced != null || parsedPlain != null) {
+                        return LrcFetchResult(parsedSynced, parsedPlain)
                     }
                 }
             } catch (_: Exception) {}
             return null
         }
 
-        suspend fun searchLrcLib(q: String, targetDur: Int = 0): List<LyricLine>? {
+        suspend fun searchLrcLib(q: String, targetDur: Int = 0): LrcFetchResult? {
             return searchLrcLibDirect("https://lrclib.net/api/search?q=${URLEncoder.encode(q, "UTF-8")}", targetDur)
         }
 
@@ -1442,7 +1503,7 @@ object MusicRepository {
                 try {
                     val pUrl = "https://lrclib.net/api/search?track_name=${URLEncoder.encode(mainTitle, "UTF-8")}&artist_name=${URLEncoder.encode(cleanArtist, "UTF-8")}"
                     val pRes = searchLrcLibDirect(pUrl, durationSeconds)
-                    if (pRes != null && pRes.isNotEmpty()) return@withContext pRes
+                    if (pRes?.synced != null && pRes.synced.isNotEmpty()) return@withContext pRes.synced
                 } catch (_: Exception) {}
             }
 
@@ -1466,13 +1527,25 @@ object MusicRepository {
                 queries.add("$t $cleanArtist")
             }
 
+            var candidatePlainLyrics: List<LyricLine>? = null
+
             for (q in queries.distinct()) {
                 if (q.length < 2) continue
                 val res = searchLrcLib(q, durationSeconds)
-                if (res != null && res.isNotEmpty()) {
-                    lyricsCache[cacheKey] = res
-                    return@withContext res
+                if (res != null) {
+                    if (res.synced != null && res.synced.isNotEmpty()) {
+                        lyricsCache[cacheKey] = res.synced
+                        return@withContext res.synced
+                    }
+                    if (candidatePlainLyrics == null && res.plain != null && res.plain.isNotEmpty()) {
+                        candidatePlainLyrics = res.plain
+                    }
                 }
+            }
+
+            if (candidatePlainLyrics != null) {
+                lyricsCache[cacheKey] = candidatePlainLyrics
+                return@withContext candidatePlainLyrics
             }
 
             // Fallback: lyrics.ovh
@@ -1498,73 +1571,145 @@ object MusicRepository {
         } catch (e: Exception) { emptyList() }
     }
 
+    suspend fun fetchRealAlbumsForArtist(
+        artist: String,
+        limit: Int = 4,
+        loadTracksForFirst: Boolean = true
+    ): List<Album> = withContext(Dispatchers.IO) {
+        val cleanArtist = artist.replace(" - Topic", "").replace(Regex("(?i)vevo|official"), "").trim()
+        if (cleanArtist.isBlank()) return@withContext emptyList()
+        try {
+            val enc = URLEncoder.encode(cleanArtist, "UTF-8")
+            val req = Request.Builder()
+                .url("https://itunes.apple.com/search?term=$enc&entity=album&limit=$limit")
+                .header("User-Agent", "BeatlesApp/2.0 (Android; en-US)")
+                .build()
+            val resp = httpClient.newCall(req).execute()
+            val body = resp.body?.string() ?: return@withContext emptyList()
+            val json = gson.fromJson(body, JsonObject::class.java)
+            val results = json.getAsJsonArray("results") ?: return@withContext emptyList()
+            val albumStubs = mutableListOf<Pair<Album, String>>()
+            for (i in 0 until results.size()) {
+                val item = results[i].asJsonObject
+                val wrapperType = item.get("wrapperType")?.asString ?: ""
+                val collectionType = item.get("collectionType")?.asString ?: ""
+                if (wrapperType == "collection" || collectionType == "Album") {
+                    val cId = item.get("collectionId")?.asString ?: continue
+                    val name = item.get("collectionName")?.asString ?: continue
+                    val art = item.get("artistName")?.asString ?: cleanArtist
+                    val cover = item.get("artworkUrl100")?.asString
+                        ?.replace("100x100bb", "1000x1000bb")
+                        ?: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800"
+                    val genre = item.get("primaryGenreName")?.asString ?: "Music"
+                    val rawDate = item.get("releaseDate")?.asString ?: "2024"
+                    val year = if (rawDate.length >= 4) rawDate.take(4) else "2024"
+                    val date = if (rawDate.length >= 10) rawDate.take(10) else "2024"
+
+                    val stub = Album(
+                        id = "alb_$cId",
+                        title = name,
+                        artist = art,
+                        coverUrl = cover,
+                        genre = genre,
+                        releaseYear = year,
+                        releaseDate = date,
+                        type = "Album",
+                        songs = emptyList()
+                    )
+                    albumStubs.add(stub to cId)
+                }
+            }
+
+            // Concurrently resolve tracklists for all albums so no album ever shows 0 songs
+            val albumsWithTracks = kotlinx.coroutines.coroutineScope {
+                albumStubs.map { (stub, cId) ->
+                    async {
+                        val tracks = try {
+                            lookupAlbumById(cId)?.songs ?: emptyList()
+                        } catch (_: Exception) { emptyList() }
+                        if (tracks.isNotEmpty()) {
+                            stub.copy(songs = tracks)
+                        } else {
+                            val fallback = searchOriginalAlbum("${stub.title} ${stub.artist}")
+                            if (fallback != null && fallback.songs.isNotEmpty()) {
+                                stub.copy(songs = fallback.songs)
+                            } else {
+                                stub
+                            }
+                        }
+                    }
+                }.awaitAll()
+            }
+
+            // Strictly keep albums that have non-empty tracks
+            albumsWithTracks.filter { it.songs.isNotEmpty() }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun discoverPersonalizedAlbums(
+        artists: List<String>,
+        rotationSeed: Long = 0L
+    ): List<Album> = withContext(Dispatchers.IO) {
+        val uniqueArtists = artists.map { it.replace(" - Topic", "").trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+
+        val discovered = kotlinx.coroutines.coroutineScope {
+            uniqueArtists.take(6).map { artist ->
+                async {
+                    fetchRealAlbumsForArtist(artist, limit = 3, loadTracksForFirst = true)
+                }
+            }.awaitAll().flatten()
+        }
+
+        if (discovered.isNotEmpty()) {
+            val offset = (kotlin.math.abs(rotationSeed) % discovered.size).toInt()
+            discovered.drop(offset) + discovered.take(offset)
+        } else {
+            emptyList()
+        }
+    }
+
     fun getPersonalizedFeaturedAlbums(
         selectedArtists: Set<String>,
         recentlyPlayed: List<Song>,
         favorites: List<Song> = emptyList(),
         language: String = "All",
-        rotationSeed: Long = 0L
+        rotationSeed: Long = 0L,
+        discoveredRealAlbums: List<Album> = emptyList(),
+        affinityMap: Map<String, Float> = emptyMap()
     ): List<Album> {
-        val baseAlbums = getFeaturedAlbums()
-
-        val userArtistNames = (selectedArtists.map { it.lowercase().trim() } +
-                recentlyPlayed.map { it.artist.lowercase().trim() } +
-                favorites.map { it.artist.lowercase().trim() }).filter { it.isNotBlank() }.toSet()
-        val langLower = language.lowercase().trim()
-
-        val filteredAlbums: List<Album> = if (userArtistNames.isNotEmpty()) {
-            // Strictly match ONLY against user's actual selected artists and listening habits!
-            val matched = baseAlbums.filter { alb ->
-                val aLower = alb.artist.lowercase().trim()
-                userArtistNames.any { aLower.contains(it) || it.contains(aLower) }
-            }
-            val missingArtists = selectedArtists.filter { sa ->
-                baseAlbums.none { it.artist.contains(sa, ignoreCase = true) || sa.contains(it.artist, ignoreCase = true) }
-            }
-            val dynamicAlbums = missingArtists.mapNotNull { artistName ->
-                val artistPic = com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(artistName, ignoreCase = true) }?.imageUrl
-                if (!artistPic.isNullOrBlank()) {
-                    Album(
-                        id = "feat_dyn_${artistName.hashCode()}",
-                        title = "$artistName: Top Hits",
-                        artist = artistName,
-                        coverUrl = artistPic,
-                        genre = com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(artistName, ignoreCase = true) }?.genre ?: "Hits",
-                        releaseYear = "2024",
-                        releaseDate = "2024",
-                        type = "Album",
-                        songs = listOf(
-                            Song("dyn_1_${artistName.hashCode()}", "$artistName Hits", artistName, "$artistName: Top Hits", artistPic, 210)
-                        )
-                    )
-                } else null
-            }
-            val allMatched = (matched + dynamicAlbums).distinctBy { it.id }
-            if (allMatched.isNotEmpty()) {
-                allMatched
-            } else if (langLower != "all" && langLower.isNotBlank()) {
-                baseAlbums.filter { alb ->
-                    alb.genre.lowercase().contains(langLower)
-                }.ifEmpty { baseAlbums }
-            } else {
-                baseAlbums
-            }
-        } else if (langLower != "all" && langLower.isNotBlank()) {
-            baseAlbums.filter { alb ->
-                alb.genre.lowercase().contains(langLower)
-            }.ifEmpty { baseAlbums }
-        } else {
-            baseAlbums
+        if (discoveredRealAlbums.isNotEmpty()) {
+            val offset = (kotlin.math.abs(rotationSeed) % discoveredRealAlbums.size).toInt()
+            return discoveredRealAlbums.drop(offset) + discoveredRealAlbums.take(offset)
         }
 
-        if (filteredAlbums.isEmpty()) return baseAlbums
-        // Clean deterministic rotation on every refresh seed
-        val offset = (kotlin.math.abs(rotationSeed) % filteredAlbums.size).toInt()
-        return filteredAlbums.drop(offset) + filteredAlbums.take(offset)
+        val baseAlbums = getFeaturedAlbums()
+        val affinityArtists = affinityMap.entries.sortedByDescending { it.value }.map { it.key }
+        val userArtistNames = (affinityArtists + selectedArtists + recentlyPlayed.map { it.artist } + favorites.map { it.artist })
+            .map { it.lowercase().trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        val matched = baseAlbums.filter { alb ->
+            val aLower = alb.artist.lowercase().trim()
+            userArtistNames.any { aLower.contains(it) || it.contains(aLower) }
+        }
+
+        val finalAlbums = if (matched.isNotEmpty()) matched else baseAlbums
+        val offset = (kotlin.math.abs(rotationSeed) % finalAlbums.size).toInt()
+        return finalAlbums.drop(offset) + finalAlbums.take(offset)
     }
 
-    fun getPersonalizedAlbumSets(selectedArtists: Set<String>, albums: List<Album>): List<AlbumSet> {
-        val artistNames = selectedArtists.map { it.lowercase().trim() }
+    fun getPersonalizedAlbumSets(
+        selectedArtists: Set<String>,
+        albums: List<Album>,
+        affinityMap: Map<String, Float> = emptyMap()
+    ): List<AlbumSet> {
+        val affinityArtists = affinityMap.entries.sortedByDescending { it.value }.map { it.key }
+        val artistNames = (affinityArtists + selectedArtists).map { it.lowercase().trim() }.distinct()
         val sets = mutableListOf<AlbumSet>()
 
         fun List<Album>.diverseArtists(): List<Album> = this.distinctBy { it.artist.lowercase().trim() }
@@ -1579,13 +1724,26 @@ object MusicRepository {
                 AlbumSet(
                     id = "set_personalized_picks",
                     name = "Curated For You",
-                    description = "Handpicked albums based on your favorite artists",
-                    albums = matchedAlbums.take(4)
+                    description = "Handpicked albums based on your favorite artists & preferences",
+                    albums = matchedAlbums.take(6)
                 )
             )
         }
 
-        // 2. Punjabi & Desi Beats Set
+        // 2. Discoveries / New Additions
+        val otherAlbums = albums.filter { !matchedAlbums.contains(it) }.diverseArtists()
+        if (otherAlbums.isNotEmpty()) {
+            sets.add(
+                AlbumSet(
+                    id = "set_fresh_discoveries",
+                    name = "Fresh Discoveries",
+                    description = "Albums recommended for you across top charts",
+                    albums = otherAlbums.take(6)
+                )
+            )
+        }
+
+        // 3. Punjabi & Desi Beats Set
         val desiAlbums = albums.filter { it.genre.contains("Punjabi", ignoreCase = true) || it.genre.contains("Bollywood", ignoreCase = true) }.diverseArtists()
         if (desiAlbums.isNotEmpty()) {
             sets.add(
@@ -1593,12 +1751,12 @@ object MusicRepository {
                     id = "set_desi_vibes",
                     name = "Punjabi & Bollywood Hits",
                     description = "Top Punjabi blockbusters and soulful Bollywood albums",
-                    albums = desiAlbums.take(3)
+                    albums = desiAlbums.take(4)
                 )
             )
         }
 
-        // 3. Pop & Rock Legends Set
+        // 4. Pop & Rock Legends Set
         val popRockAlbums = albums.filter { it.genre.contains("Pop", ignoreCase = true) || it.genre.contains("Rock", ignoreCase = true) }.diverseArtists()
         if (popRockAlbums.isNotEmpty()) {
             sets.add(
@@ -1606,12 +1764,12 @@ object MusicRepository {
                     id = "set_pop_rock",
                     name = "Pop & Rock Essentials",
                     description = "Chart-topping pop anthems and iconic rock collections",
-                    albums = popRockAlbums.take(3)
+                    albums = popRockAlbums.take(4)
                 )
             )
         }
 
-        // 4. Global Hip-Hop & Rap Set
+        // 5. Global Hip-Hop & Rap Set
         val hipHopAlbums = albums.filter { it.genre.contains("Hip-Hop", ignoreCase = true) || it.genre.contains("Rap", ignoreCase = true) }.diverseArtists()
         if (hipHopAlbums.isNotEmpty()) {
             sets.add(
@@ -1619,7 +1777,7 @@ object MusicRepository {
                     id = "set_hiphop_vibes",
                     name = "Hip-Hop & Urban",
                     description = "Modern hip-hop heavyweights and rap mastertapes",
-                    albums = hipHopAlbums.take(3)
+                    albums = hipHopAlbums.take(4)
                 )
             )
         }

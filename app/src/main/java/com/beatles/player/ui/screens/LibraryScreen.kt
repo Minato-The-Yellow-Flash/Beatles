@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -48,6 +49,7 @@ import coil.compose.AsyncImage
 import com.beatles.player.data.Album
 import com.beatles.player.data.Song
 import com.beatles.player.ui.theme.isDarkTheme
+import com.beatles.player.ui.theme.LocalDynamicBottomPadding
 import com.beatles.player.viewmodel.PlayerUiState
 import com.beatles.player.ui.components.edgeFade
 import com.beatles.player.viewmodel.PlayerViewModel
@@ -81,7 +83,7 @@ fun LibraryScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .edgeFade(if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)),
-            contentPadding = PaddingValues(top = 230.dp, bottom = 120.dp)
+            contentPadding = PaddingValues(top = 230.dp, bottom = LocalDynamicBottomPadding.current)
         ) {
             when (section) {
                 "albums" -> {
@@ -338,7 +340,7 @@ fun LibraryScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { onPlay(song, songs, rowBounds) }
+                                    .clickable { viewModel.setSelectedArtist(song.artist, rowBounds) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -355,6 +357,9 @@ fun LibraryScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(song.artist, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                     Text(song.genre, color = textSecondary, fontSize = 12.sp)
+                                }
+                                IconButton(onClick = { viewModel.playArtistMix(song.artist) }) {
+                                    Icon(Icons.Default.Radio, contentDescription = "Play Artist Mix", tint = AccentRed, modifier = Modifier.size(20.dp))
                                 }
                                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = textMuted)
                             }
@@ -494,7 +499,7 @@ fun LibraryScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Library", color = textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text("Library", color = textPrimary, fontSize = 31.sp, fontWeight = FontWeight.Black)
                 Box(
                     modifier = Modifier
                         .size(32.dp)

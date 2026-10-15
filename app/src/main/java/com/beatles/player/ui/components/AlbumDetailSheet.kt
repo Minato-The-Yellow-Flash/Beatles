@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -49,6 +50,7 @@ import com.beatles.player.data.Album
 import com.beatles.player.data.Song
 import com.beatles.player.ui.theme.AppTheme
 import com.beatles.player.ui.theme.isDarkTheme
+import com.beatles.player.ui.theme.LocalDynamicBottomPadding
 import com.beatles.player.viewmodel.PlayerUiState
 import com.beatles.player.viewmodel.PlayerViewModel
 import kotlin.math.roundToInt
@@ -208,44 +210,85 @@ fun FluidAlbumDetailOverlay(
         val artBlur = ((scrollOffset / 14f) * p).coerceIn(0f, 24f).dp
         val artScale = (1f - (scrollOffset / 1400f) * p).coerceIn(0.72f, 1f)
         val artAlpha = (1f - (scrollOffset / 340f) * p).coerceIn(0f, 1f)
+        val clampedP = p.coerceIn(0f, 1f)
+        val curContainerCorner = with(density) { (18.dp.toPx() * (1f - clampedP)).coerceAtLeast(0f).toDp() }
+        val curScaleX = (origin.width / screenWpx) + (1f - (origin.width / screenWpx)) * clampedP
+        val curScaleY = (origin.height / screenHpx) + (1f - (origin.height / screenHpx)) * clampedP
+        val curTransX = origin.left * (1f - clampedP)
+        val curTransY = origin.top * (1f - clampedP) + dragY
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(albumPageBg.copy(alpha = p.coerceIn(0f, 1f)))
-                .offset { IntOffset(0, dragY.roundToInt()) }
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragEnd = {
-                            if (dragY > 120f) {
-                                onClose()
-                            }
-                            dragY = 0f
-                        },
-                        onVerticalDrag = { _, delta ->
-                            if (delta > 0 || dragY > 0f) {
-                                dragY = (dragY + delta).coerceAtLeast(0f)
-                                if (dragY > 220f) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Background scrim
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = (0.40f * clampedP).coerceIn(0f, 1f)))
+            )
+
+            // Morphing Card Container (GPU-accelerated RenderThread scaling and translation)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = curScaleX.coerceIn(0.01f, 1.2f)
+                        scaleY = curScaleY.coerceIn(0.01f, 1.2f)
+                        translationX = curTransX
+                        translationY = curTransY
+                        transformOrigin = TransformOrigin(0f, 0f)
+                        clip = true
+                        shape = RoundedCornerShape(curContainerCorner)
+                    }
+                    .background(albumPageBg)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (dragY > 120f) {
                                     onClose()
                                 }
+                                dragY = 0f
+                            },
+                            onVerticalDrag = { _, delta ->
+                                if (delta > 0 || dragY > 0f) {
+                                    dragY = (dragY + delta).coerceAtLeast(0f)
+                                    if (dragY > 220f) {
+                                        onClose()
+                                    }
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
+            ) {
+                if (p < 0.22f) {
+                    if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
+                        AsyncImage(
+                            model = resolvedCover,
+                            contentDescription = alb.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        AppleMusicGradientCover(
+                            title = alb.title,
+                            artist = alb.artist,
+                            modifier = Modifier.fillMaxSize(),
+                            showLabel = false
+                        )
+                    }
                 }
-        ) {
-            // Surrounding rich detail view content fading and sliding in smoothly
-            if (p > 0.05f) {
-                val contentAlpha = ((p - 0.18f) / 0.82f).coerceIn(0f, 1f)
-                val contentSlide = (1f - p) * with(density) { 36.dp.toPx() }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            alpha = contentAlpha
-                            translationY = contentSlide
-                        }
-                ) {
+                // Surrounding rich detail view content fading and sliding in smoothly
+                if (p > 0.05f) {
+                    val contentAlpha = ((p - 0.18f) / 0.82f).coerceIn(0f, 1f)
+                    val contentSlide = (1f - p) * with(density) { 36.dp.toPx() }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                alpha = contentAlpha
+                                translationY = contentSlide
+                            }
+                    ) {
                     // 1. Deep Ambient Blurred Base
                     if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
                         AsyncImage(
@@ -327,14 +370,21 @@ fun FluidAlbumDetailOverlay(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = targetArtworkSize + 110.dp, bottom = 100.dp)
+                        contentPadding = PaddingValues(top = targetArtworkSize + 110.dp, bottom = LocalDynamicBottomPadding.current)
                     ) {
                         // Metadata card & Titles
                         item {
+                            val heroAlpha = (1f - (scrollOffset / 260f) * p).coerceIn(0f, 1f)
+                            val heroScale = (1f - (scrollOffset / 1200f) * p).coerceIn(0.85f, 1f)
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 24.dp),
+                                    .padding(horizontal = 24.dp)
+                                    .graphicsLayer {
+                                        alpha = heroAlpha
+                                        scaleX = heroScale
+                                        scaleY = heroScale
+                                    },
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
@@ -477,44 +527,78 @@ fun FluidAlbumDetailOverlay(
                                 }
                             }
                         } else {
-                            itemsIndexed(alb.songs) { index, song ->
-                                Row(
+                            item {
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { onPlay(song, alb.songs) }
-                                        .padding(horizontal = 24.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .padding(horizontal = 16.dp)
+                                        .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
                                 ) {
-                                    Text(
-                                        text = "${index + 1}",
-                                        color = textSecondary,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.width(32.dp)
-                                    )
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = song.title,
-                                            color = textPrimary,
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1
-                                        )
-                                        Text(
-                                            text = song.artist,
-                                            color = textSecondary,
-                                            fontSize = 12.sp,
-                                            maxLines = 1
-                                        )
+                                    for ((idx, song) in alb.songs.withIndex()) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { onPlay(song, alb.songs) }
+                                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "${idx + 1}",
+                                                color = Color.White.copy(alpha = 0.55f),
+                                                fontSize = 13.sp,
+                                                modifier = Modifier.width(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            val coverToUse = song.coverUrl.ifBlank { resolvedCover }
+                                            if (coverToUse.isNotBlank() && coverToUse.startsWith("http")) {
+                                                AsyncImage(
+                                                    model = coverToUse,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(46.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                )
+                                            } else {
+                                                AppleMusicGradientCover(
+                                                    title = song.title,
+                                                    artist = song.artist,
+                                                    modifier = Modifier
+                                                        .size(46.dp)
+                                                        .clip(RoundedCornerShape(8.dp)),
+                                                    cornerRadius = 8.dp,
+                                                    showLabel = false
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = song.title,
+                                                    color = Color.White,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1
+                                                )
+                                                Text(
+                                                    text = song.artist,
+                                                    color = Color.White.copy(alpha = 0.70f),
+                                                    fontSize = 12.sp,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                            val dur = if (song.durationSeconds > 0) {
+                                                "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}"
+                                            } else ""
+                                            Text(
+                                                text = dur,
+                                                color = Color.White.copy(alpha = 0.55f),
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                        if (idx < alb.songs.size - 1) {
+                                            HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                                        }
                                     }
-                                    val dur = if (song.durationSeconds > 0) {
-                                        "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}"
-                                    } else ""
-                                    Text(
-                                        text = dur,
-                                        color = textSecondary,
-                                        fontSize = 12.sp
-                                    )
                                 }
                             }
                         }
@@ -523,7 +607,8 @@ fun FluidAlbumDetailOverlay(
                     // 4. Pinned Top Navigation Bar (Fixed frosted header, back button, title on scroll)
                     val firstVisibleItem = listState.firstVisibleItemIndex
                     val firstVisibleOffset = listState.firstVisibleItemScrollOffset
-                    val dockedAlpha = if (firstVisibleItem > 0) 1f else (firstVisibleOffset / 400f).coerceIn(0f, 1f)
+                    val dockedAlpha = if (firstVisibleItem > 0) 1f else ((firstVisibleOffset - 80f) / 240f).coerceIn(0f, 1f)
+                    val dockedScale = 0.60f + 0.40f * dockedAlpha
 
                     Row(
                         modifier = Modifier
@@ -550,11 +635,19 @@ fun FluidAlbumDetailOverlay(
 
                         Text(
                             text = alb.title,
-                            color = textPrimary.copy(alpha = dockedAlpha),
+                            color = textPrimary,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
-                            modifier = Modifier.weight(1f, fill = false).padding(horizontal = 12.dp)
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .padding(horizontal = 12.dp)
+                                .graphicsLayer {
+                                    alpha = dockedAlpha
+                                    scaleX = dockedScale
+                                    scaleY = dockedScale
+                                    transformOrigin = TransformOrigin(0.5f, 0.5f)
+                                }
                         )
 
                         IconButton(
@@ -575,28 +668,25 @@ fun FluidAlbumDetailOverlay(
                 }
             }
 
-            // 5. Shared Morph Artwork: smoothly morphs from origin rect into target rect with swipe-up parallax and progressive blur
+            // 5. Shared Morph Artwork: centered hero artwork with swipe-up parallax and progressive blur
             Box(
                 modifier = Modifier
-                    .offset { IntOffset(curLeft.roundToInt(), (curTop + artTranslateY).roundToInt()) }
-                    .size(
-                        with(density) { curWidth.coerceAtLeast(1f).toDp() },
-                        with(density) { curHeight.coerceAtLeast(1f).toDp() }
-                    )
+                    .offset { IntOffset(targetLeftPx.roundToInt(), (targetTopPx + artTranslateY).roundToInt()) }
+                    .size(targetArtworkSize)
                     .graphicsLayer {
                         scaleX = artScale
                         scaleY = artScale
                         alpha = if (p >= 0.95f) artAlpha.coerceIn(0.08f, 1f) else 1f
                     }
                     .then(if (artBlur > 0.dp && p >= 0.95f) Modifier.blur(artBlur) else Modifier)
-                    .clip(RoundedCornerShape(curCorner))
-                    .shadow(elevation = (12.dp * p), shape = RoundedCornerShape(curCorner))
+                    .clip(RoundedCornerShape(22.dp))
+                    .shadow(elevation = (12.dp * clampedP).coerceAtLeast(0.dp), shape = RoundedCornerShape(22.dp))
             ) {
                 // Live gradient cover as robust foundation
                 AppleMusicGradientCover(
                     title = alb.title,
                     artist = alb.artist,
-                    cornerRadius = curCorner,
+                    cornerRadius = 22.dp,
                     modifier = Modifier.fillMaxSize()
                 )
                 if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
@@ -609,6 +699,7 @@ fun FluidAlbumDetailOverlay(
                 }
             }
         }
+    }
 
         // Save Album or Add to Album Set Dialog
         if (showSetDialog) {

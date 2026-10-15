@@ -37,9 +37,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.beatles.player.data.Album
+import com.beatles.player.data.ArtistMixEngine
 import com.beatles.player.data.MusicRepository
 import com.beatles.player.data.Song
+import com.beatles.player.ui.components.FrostedButton
 import com.beatles.player.ui.theme.isDarkTheme
+import com.beatles.player.ui.theme.LocalDynamicBottomPadding
 import com.beatles.player.viewmodel.PlayerUiState
 import com.beatles.player.ui.components.edgeFade
 import kotlin.math.roundToInt
@@ -56,10 +59,27 @@ fun SearchScreen(
     onQueryChange: (String) -> Unit = {},
     onSelectAlbum: (Album) -> Unit = {},
     onPlay: (Song, List<Song>, Rect?) -> Unit,
-    onMoveToPlayNext: (Song) -> Unit = {}
+    onMoveToPlayNext: (Song) -> Unit = {},
+    onPlayArtistMix: (String) -> Unit = {},
+    onSelectArtist: (String, Rect?) -> Unit = { _, _ -> },
+    onLoadMoreRecommendations: () -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
     val listState = rememberLazyListState()
+
+    // Infinite Search Recommendations trigger
+    val shouldLoadMore = remember {
+        derivedStateOf {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            val lastVisibleItem = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            state.searchQuery.isBlank() && totalItems > 0 && lastVisibleItem >= totalItems - 4
+        }
+    }
+    LaunchedEffect(shouldLoadMore.value) {
+        if (shouldLoadMore.value && !state.isTopHitsLoading) {
+            onLoadMoreRecommendations()
+        }
+    }
 
     val isDark = isDarkTheme(state.themeMode)
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
@@ -102,13 +122,32 @@ fun SearchScreen(
         list.take(4)
     }
 
+    val songsToDisplay = if (state.searchResults.isNotEmpty()) state.searchResults else state.instantMatchingSongs
+    val matchedArtist = remember(songsToDisplay, state.searchQuery) {
+        val q = state.searchQuery.trim()
+        if (q.isBlank()) null else {
+            val direct = songsToDisplay.map { it.artist.replace(" - Topic", "").trim() }
+                .firstOrNull { ArtistMixEngine.isArtistMatch(Song("", "", it, "", "", 0), q) }
+            if (direct != null) {
+                val songForArt = songsToDisplay.firstOrNull { ArtistMixEngine.isArtistMatch(it, direct) }
+                Pair(direct, songForArt?.coverUrl ?: "")
+            } else {
+                val byFreq = songsToDisplay.groupBy { it.artist.replace(" - Topic", "").trim() }
+                    .maxByOrNull { it.value.size }
+                if (byFreq != null && byFreq.value.size >= 2) {
+                    Pair(byFreq.key, byFreq.value.first().coverUrl)
+                } else null
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .edgeFade(if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)),
-            contentPadding = PaddingValues(top = 90.dp, bottom = 140.dp)
+            contentPadding = PaddingValues(top = 90.dp, bottom = LocalDynamicBottomPadding.current)
         ) {
             // Header title (static – no text/progress changes while typing, so nothing flickers)
             item(key = "search_header") {
@@ -121,8 +160,8 @@ fun SearchScreen(
                     Text(
                         text = "Search",
                         color = textPrimary,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 31.sp,
+                        fontWeight = FontWeight.Black
                     )
                 }
             }
@@ -188,7 +227,67 @@ fun SearchScreen(
                     }
                 }
 
-                val songsToDisplay = if (state.searchResults.isNotEmpty()) state.searchResults else state.instantMatchingSongs
+                if (matchedArtist != null) {
+                    item(key = "search_matched_artist_${matchedArtist.first}") {
+                        var artistBounds by remember { mutableStateOf<Rect?>(null) }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(if (isDark) Color(0xFF1E2026) else Color.White)
+                                .onGloballyPositioned { artistBounds = it.boundsInRoot() }
+                                .clickable { onSelectArtist(matchedArtist.first, artistBounds) }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            AsyncImage(
+                                model = matchedArtist.second,
+                                contentDescription = matchedArtist.first,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .clip(CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "ARTIST",
+                                    color = Color(0xFFF82C38),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                                Text(
+                                    matchedArtist.first,
+                                    color = textPrimary,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
+                            FrostedButton(
+                                onClick = { onSelectArtist(matchedArtist.first, artistBounds) },
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("View Artist", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (songsToDisplay.isNotEmpty()) {
                     item(key = "search_results_title") {
                         Row(
@@ -307,7 +406,55 @@ fun SearchScreen(
                     }
                 }
             } else {
-                item(key = "search_idle") { Spacer(modifier = Modifier.height(1.dp)) }
+                if (state.recommendations.isNotEmpty()) {
+                    item(key = "search_rec_header") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Text(
+                                "Recommended for You",
+                                color = textPrimary,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                "Based on your music taste",
+                                color = textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    items(state.recommendations, key = { "search_rec_${it.id}" }) { song ->
+                        SearchSongSwipeItem(
+                            song = song,
+                            onPlay = { bounds -> onPlay(song, state.recommendations, bounds) },
+                            onMoveToPlayNext = { onMoveToPlayNext(song) }
+                        )
+                    }
+
+                    if (state.isTopHitsLoading) {
+                        item(key = "search_loading_more") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = Color(0xFFF82C38),
+                                    strokeWidth = 2.5.dp,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    item(key = "search_idle") { Spacer(modifier = Modifier.height(1.dp)) }
+                }
             }
         }
     }

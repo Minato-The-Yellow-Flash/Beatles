@@ -248,6 +248,48 @@ object LocalStorage {
             ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("extended_automix", enabled).apply()
         } catch (_: Exception) {}
     }
+
+    // ═══ USER PREFERENCE MEMORY (Artistic Affinity & Listening History) ═══
+
+    fun getSelectedArtists(ctx: Context): Set<String> {
+        return try {
+            val set = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet("selected_artists", null)
+            if (!set.isNullOrEmpty()) set else emptySet()
+        } catch (_: Exception) { emptySet() }
+    }
+
+    fun saveSelectedArtists(ctx: Context, artists: Set<String>) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet("selected_artists", artists).apply()
+            for (artist in artists) {
+                updateArtistAffinity(ctx, artist, 15.0f)
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun getArtistAffinityMap(ctx: Context): Map<String, Float> {
+        val json = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("artist_affinities", null) ?: return emptyMap()
+        return try {
+            val type = object : com.google.gson.reflect.TypeToken<Map<String, Float>>() {}.type
+            gson.fromJson(json, type) ?: emptyMap()
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    fun updateArtistAffinity(ctx: Context, artist: String, delta: Float) {
+        val cleanArtist = artist.replace(" - Topic", "").trim()
+        if (cleanArtist.isBlank()) return
+        try {
+            val current = getArtistAffinityMap(ctx).toMutableMap()
+            val existing = current[cleanArtist] ?: 0f
+            current[cleanArtist] = (existing + delta).coerceIn(0f, 200f)
+            val json = gson.toJson(current)
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("artist_affinities", json).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getCachedPersonalizedAlbums(ctx: Context): List<Album> = getList(ctx, "personalized_albums", Album::class.java)
+
+    fun savePersonalizedAlbums(ctx: Context, albums: List<Album>) = saveList(ctx, "personalized_albums", albums)
 }
 
 enum class ThemeMode { SYSTEM, DARK, LIGHT }

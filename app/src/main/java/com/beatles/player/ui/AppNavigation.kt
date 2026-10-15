@@ -8,6 +8,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -21,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,11 +31,15 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.BlendMode
@@ -48,11 +54,20 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -64,13 +79,21 @@ import com.beatles.player.data.ThemeMode
 import com.beatles.player.data.UserRole
 import com.beatles.player.ui.components.AddAlbumDialog
 import com.beatles.player.ui.components.AlbumDetailSheet
+import com.beatles.player.ui.components.AppUpdateDialog
 import com.beatles.player.ui.components.FluidAlbumDetailOverlay
+import com.beatles.player.ui.components.FluidArtistDetailOverlay
 import com.beatles.player.ui.components.NowPlayingSheet
 import com.beatles.player.ui.screens.*
 import com.beatles.player.ui.theme.isDarkTheme
 import com.beatles.player.viewmodel.PlayerViewModel
 import com.beatles.player.viewmodel.Tab
+import com.beatles.player.ui.components.getAppleMusicGradientColors
+import com.beatles.player.ui.motion.LiquidMotion
+import com.beatles.player.ui.theme.QualityManager
+import com.beatles.player.ui.theme.VisualQuality
+import com.beatles.player.ui.theme.LocalDynamicBottomPadding
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
 import kotlinx.coroutines.delay
@@ -89,6 +112,7 @@ val AppleEase = SmoothEase
 
 // Frosted Translucent Styling: borderless, high reflection, translucent
 private val TranslucentBarBg = Color(0xFF383842).copy(alpha = 0.28f)
+private val GlassHazeStyle = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
 
 @Composable
 fun BeatlesApp(viewModel: PlayerViewModel) {
@@ -135,18 +159,31 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 val delta = available.y
-                if (delta == 0f) return Offset.Zero
-                val newOffset = (headerOffsetPx + delta).coerceIn(-maxHeaderOffset, 0f)
-                if (newOffset != headerOffsetPx) headerOffsetPx = newOffset
-                // Hysteresis so the nav bar doesn't flip back and forth on minor scrolls
-                if (newOffset < -130f) { if (!scrolledState) scrolledState = true }
-                else if (newOffset > -20f) { if (scrolledState) scrolledState = false }
+                if (delta > 0f) {
+                    val newOffset = (headerOffsetPx + delta).coerceIn(-maxHeaderOffset, 0f)
+                    if (newOffset != headerOffsetPx) headerOffsetPx = newOffset
+                }
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                val delta = consumed.y
+                if (delta < 0f) {
+                    val newOffset = (headerOffsetPx + delta).coerceIn(-maxHeaderOffset, 0f)
+                    if (newOffset != headerOffsetPx) headerOffsetPx = newOffset
+                }
+                if (headerOffsetPx < -130f) { if (!scrolledState) scrolledState = true }
+                else if (headerOffsetPx > -20f) { if (scrolledState) scrolledState = false }
                 return Offset.Zero
             }
         }
     }
     val animatedHeaderOffset = { headerOffsetPx }
     val headerAlphaProvider = { ((headerOffsetPx + maxHeaderOffset) / maxHeaderOffset).coerceIn(0f, 1f) }
+
+    LaunchedEffect(state.currentTab) {
+        headerOffsetPx = 0f
+    }
 
 
 
@@ -163,28 +200,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         headerOffsetPx = 0f; scrolledState = false
     }
 
-    // Android Predictive Back Gestures: fluid gestures that smoothly scale & dismiss overlays
-    PredictiveBackHandler(enabled = state.showProfilePage) { progress ->
-        try { progress.collect {}; viewModel.setProfileOpen(false) } catch (_: Exception) {}
-    }
-    PredictiveBackHandler(enabled = state.selectedAlbum != null) { progress ->
-        try { progress.collect {}; viewModel.setSelectedAlbum(null) } catch (_: Exception) {}
-    }
-    PredictiveBackHandler(enabled = state.showAddAlbumDialog) { progress ->
-        try { progress.collect {}; viewModel.setShowAddAlbumDialog(false) } catch (_: Exception) {}
-    }
-    // Sub-pages inside expanded player: Back from Queue or Lyrics returns to main player view
-    PredictiveBackHandler(enabled = state.isExpanded && state.showSeeAllSection == "next_up") { progress ->
-        try { progress.collect {}; viewModel.setSeeAllSection(null) } catch (_: Exception) {}
-    }
-    PredictiveBackHandler(enabled = state.isExpanded && state.showLyrics && state.showSeeAllSection != "next_up") { progress ->
-        try { progress.collect {}; viewModel.toggleLyrics() } catch (_: Exception) {}
-    }
-    PredictiveBackHandler(enabled = state.isExpanded && !state.showLyrics && state.showSeeAllSection != "next_up") { progress ->
-        try { progress.collect {}; viewModel.setExpanded(false) } catch (_: Exception) {}
-    }
-
-    // Remove the keyboard the moment the user navigates away from Search or opens an overlay
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     LaunchedEffect(state.isExpanded, state.currentTab, state.showSeeAllSection, state.selectedAlbum) {
@@ -193,11 +208,48 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
             keyboardController?.hide()
         }
     }
-    PredictiveBackHandler(enabled = state.currentTab == Tab.SEARCH) { progress ->
-        try { progress.collect {}; viewModel.setTab(Tab.HOME) } catch (_: Exception) {}
+
+    // ═══ GLOBAL DETERMINISTIC BACK NAVIGATION (R11) ═══
+    // Priority order (highest to lowest, strictly mutually exclusive):
+    // 0. Update dialog
+    PredictiveBackHandler(enabled = state.availableUpdate != null) { progress ->
+        try { progress.collect {}; viewModel.dismissUpdate() } catch (_: Exception) {}
     }
-    PredictiveBackHandler(enabled = !state.isExpanded && state.showSeeAllSection != null) { progress ->
+    // 1. Transient overlay (AddAlbumDialog, ProfilePage)
+    PredictiveBackHandler(enabled = state.availableUpdate == null && state.showAddAlbumDialog) { progress ->
+        try { progress.collect {}; viewModel.setShowAddAlbumDialog(false) } catch (_: Exception) {}
+    }
+    PredictiveBackHandler(enabled = state.availableUpdate == null && !state.showAddAlbumDialog && state.showProfilePage) { progress ->
+        try { progress.collect {}; viewModel.setProfileOpen(false) } catch (_: Exception) {}
+    }
+
+    // 2. Player sub-pages: if player is expanded and showing Lyrics or Next Up, exit that sub-page and show player's main view
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && state.isExpanded && state.showSeeAllSection == "next_up") { progress ->
         try { progress.collect {}; viewModel.setSeeAllSection(null) } catch (_: Exception) {}
+    }
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && state.isExpanded && state.showLyrics && state.showSeeAllSection != "next_up") { progress ->
+        try { progress.collect {}; viewModel.toggleLyrics() } catch (_: Exception) {}
+    }
+
+    // 3. Player collapse: if the player is expanded on its main view, collapse it back to the mini player
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && state.isExpanded && !state.showLyrics && state.showSeeAllSection != "next_up") { progress ->
+        try { progress.collect {}; viewModel.setExpanded(false) } catch (_: Exception) {}
+    }
+
+    // 4. Detail screens: album detail takes precedence over artist detail
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && !state.isExpanded && state.selectedAlbum != null) { progress ->
+        try { progress.collect {}; viewModel.setSelectedAlbum(null) } catch (_: Exception) {}
+    }
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && !state.isExpanded && state.selectedAlbum == null && state.selectedArtist != null) { progress ->
+        try { progress.collect {}; viewModel.setSelectedArtist(null) } catch (_: Exception) {}
+    }
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && !state.isExpanded && state.selectedArtist == null && state.selectedAlbum == null && state.showSeeAllSection != null) { progress ->
+        try { progress.collect {}; viewModel.setSeeAllSection(null) } catch (_: Exception) {}
+    }
+
+    // 5. Tab stack: if on any tab other than Home (Explore, Library, Search), pop back to Home
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && !state.isExpanded && state.selectedArtist == null && state.selectedAlbum == null && state.showSeeAllSection == null && state.currentTab != Tab.HOME) { progress ->
+        try { progress.collect {}; viewModel.setTab(Tab.HOME) } catch (_: Exception) {}
     }
 
     val currentRoleColor = when (state.userRole) {
@@ -269,11 +321,11 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         else -> {
             val isDark = isDarkTheme(state.themeMode)
             val appBg = if (isDark) GrayBlackBg else Color(0xFFF6F7F9)
-            val translucentBarBg = if (isDark) Color(0xFF16171D).copy(alpha = 0.70f) else Color(0xFFFFFFFF).copy(alpha = 0.78f)
-            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.14f)
-            val translucentPillBg = if (isDark) Color(0xFF1E2026).copy(alpha = 0.85f) else Color(0xFFFFFFFF).copy(alpha = 0.88f)
-            val translucentPillBorder = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.12f)
-            val translucentInnerPill = if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.10f)
+            val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.40f) else Color(0xFFFFFFFF).copy(alpha = 0.48f)
+            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.20f)
+            val translucentPillBg = if (isDark) Color(0xFF181A22).copy(alpha = 0.44f) else Color(0xFFFFFFFF).copy(alpha = 0.52f)
+            val translucentPillBorder = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.20f)
+            val translucentInnerPill = if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.08f)
             val textPrimary = if (isDark) Color.White else Color(0xFF141416)
             val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
             val navInactiveTint = if (isDark) Color.White.copy(alpha = 0.45f) else Color(0xFF8E8E93)
@@ -281,6 +333,11 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
             val searchInputColor = if (isDark) Color.White else Color(0xFF141416)
             val searchHintColor = if (isDark) Color.White.copy(alpha = 0.45f) else Color(0xFF9CA3AF)
             val noticeBg = if (isDark) Color(0xFF222226).copy(alpha = 0.95f) else Color.White.copy(alpha = 0.95f)
+            val dominantColor = remember(state.currentSong?.id) {
+                state.currentSong?.let {
+                    getAppleMusicGradientColors(it.title, it.artist).first
+                } ?: AccentRed
+            }
 
             // Dynamic edge-to-edge status bar coloring that responds to active album/player
             val windowView = androidx.compose.ui.platform.LocalView.current
@@ -300,6 +357,14 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
             }
 
 
+            val targetBottomPadding = if (state.currentSong != null) 144.dp else 86.dp
+            val animatedBottomPadding by animateDpAsState(
+                targetValue = targetBottomPadding,
+                animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
+                label = "dynamicBottomPadding"
+            )
+
+            CompositionLocalProvider(LocalDynamicBottomPadding provides animatedBottomPadding) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -313,13 +378,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .haze(state = hazeState)
                         .graphicsLayer {
                             scaleX = contentBehindScale
                             scaleY = contentBehindScale
                             alpha = contentBehindAlpha
                             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.5f)
                         }
-                        .haze(state = hazeState)
                 ) {
                     when (state.userRole) {
                         UserRole.LISTENER -> {
@@ -350,6 +415,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             state = screenState,
                                             onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) },
                                             onPlayArtistMix = { artist, songs -> viewModel.playArtistMix(artist, songs) },
+                                            onSelectArtist = { artist, bounds -> viewModel.setSelectedArtist(artist, bounds) },
                                             onSeeAll = { section -> viewModel.setSeeAllSection(section.ifEmpty { null }) },
                                             onSelectAlbum = { alb, bounds -> viewModel.setSelectedAlbum(alb, bounds) },
                                             onPlayAlbumSet = { viewModel.playAlbumSet(it) },
@@ -378,7 +444,10 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             onQueryChange = { viewModel.fetchSearchSuggestions(it) },
                                             onSelectAlbum = { viewModel.setSelectedAlbum(it) },
                                             onPlay = { s, _, bounds -> viewModel.playSong(s, playlist = null, isFromSearch = true, sourceBounds = bounds) },
-                                            onMoveToPlayNext = { s -> viewModel.moveSongToPlayNext(s) }
+                                            onMoveToPlayNext = { s -> viewModel.moveSongToPlayNext(s) },
+                                            onPlayArtistMix = { viewModel.playArtistMix(it) },
+                                            onSelectArtist = { artist, bounds -> viewModel.setSelectedArtist(artist, bounds) },
+                                            onLoadMoreRecommendations = { viewModel.loadMoreTopSongs() }
                                         )
                                     }
                                 }
@@ -398,7 +467,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
 
                 // ═══ 2. STICKY TOP HEADER (Floating Logo + User Avatar) ═══
-                if (state.showSeeAllSection == null && state.currentTab != Tab.SEARCH && state.selectedAlbum == null && playerProgress.value <= 0.01f && !state.isExpanded) {
+                if (!state.showProfilePage && state.showSeeAllSection == null && state.currentTab != Tab.SEARCH && state.selectedAlbum == null && playerProgress.value <= 0.01f && !state.isExpanded) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -466,14 +535,24 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
 
                 // Bottom: Mini Player + Borderless Translucent Nav
+                val isOverlayActive = (state.isExpanded && playerProgress.value >= 0.99f) || state.selectedAlbum != null || state.selectedArtist != null || state.showProfilePage
+                val effectiveBottomAlpha = if (isOverlayActive) 0f else 1f
+
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .zIndex(10f)
+                        .navigationBarsPadding()
                         .imePadding()
-                        .pointerInput(Unit) {
-                            detectTapGestures { /* consume touches to prevent mistouches to the list underneath */ }
+                        .graphicsLayer {
+                            alpha = effectiveBottomAlpha
+                            translationY = (1f - effectiveBottomAlpha) * 32f
+                        }
+                        .pointerInput(effectiveBottomAlpha) {
+                            if (effectiveBottomAlpha > 0.01f) {
+                                detectTapGestures { /* consume touches to prevent mistouches to the list underneath */ }
+                            }
                         }
                 ) {
                     val isScrolling = scrolledState
@@ -509,163 +588,238 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         val song = state.currentSong
                         if (song != null) {
                             BoxWithConstraints(modifier = mod) {
-                                var miniDragX by remember { mutableFloatStateOf(0f) }
-                                val pillCorner = if (compact) barCorner else 24.dp
-                                val pillArt = if (compact) 26.dp else 33.dp
+                                val totalWidthPx = constraints.maxWidth.toFloat()
+                                val pillCorner = if (compact) barCorner else 22.dp
+                                val pillArt = if (compact) 38.dp else 32.dp
+
+                                var isScrubbingActive by remember { mutableStateOf(false) }
+                                var dragOffsetX by remember { mutableFloatStateOf(0f) }
+                                var hasPassedThreshold by remember { mutableStateOf(false) }
+
+                                val animatedOffsetXPx by animateFloatAsState(
+                                    targetValue = dragOffsetX,
+                                    animationSpec = LiquidMotion.Lens,
+                                    label = "miniSwipeOffset"
+                                )
+
+                                // Liquid motion stretch deformation along swipe axis
+                                val swipeFraction = if (totalWidthPx > 0f) (kotlin.math.abs(animatedOffsetXPx) / totalWidthPx).coerceIn(0f, 1f) else 0f
+                                val stretchX = 1f + (swipeFraction * 0.12f).coerceIn(0f, 0.12f)
+                                val squeezeY = 1f - (swipeFraction * 0.04f).coerceIn(0f, 0.04f)
 
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
+                                        .graphicsLayer {
+                                            translationX = animatedOffsetXPx
+                                            scaleX = stretchX
+                                            scaleY = squeezeY
+                                        }
                                         .clip(RoundedCornerShape(pillCorner))
+                                        .then(
+                                            if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                                                Modifier.hazeChild(
+                                                    state = hazeState,
+                                                    shape = RoundedCornerShape(pillCorner),
+                                                    style = GlassHazeStyle
+                                                )
+                                            } else Modifier
+                                        )
                                         .background(translucentPillBg)
-                                        .border(0.5.dp, translucentPillBorder, RoundedCornerShape(pillCorner))
+                                        .glassRefraction(pillCorner, isDark)
                                 ) {
+                                    // Gesture detector for horizontal swipe to change track & tap to expand (R6)
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .pointerInput(Unit) {
-                                            awaitEachGesture {
-                                                val down = awaitFirstDown(requireUnconsumed = false)
-                                                val slop = viewConfiguration.touchSlop
-                                                var dx = 0f
-                                                var dy = 0f
-                                                var isHorizontalSwipe = false
-                                                do {
-                                                    val event = awaitPointerEvent()
-                                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                                    val d = change.positionChange()
-                                                    dx += d.x
-                                                    dy += d.y
-                                                    if (!isHorizontalSwipe && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) {
-                                                        if (kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.6f) {
-                                                            isHorizontalSwipe = true
-                                                        }
-                                                    }
-                                                    if (isHorizontalSwipe) {
-                                                        change.consume()
-                                                    }
-                                                } while (event.changes.any { it.pressed })
+                                                awaitEachGesture {
+                                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                                    if (isScrubbingActive) return@awaitEachGesture
+                                                    val slop = viewConfiguration.touchSlop
+                                                    var dx = 0f
+                                                    var dy = 0f
+                                                    var isHorizontalSwipe = false
+                                                    hasPassedThreshold = false
+                                                    val velocityTracker = VelocityTracker()
+                                                    velocityTracker.addPosition(down.uptimeMillis, down.position)
 
-                                                if (isHorizontalSwipe) {
-                                                    if (dx < -70f) {
-                                                        com.beatles.player.ui.components.Haptics.confirm(miniView)
-                                                        viewModel.playNext()
-                                                    } else if (dx > 70f) {
-                                                        com.beatles.player.ui.components.Haptics.confirm(miniView)
-                                                        viewModel.playPrevious()
-                                                    }
-                                                } else {
-                                                    // Pure tap: expand player (swipes never expand player)
-                                                    if (kotlin.math.abs(dx) <= slop && kotlin.math.abs(dy) <= slop) {
-                                                        viewModel.setExpanded(true)
+                                                    do {
+                                                        val event = awaitPointerEvent()
+                                                        if (isScrubbingActive) {
+                                                            dragOffsetX = 0f
+                                                            break
+                                                        }
+                                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                                        velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                                        val d = change.positionChange()
+                                                        dx += d.x
+                                                        dy += d.y
+
+                                                        if (!isHorizontalSwipe && (kotlin.math.abs(dx) > slop || kotlin.math.abs(dy) > slop)) {
+                                                            if (kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.3f) {
+                                                                isHorizontalSwipe = true
+                                                            }
+                                                        }
+
+                                                        if (isHorizontalSwipe) {
+                                                            change.consume()
+                                                            // Rubber-band drag with resistance
+                                                            dragOffsetX = dx * 0.80f
+                                                            val thresholdPx = totalWidthPx * 0.20f
+                                                            if (kotlin.math.abs(dragOffsetX) >= thresholdPx) {
+                                                                if (!hasPassedThreshold) {
+                                                                    hasPassedThreshold = true
+                                                                    com.beatles.player.ui.components.Haptics.tick(miniView)
+                                                                }
+                                                            } else {
+                                                                hasPassedThreshold = false
+                                                            }
+                                                        }
+                                                    } while (event.changes.any { it.pressed })
+
+                                                    val velocity = velocityTracker.calculateVelocity().x
+                                                    val thresholdPx = totalWidthPx * 0.20f
+                                                    val flingThresholdPx = with(density) { 450.dp.toPx() }
+
+                                                    if (isHorizontalSwipe) {
+                                                        val commitSwipe = kotlin.math.abs(dragOffsetX) >= thresholdPx || kotlin.math.abs(velocity) > flingThresholdPx
+                                                        if (commitSwipe) {
+                                                            com.beatles.player.ui.components.Haptics.confirm(miniView)
+                                                            if (dragOffsetX > 0f || velocity > flingThresholdPx) {
+                                                                viewModel.playNext()
+                                                            } else {
+                                                                viewModel.playPrevious()
+                                                            }
+                                                        }
+                                                        dragOffsetX = 0f
+                                                        hasPassedThreshold = false
+                                                    } else if (!isScrubbingActive) {
+                                                        // Pure tap: expand player (swipes NEVER expand player)
+                                                        if (kotlin.math.abs(dx) <= slop && kotlin.math.abs(dy) <= slop) {
+                                                            viewModel.setExpanded(true)
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                    if (song.coverUrl.isNotEmpty()) {
-                                        AsyncImage(
-                                            model = song.coverUrl,
-                                            contentDescription = null,
-                                            contentScale = ContentScale.Crop,
+                                        Row(
                                             modifier = Modifier
-                                                .size(pillArt)
-                                                .clip(CircleShape)
-                                                .onGloballyPositioned { coords ->
-                                                    if (coords.isAttached && !isSearch) {
-                                                        activeMiniArtBounds = coords.boundsInRoot()
-                                                    }
-                                                }
-                                        )
-                                    } else {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(pillArt)
-                                                .clip(CircleShape)
-                                                .background(Color.Gray)
-                                                .onGloballyPositioned { coords ->
-                                                    if (coords.isAttached && !isSearch) {
-                                                        activeMiniArtBounds = coords.boundsInRoot()
-                                                    }
-                                                }
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.Center
-                                    ) {
-                                        Text(
-                                            song.title,
-                                            color = textPrimary,
-                                            fontSize = if (compact) 12.sp else 13.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1
-                                        )
-                                        if (!compact) {
-                                            Text(song.artist, color = textSecondary, fontSize = 11.sp, maxLines = 1)
-                                        }
-                                    }
-                                    IconButton(
-                                        onClick = {
-                                            com.beatles.player.ui.components.Haptics.click(miniView)
-                                            viewModel.togglePlayPause()
-                                        },
-                                        modifier = Modifier.size(if (compact) 30.dp else 36.dp)
-                                    ) {
-                                        if (state.isLoadingStream) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(16.dp),
-                                                color = textPrimary,
-                                                strokeWidth = 2.dp
-                                            )
-                                        } else {
-                                            Icon(
-                                                if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                                contentDescription = null,
-                                                tint = textPrimary,
-                                                modifier = Modifier.size(if (compact) 18.dp else 22.dp)
-                                            )
-                                        }
-                                    }
-                                    if (!compact) {
-                                        IconButton(
-                                            onClick = {
-                                                com.beatles.player.ui.components.Haptics.click(miniView)
-                                                viewModel.playNext()
-                                            },
-                                            modifier = Modifier.size(36.dp)
+                                                .fillMaxSize()
+                                                .padding(horizontal = 8.dp)
+                                                .semantics {
+                                                    customActions = listOf(
+                                                        CustomAccessibilityAction("Next Track") {
+                                                            viewModel.playNext()
+                                                            true
+                                                        },
+                                                        CustomAccessibilityAction("Previous Track") {
+                                                            viewModel.playPrevious()
+                                                            true
+                                                        }
+                                                    )
+                                                },
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Icon(Icons.Default.SkipNext, contentDescription = null, tint = textPrimary, modifier = Modifier.size(22.dp))
+                                            if (song.coverUrl.isNotEmpty()) {
+                                                AsyncImage(
+                                                    model = song.coverUrl,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(pillArt)
+                                                        .clip(CircleShape)
+                                                        .onGloballyPositioned { coords ->
+                                                            if (coords.isAttached && !isSearch) {
+                                                                activeMiniArtBounds = coords.boundsInRoot()
+                                                            }
+                                                        }
+                                                )
+                                            } else {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(pillArt)
+                                                        .clip(CircleShape)
+                                                        .background(Color.Gray)
+                                                        .onGloballyPositioned { coords ->
+                                                            if (coords.isAttached && !isSearch) {
+                                                                activeMiniArtBounds = coords.boundsInRoot()
+                                                            }
+                                                        }
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Text(
+                                                    song.title,
+                                                    color = textPrimary,
+                                                    fontSize = if (compact) 12.sp else 13.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1
+                                                )
+                                                if (!compact) {
+                                                    Text(song.artist, color = textSecondary, fontSize = 11.sp, maxLines = 1)
+                                                }
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    com.beatles.player.ui.components.Haptics.click(miniView)
+                                                    viewModel.togglePlayPause()
+                                                },
+                                                modifier = Modifier.size(if (compact) 32.dp else 34.dp)
+                                            ) {
+                                                if (state.isLoadingStream) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(16.dp),
+                                                        color = textPrimary,
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                                        contentDescription = null,
+                                                        tint = textPrimary,
+                                                        modifier = Modifier.size(if (compact) 19.dp else 20.dp)
+                                                    )
+                                                }
+                                            }
+                                            if (!compact) {
+                                                IconButton(
+                                                    onClick = {
+                                                        com.beatles.player.ui.components.Haptics.click(miniView)
+                                                        viewModel.playNext()
+                                                    },
+                                                    modifier = Modifier.size(34.dp)
+                                                ) {
+                                                    Icon(Icons.Rounded.SkipNext, contentDescription = null, tint = textPrimary, modifier = Modifier.size(20.dp))
+                                                }
+                                            }
                                         }
                                     }
-                                }
 
-                                // Seek indicator line (isolated from BeatlesApp recomposition)
-                                MiniPlayerSeekLine(
-                                    position = { stateHolder.value.currentPosition },
-                                    duration = { stateHolder.value.duration },
-                                    isMixing = { stateHolder.value.autoMixState.isMixing },
-                                    isDark = isDark,
-                                    modifier = Modifier.align(Alignment.BottomStart)
-                                )
+                                    // Hold-to-expand seek indicator line (R7)
+                                    MiniPlayerSeekLine(
+                                        position = { stateHolder.value.currentPosition },
+                                        duration = { stateHolder.value.duration },
+                                        isMixing = { stateHolder.value.autoMixState.isMixing },
+                                        isDark = isDark,
+                                        onSeek = { viewModel.seekTo(it) },
+                                        onScrubbingChanged = { isScrubbingActive = it },
+                                        modifier = Modifier.align(Alignment.BottomStart)
+                                    )
+                                }
                             }
                         }
                     }
-                    }
-                }
 
                     // Top Mini Player: smoothly collapses height and fades out when scrolling or entering search
                     val topMorphScale = (1f - morph).coerceIn(0f, 1f)
                     val topPlayerAlpha = (1f - combined * 2.5f).coerceIn(0f, 1f) * (1f - playerProgress.value)
                     if (hasSong && topPlayerAlpha > 0.01f && topMorphScale > 0.01f) {
-                        val animatedTopHeight = 49.dp * topMorphScale
+                        val animatedTopHeight = 45.dp * topMorphScale
                         val animatedTopPad = 4.dp * topMorphScale
                         Box(
                             modifier = Modifier
@@ -680,7 +834,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                             contentAlignment = Alignment.Center
                         ) {
                             miniPlayerPill(
-                                Modifier.fillMaxWidth().padding(horizontal = 12.dp).fillMaxHeight(),
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp).fillMaxHeight(),
                                 false
                             )
                         }
@@ -746,13 +900,23 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // Left Pill: shrinks to circle with active tab icon in search mode, expands to full tabs in normal mode
+                                    val barShape = RoundedCornerShape(barCorner)
                                     Box(
                                         modifier = Modifier
                                             .width(with(density) { leftWidthPx.toDp() })
                                             .fillMaxHeight()
-                                            .clip(RoundedCornerShape(barCorner))
+                                            .clip(barShape)
+                                            .then(
+                                                if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                                                    Modifier.hazeChild(
+                                                        state = hazeState,
+                                                        shape = barShape,
+                                                        style = GlassHazeStyle
+                                                    )
+                                                } else Modifier
+                                            )
                                             .background(translucentBarBg)
-                                            .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
+                                            .glassRefraction(barCorner, isDark)
                                     ) {
                                         // Left Pill Content: Both layers blend smoothly with crossfade
                                         val activeTab = tabs[selectedMainTabIdx]
@@ -763,33 +927,89 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         if (fullAlpha > 0.01f) {
                                             val availableForTabs = (leftWidthPx - with(density) { 8.dp.toPx() }).coerceAtLeast(1f)
                                             val tabWidth = availableForTabs / tabs.size.toFloat()
+
+                                            var isHoldingNav by remember { mutableStateOf(false) }
+                                            var dragNavX by remember { mutableFloatStateOf(0f) }
+                                            var activeHoverIdx by remember { mutableIntStateOf(selectedMainTabIdx) }
+
+                                            val targetFraction = if (isHoldingNav) {
+                                                (dragNavX / tabWidth - 0.5f).coerceIn(0f, (tabs.size - 1).toFloat())
+                                            } else {
+                                                selectedMainTabIdx.toFloat()
+                                            }
+
+                                            // Jiggy elastic spring with lively overshoot and bounce
                                             val indicatorFraction by animateFloatAsState(
-                                                targetValue = selectedMainTabIdx.toFloat(),
-                                                animationSpec = spring(
-                                                    dampingRatio = 0.82f,
-                                                    stiffness = Spring.StiffnessMediumLow
-                                                ),
-                                                label = "smoothNavIndicator"
+                                                targetValue = targetFraction,
+                                                animationSpec = if (isHoldingNav) spring(dampingRatio = 0.90f, stiffness = 600f)
+                                                               else spring(dampingRatio = 0.58f, stiffness = 320f),
+                                                label = "jiggyNavIndicator"
                                             )
-                                            val stretchAmount = (kotlin.math.abs(selectedMainTabIdx - indicatorFraction) * 0.28f).coerceAtMost(0.35f)
+                                            val diff = kotlin.math.abs(targetFraction - indicatorFraction)
+                                            val stretchX = (1f + diff * 0.35f).coerceIn(1f, 1.14f)
+                                            val squashY = (1f - diff * 0.10f).coerceIn(0.95f, 1f)
+
+                                            val holdScale by animateFloatAsState(
+                                                targetValue = if (isHoldingNav) 1.08f else 1.0f,
+                                                animationSpec = spring(dampingRatio = 0.65f, stiffness = 400f),
+                                                label = "navHoldScale"
+                                            )
+                                            val holdAlpha by animateFloatAsState(
+                                                targetValue = if (isHoldingNav) 0.50f else 0.22f,
+                                                label = "navHoldAlpha"
+                                            )
+
+                                            // Strictly clamp so the indicator NEVER crosses the outer nav bar borders
+                                            val maxOffsetPx = (availableForTabs - tabWidth).coerceAtLeast(0f)
+                                            val clampedIndicatorX = (indicatorFraction * tabWidth).coerceIn(0f, maxOffsetPx)
 
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxSize()
+                                                    .padding(4.dp)
                                                     .graphicsLayer { alpha = fullAlpha }
+                                                    .pointerInput(tabWidth, availableForTabs) {
+                                                        detectDragGesturesAfterLongPress(
+                                                            onDragStart = { offset ->
+                                                                isHoldingNav = true
+                                                                dragNavX = offset.x
+                                                                activeHoverIdx = (offset.x / tabWidth).toInt().coerceIn(0, tabs.size - 1)
+                                                                com.beatles.player.ui.components.Haptics.confirm(windowView)
+                                                            },
+                                                            onDrag = { change, dragAmount ->
+                                                                change.consume()
+                                                                dragNavX = (dragNavX + dragAmount.x).coerceIn(0f, availableForTabs)
+                                                                val newIdx = (dragNavX / tabWidth).toInt().coerceIn(0, tabs.size - 1)
+                                                                if (newIdx != activeHoverIdx) {
+                                                                    activeHoverIdx = newIdx
+                                                                    com.beatles.player.ui.components.Haptics.tick(windowView)
+                                                                }
+                                                            },
+                                                            onDragEnd = {
+                                                                isHoldingNav = false
+                                                                val chosenTab = tabs[activeHoverIdx].first
+                                                                viewModel.setTab(chosenTab)
+                                                                com.beatles.player.ui.components.Haptics.confirm(windowView)
+                                                            },
+                                                            onDragCancel = {
+                                                                isHoldingNav = false
+                                                            }
+                                                        )
+                                                    }
                                             ) {
-                                                // Sliding active indicator
+                                                // Sliding active indicator with liquid deformation, strictly clamped inside outer bounds
+                                                val innerBg = if (isDark) Color.White.copy(alpha = holdAlpha) else Color.Black.copy(alpha = if (isHoldingNav) 0.22f else 0.10f)
                                                 Box(
                                                     modifier = Modifier
                                                         .fillMaxHeight()
-                                                        .width(with(density) { (tabWidth - 2).coerceAtLeast(1f).toDp() })
-                                                        .offset { IntOffset((indicatorFraction * tabWidth).roundToInt(), 0) }
+                                                        .width(with(density) { tabWidth.coerceAtLeast(1f).toDp() })
+                                                        .offset { IntOffset(clampedIndicatorX.roundToInt(), 0) }
                                                         .graphicsLayer {
-                                                            scaleX = 1f + stretchAmount
-                                                            scaleY = 1f - stretchAmount * 0.4f
+                                                            scaleX = stretchX * holdScale
+                                                            scaleY = squashY * holdScale
                                                         }
-                                                        .clip(RoundedCornerShape((barCorner - 4.dp).coerceAtLeast(4.dp)))
-                                                        .background(translucentInnerPill)
+                                                        .clip(RoundedCornerShape(barCorner))
+                                                        .background(innerBg)
                                                 )
 
                                                 Row(
@@ -798,7 +1018,18 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     tabs.forEach { (tab, icon, label) ->
-                                                        val isActive = state.currentTab == tab
+                                                        val isCurrentTabActive = state.currentTab == tab
+                                                        val tabScale by animateFloatAsState(
+                                                            targetValue = if (isCurrentTabActive) 1f else 0.92f,
+                                                            animationSpec = LiquidMotion.Lens,
+                                                            label = "tabScale_${tab.name}"
+                                                        )
+                                                        val tabAlpha by animateFloatAsState(
+                                                            targetValue = if (isCurrentTabActive) 1f else 0.65f,
+                                                            animationSpec = LiquidMotion.Lens,
+                                                            label = "tabAlpha_${tab.name}"
+                                                        )
+
                                                         Box(
                                                             modifier = Modifier
                                                                 .weight(1f)
@@ -811,12 +1042,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         ) {
                                                             Column(
                                                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                                                verticalArrangement = Arrangement.Center
+                                                                verticalArrangement = Arrangement.Center,
+                                                                modifier = Modifier.graphicsLayer {
+                                                                    scaleX = tabScale
+                                                                    scaleY = tabScale
+                                                                    alpha = tabAlpha
+                                                                }
                                                             ) {
                                                                 Icon(
                                                                     icon,
                                                                     contentDescription = null,
-                                                                    tint = if (isActive) AccentRed else navInactiveTint,
+                                                                    tint = if (isCurrentTabActive) AccentRed else navInactiveTint,
                                                                     modifier = Modifier.size(navIconSize)
                                                                 )
                                                                 if (combined < 0.25f) {
@@ -824,7 +1060,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                                         label,
                                                                         fontSize = navTextSize,
                                                                         fontWeight = FontWeight.Medium,
-                                                                        color = if (isActive) AccentRed else textSecondary,
+                                                                        color = if (isCurrentTabActive) AccentRed else textSecondary,
                                                                         modifier = Modifier.offset(y = (-1).dp)
                                                                     )
                                                                 }
@@ -863,9 +1099,9 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         }
                                     }
 
-                                    // Scroll mode: mini player sits in the middle (symmetrical spacing, no jitter or visible side cutoffs)
-                                    if (hasSong && morph > 0.001f) {
-                                        Spacer(modifier = Modifier.width(with(density) { (gapPx * morph).toDp() }))
+                                    // Scroll mode: mini player sits in the middle (continuous math prevents search button from jiggling)
+                                    Spacer(modifier = Modifier.width(with(density) { gapPx.toDp() }))
+                                    if (hasSong && morph > 0.0001f) {
                                         val middleWidth = searchModeMiddleWidthPx * morph
                                         Box(
                                             modifier = Modifier
@@ -877,18 +1113,26 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             miniPlayerPill(Modifier.fillMaxSize(), true)
                                         }
                                         Spacer(modifier = Modifier.width(with(density) { (gapPx * morph).toDp() }))
-                                    } else {
-                                        Spacer(modifier = Modifier.width(with(density) { gapPx.toDp() }))
                                     }
 
                                     // Search Pill: contracts to circle button (normal mode) or expands into search bar (search mode)
+                                    val searchPillShape = if (searchExpandProgress > 0.05f) barShape else CircleShape
                                     Box(
                                         modifier = Modifier
                                             .width(with(density) { searchWidthPx.toDp() })
                                             .fillMaxHeight()
-                                            .clip(RoundedCornerShape(barCorner))
+                                            .clip(searchPillShape)
+                                            .then(
+                                                if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                                                    Modifier.hazeChild(
+                                                        state = hazeState,
+                                                        shape = searchPillShape,
+                                                        style = GlassHazeStyle
+                                                    )
+                                                } else Modifier
+                                            )
                                             .background(translucentBarBg)
-                                            .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
+                                            .glassRefraction(barCorner, isDark)
                                     ) {
                                         // Compact search button (normal mode)
                                         if (searchExpandProgress < 0.6f) {
@@ -946,7 +1190,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         cursorBrush = SolidColor(AccentRed),
                                                         decorationBox = { inner ->
                                                             if (bottomSearchText.isEmpty()) {
-                                                                Text("Search songs, artists, albums...", color = searchHintColor, fontSize = 13.sp)
+                                                                Text("Search", color = searchHintColor, fontSize = 13.sp)
                                                             }
                                                             inner()
                                                         }
@@ -984,8 +1228,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     alpha = searchExpandProgress
                                                 }
                                                 .clip(CircleShape)
-                                                .border(0.5.dp, translucentBarBorder, CircleShape)
+                                                .then(
+                                                    if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                                                        Modifier.hazeChild(
+                                                            state = hazeState,
+                                                            shape = CircleShape,
+                                                            style = GlassHazeStyle
+                                                        )
+                                                    } else Modifier
+                                                )
                                                 .background(translucentBarBg)
+                                                .glassRefraction(circleSize / 2, isDark, isCircle = true)
                                                 .clickable(
                                                     interactionSource = remember { MutableInteractionSource() },
                                                     indication = null
@@ -1062,7 +1315,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         .weight(1f)
                                         .height(bottomBarHeight)
                                         .clip(RoundedCornerShape(barCorner))
+                                        .then(
+                                            if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                                                Modifier.hazeChild(
+                                                    state = hazeState,
+                                                    shape = RoundedCornerShape(barCorner),
+                                                    style = GlassHazeStyle
+                                                )
+                                            } else Modifier
+                                        )
                                         .background(translucentBarBg)
+                                        .glassRefraction(barCorner, isDark)
                                         .padding(4.dp)
                                 ) {
                                     val tabWidth = constraints.maxWidth / tabs.size.toFloat()
@@ -1106,8 +1369,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     modifier = Modifier
                                         .size(circleSize)
                                         .clip(CircleShape)
-                                        .border(0.5.dp, translucentBarBorder, CircleShape)
+                                        .then(
+                                            if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                                                Modifier.hazeChild(
+                                                    state = hazeState,
+                                                    shape = CircleShape,
+                                                    style = GlassHazeStyle
+                                                )
+                                            } else Modifier
+                                        )
                                         .background(translucentBarBg)
+                                        .glassRefraction(circleSize / 2, isDark, isCircle = true)
                                         .clickable { viewModel.setShowAddAlbumDialog(true) },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1140,8 +1412,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         .weight(1f)
                                         .height(bottomBarHeight)
                                         .clip(RoundedCornerShape(barCorner))
-                                        .border(0.5.dp, translucentBarBorder, RoundedCornerShape(barCorner))
+                                        .then(
+                                            if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                                                Modifier.hazeChild(
+                                                    state = hazeState,
+                                                    shape = RoundedCornerShape(barCorner),
+                                                    style = GlassHazeStyle
+                                                )
+                                            } else Modifier
+                                        )
                                         .background(translucentBarBg)
+                                        .glassRefraction(barCorner, isDark)
                                         .padding(4.dp)
                                 ) {
                                     val tabWidth = constraints.maxWidth / tabs.size.toFloat()
@@ -1187,8 +1468,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     modifier = Modifier
                                         .size(circleSize)
                                         .clip(CircleShape)
-                                        .border(0.5.dp, translucentBarBorder, CircleShape)
+                                        .then(
+                                            if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                                                Modifier.hazeChild(
+                                                    state = hazeState,
+                                                    shape = CircleShape,
+                                                    style = GlassHazeStyle
+                                                )
+                                            } else Modifier
+                                        )
                                         .background(if (state.adminTab == AdminTab.SETTINGS) AccentBlue else translucentBarBg)
+                                        .glassRefraction(circleSize / 2, isDark, isCircle = true)
                                         .clickable { viewModel.setAdminTab(AdminTab.SETTINGS) },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1212,7 +1502,18 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     )
                 }
 
-                // Fluid Album Detail Overlay (Expanding continuous shared-element animation from album cover)
+                // Fluid Artist Detail Overlay (Expanding continuous shared-element animation from artist item)
+                FluidArtistDetailOverlay(
+                    artist = state.selectedArtist,
+                    sourceBounds = state.selectedArtistBounds,
+                    state = state,
+                    viewModel = viewModel,
+                    onClose = { viewModel.setSelectedArtist(null) },
+                    onPlay = { s, pl -> viewModel.playSong(s, pl) },
+                    onPlayArtistMix = { viewModel.playArtistMix(it) }
+                )
+
+                // Fluid Album Detail Overlay (Opens on top of artist page / screens with seamless shared-element morph)
                 FluidAlbumDetailOverlay(
                     album = state.selectedAlbum,
                     sourceBounds = state.selectedAlbumBounds,
@@ -1225,6 +1526,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 // Profile Screen Overlay (Native iOS push slide transition)
                 AnimatedVisibility(
                     visible = state.showProfilePage,
+                    modifier = Modifier.fillMaxSize().zIndex(60f),
                     enter = slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(240, easing = AppleEase)) + fadeIn(tween(200, easing = AppleEase)),
                     exit = slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(220, easing = AppleEase)) + fadeOut(tween(180, easing = AppleEase))
                 ) {
@@ -1235,17 +1537,40 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     )
                 }
 
+                // In-App GitHub Releases Self-Update Dialog
+                val currentContext = androidx.compose.ui.platform.LocalContext.current
+                if (state.availableUpdate != null) {
+                    AppUpdateDialog(
+                        update = state.availableUpdate!!,
+                        progress = state.updateDownloadProgress,
+                        isDark = isDark,
+                        onInstall = { viewModel.downloadAndInstallUpdate(currentContext) },
+                        onDismiss = { viewModel.dismissUpdate() }
+                    )
+                }
+
                 // Full screen player overlay (Fluid morph directly with mini player & song cards)
                 if (state.currentSong != null) {
                     val p = playerProgress.value.coerceIn(0f, 1f)
 
                     if (playerProgress.value > 0.001f || state.isExpanded) {
                         val playerCorner = (28.dp * (1f - p)).coerceAtLeast(0.dp)
+                        val morphMotionFactor = (4f * p * (1f - p)).coerceIn(0f, 1f)
+                        val sheetStretchY = 1f + 0.035f * morphMotionFactor
+                        val sheetSqueezeX = 1f - 0.018f * morphMotionFactor
+                        val screenHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
+                        val sheetSlideY = (1f - p) * screenHeightPx
 
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .zIndex(100f)
+                                .graphicsLayer {
+                                    translationY = sheetSlideY
+                                    scaleX = sheetSqueezeX
+                                    scaleY = sheetStretchY
+                                    alpha = if (p < 0.01f) 0f else 1f
+                                }
                                 .clip(RoundedCornerShape(playerCorner))
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
@@ -1332,13 +1657,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 onCancelDownload = { sId -> viewModel.cancelDownload(sId) },
                                 onRemoveDownload = { sId -> viewModel.removeDownloadedSong(sId) },
                                 onCreatePlaylist = { name, s -> viewModel.createPlaylist(name, s) },
-                                onAddToPlaylist = { pId, s -> viewModel.addSongToPlaylist(pId, s) }
+                                onAddToPlaylist = { pId, s -> viewModel.addSongToPlaylist(pId, s) },
+                                queueTitle = state.queueTitle,
+                                isArtistMixLoading = state.isArtistMixLoading,
+                                onPlayArtistMix = { viewModel.playArtistMix(it) }
                             )
                         }
                     }
                 }
 
 
+            }
             }
         }
     }
@@ -1390,6 +1719,8 @@ private fun MiniPlayerSeekLine(
     duration: () -> Long,
     isMixing: () -> Boolean,
     isDark: Boolean,
+    onSeek: (Long) -> Unit,
+    onScrubbingChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val dur = duration()
@@ -1397,19 +1728,214 @@ private fun MiniPlayerSeekLine(
     val pos = position()
     val progress = (pos.toFloat() / dur).coerceIn(0f, 1f)
     val mixing = isMixing()
-    val seekColor = Color.White
-    Box(
+    val view = androidx.compose.ui.platform.LocalView.current
+    val density = LocalDensity.current
+
+    var isScrubbing by remember { mutableStateOf(false) }
+    var scrubFraction by remember { mutableFloatStateOf(0f) }
+
+    val animatedHeight by animateDpAsState(
+        targetValue = if (isScrubbing) 10.dp else if (mixing) 3.dp else 2.dp,
+        animationSpec = LiquidMotion.LensDp,
+        label = "seekHeight"
+    )
+    val tooltipAlpha by animateFloatAsState(
+        targetValue = if (isScrubbing) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(150),
+        label = "tooltipAlpha"
+    )
+
+    val currentFraction = if (isScrubbing) scrubFraction else progress
+
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(if (mixing) 3.dp else 2.dp)
-            .background(if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f))
+            .height(if (isScrubbing) 28.dp else 12.dp)
+            .semantics {
+                contentDescription = "Playback seek bar"
+                stateDescription = "${pos / 1000}s of ${dur / 1000}s"
+                setProgress { targetProgress ->
+                    val targetMs = (targetProgress * dur).toLong().coerceIn(0L, dur)
+                    onSeek(targetMs)
+                    true
+                }
+            }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var isDown = true
+                    val timer = withTimeoutOrNull(250L) {
+                        do {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                isDown = false
+                                break
+                            }
+                            val moved = (change.position - down.position).getDistance()
+                            if (moved > viewConfiguration.touchSlop) {
+                                break
+                            }
+                        } while (true)
+                    }
+
+                    if (timer == null && isDown) {
+                        isScrubbing = true
+                        onScrubbingChanged(true)
+                        scrubFraction = (down.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        com.beatles.player.ui.components.Haptics.tick(view)
+
+                        do {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.pressed) {
+                                change.consume()
+                                scrubFraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            } else {
+                                break
+                            }
+                        } while (event.changes.any { it.pressed })
+
+                        val targetMs = (scrubFraction * dur).toLong().coerceIn(0L, dur)
+                        onSeek(targetMs)
+                        com.beatles.player.ui.components.Haptics.confirm(view)
+                        isScrubbing = false
+                        onScrubbingChanged(false)
+                    }
+                }
+            }
     ) {
+        val widthPx = constraints.maxWidth.toFloat()
+
+        // Floating tooltip showing current scrub time vs total track length
+        if (isScrubbing && tooltipAlpha > 0.01f) {
+            val scrubMs = (scrubFraction * dur).toLong().coerceIn(0L, dur)
+            val thumbXPx = (scrubFraction * widthPx)
+            val ttWidthDp = 92.dp
+            val ttWidthPx = with(density) { ttWidthDp.toPx() }
+            val clampedX = (thumbXPx - ttWidthPx / 2f).coerceIn(8f, (widthPx - ttWidthPx - 8f).coerceAtLeast(8f))
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .offset {
+                        IntOffset(clampedX.roundToInt(), with(density) { (-28).dp.roundToPx() })
+                    }
+                    .graphicsLayer {
+                        alpha = tooltipAlpha
+                        scaleX = 0.88f + 0.12f * tooltipAlpha
+                        scaleY = 0.88f + 0.12f * tooltipAlpha
+                    }
+                    .shadow(4.dp, RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1E1E20).copy(alpha = 0.94f), RoundedCornerShape(10.dp))
+                    .border(0.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                val currentText = "${scrubMs / 60000}:${String.format("%02d", (scrubMs / 1000) % 60)}"
+                val totalText = "${dur / 60000}:${String.format("%02d", (dur / 1000) % 60)}"
+                Text(
+                    text = "$currentText / $totalText",
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
+        // Seek Track
         Box(
             modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(progress)
-                .background(seekColor)
-        )
+                .fillMaxWidth()
+                .height(animatedHeight)
+                .align(Alignment.BottomCenter)
+                .clip(RoundedCornerShape(animatedHeight / 2))
+                .background(if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.10f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(currentFraction)
+                    .background(Color.White)
+            )
+        }
     }
 }
+
+/**
+ * Optical Glass Refraction Modifier (iOS 27 Liquid Glass style):
+ * Simulates directional ambient light reflection on curved glass pills:
+ * 1. Incident specular reflection hugging the upper curve
+ * 2. Secondary reflection hugging the lower curve (NOT connected to the top; sides are 100% transparent)
+ * 3. In dark mode: subtle white specular reflection (12% alpha)
+ * 4. In light mode (white screen): 10% darker reflection (18% alpha) for crisp definition
+ */
+private fun Modifier.glassRefraction(
+    cornerRadius: Dp,
+    isDark: Boolean,
+    isCircle: Boolean = false
+): Modifier = this.drawWithContent {
+    val cornerPx = if (isCircle) size.minDimension / 2f else cornerRadius.toPx()
+    val reflectionColor = if (isDark) Color.White else Color(0xFF141416)
+
+    // 1. Subtle dual-curve lens sheen (top and bottom curves, disconnected in middle)
+    val sheenAlpha = if (isDark) 0.04f else 0.03f
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            0.0f to reflectionColor.copy(alpha = sheenAlpha),
+            0.22f to Color.Transparent,
+            0.78f to Color.Transparent,
+            1.0f to reflectionColor.copy(alpha = sheenAlpha * 0.6f)
+        ),
+        cornerRadius = CornerRadius(cornerPx, cornerPx)
+    )
+
+    // 2. Draw child contents (icons, labels, thumbnails)
+    drawContent()
+
+    // 3. Inner content refraction bevel: subtle secondary lines inset by 0.5dp (disconnected)
+    val innerStrokeW = 0.5.dp.toPx()
+    val innerPeakAlpha = if (isDark) 0.06f else 0.09f
+    val innerBottomAlpha = innerPeakAlpha * 0.70f
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            0.0f to reflectionColor.copy(alpha = innerPeakAlpha),
+            0.16f to Color.Transparent,
+            // DISCONNECTED GAP: sides have zero stroke
+            0.84f to Color.Transparent,
+            1.0f to reflectionColor.copy(alpha = innerBottomAlpha)
+        ),
+        topLeft = Offset(innerStrokeW, innerStrokeW),
+        size = Size(
+            (size.width - innerStrokeW * 2).coerceAtLeast(0f),
+            (size.height - innerStrokeW * 2).coerceAtLeast(0f)
+        ),
+        cornerRadius = CornerRadius(
+            (cornerPx - innerStrokeW).coerceAtLeast(0f),
+            (cornerPx - innerStrokeW).coerceAtLeast(0f)
+        ),
+        style = Stroke(width = innerStrokeW)
+    )
+
+    // 4. Outer content refraction reflection: upper curve + lower curve, disconnected flanks
+    val outerStrokeW = 0.5.dp.toPx()
+    // 10% brighter borders/refractions (0.22f dark / 0.28f light)
+    val outerPeakAlpha = if (isDark) 0.22f else 0.28f
+    val outerBottomAlpha = outerPeakAlpha * 0.75f
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            // Upper curve reflection
+            0.0f to reflectionColor.copy(alpha = outerPeakAlpha),
+            0.18f to reflectionColor.copy(alpha = outerPeakAlpha * 0.35f),
+            0.28f to Color.Transparent,
+            // DISCONNECTED GAP: flanks are completely transparent (never connected)
+            0.72f to Color.Transparent,
+            0.82f to reflectionColor.copy(alpha = outerBottomAlpha * 0.35f),
+            // Lower curve reflection
+            1.0f to reflectionColor.copy(alpha = outerBottomAlpha)
+        ),
+        cornerRadius = CornerRadius(cornerPx, cornerPx),
+        style = Stroke(width = outerStrokeW)
+    )
+}
+
 

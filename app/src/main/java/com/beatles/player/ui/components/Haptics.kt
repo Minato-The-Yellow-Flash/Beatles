@@ -17,6 +17,16 @@ object Haptics {
         view.performHapticFeedback(c)
     }
 
+    /** Light slider tick for continuous seekbar scrubbing. */
+    fun lightScrubTick(view: View) {
+        val c = if (Build.VERSION.SDK_INT >= 34) {
+            HapticFeedbackConstants.SEGMENT_TICK
+        } else {
+            HapticFeedbackConstants.CLOCK_TICK
+        }
+        view.performHapticFeedback(c)
+    }
+
     /** Swipe crossed its action threshold. */
     fun threshold(view: View) {
         val c = if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.GESTURE_THRESHOLD_ACTIVATE else HapticFeedbackConstants.KEYBOARD_TAP

@@ -42,8 +42,12 @@ import com.beatles.player.data.Album
 import com.beatles.player.data.AlbumSet
 import com.beatles.player.data.Song
 import com.beatles.player.ui.theme.isDarkTheme
+import com.beatles.player.ui.theme.LocalDynamicBottomPadding
 import com.beatles.player.viewmodel.PlayerUiState
 import androidx.compose.ui.zIndex
+import com.beatles.player.ui.components.FrostedButton
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
 import com.beatles.player.ui.components.edgeFade
 import com.beatles.player.ui.components.AppleMusicGradientCover
 import androidx.compose.animation.core.spring
@@ -58,7 +62,24 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateFloatAsState
-import kotlinx.coroutines.launch
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.ui.platform.LocalView
+import com.beatles.player.ui.components.Haptics
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import androidx.compose.foundation.isSystemInDarkTheme
 
@@ -69,6 +90,7 @@ fun HomeScreen(
     state: PlayerUiState,
     onPlay: (Song, List<Song>, Rect?) -> Unit,
     onPlayArtistMix: (String, List<Song>) -> Unit = { _, _ -> },
+    onSelectArtist: (String, Rect?) -> Unit = { _, _ -> },
     onSeeAll: (String) -> Unit,
     onSelectAlbum: (Album, Rect?) -> Unit = { _, _ -> },
     onPlayAlbumSet: (AlbumSet) -> Unit = {},
@@ -183,9 +205,23 @@ fun HomeScreen(
         else allRecs.take(4)
     }
 
+    val view = LocalView.current
     var pullOffsetRaw by remember { mutableFloatStateOf(0f) }
     val pullAnim = remember { androidx.compose.animation.core.Animatable(0f) }
     val currentPullOffset = if (pullOffsetRaw > 0f) pullOffsetRaw else pullAnim.value
+    var hasTriggeredThresholdHaptic by remember { mutableStateOf(false) }
+
+    var showRefreshCompletionPopup by remember { mutableStateOf(false) }
+    var previousRefreshing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.isRefreshingHome) {
+        if (previousRefreshing && !state.isRefreshingHome) {
+            showRefreshCompletionPopup = true
+            delay(3500)
+            showRefreshCompletionPopup = false
+        }
+        previousRefreshing = state.isRefreshingHome
+    }
 
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
@@ -193,6 +229,9 @@ fun HomeScreen(
                 if (available.y < 0 && pullOffsetRaw > 0f) {
                     val consumed = available.y
                     pullOffsetRaw = (pullOffsetRaw + consumed).coerceAtLeast(0f)
+                    if (pullOffsetRaw < 110f) {
+                        hasTriggeredThresholdHaptic = false
+                    }
                     return Offset(0f, consumed)
                 }
                 return Offset.Zero
@@ -201,6 +240,12 @@ fun HomeScreen(
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (available.y > 0 && source == NestedScrollSource.UserInput) {
                     pullOffsetRaw = (pullOffsetRaw + available.y * 0.45f).coerceAtMost(220f)
+                    if (pullOffsetRaw >= 110f && !hasTriggeredThresholdHaptic) {
+                        hasTriggeredThresholdHaptic = true
+                        Haptics.threshold(view)
+                    } else if (pullOffsetRaw < 110f) {
+                        hasTriggeredThresholdHaptic = false
+                    }
                     return Offset(0f, available.y)
                 }
                 return Offset.Zero
@@ -208,8 +253,10 @@ fun HomeScreen(
 
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (pullOffsetRaw > 110f) {
+                    Haptics.confirm(view)
                     try { onRefresh() } catch (_: Exception) {}
                 }
+                hasTriggeredThresholdHaptic = false
                 try {
                     pullAnim.snapTo(pullOffsetRaw)
                     pullOffsetRaw = 0f
@@ -238,32 +285,154 @@ fun HomeScreen(
             .fillMaxSize()
             .nestedScroll(nestedScrollConnection)
     ) {
-        // Pull-to-refresh badge
+        // Fluid Liquid Pull-to-refresh badge
         if (currentPullOffset > 12f || state.isRefreshingHome) {
             val refreshAlpha = if (state.isRefreshingHome) 1f else (currentPullOffset / 110f).coerceIn(0f, 1f)
+            val isThresholdReached = currentPullOffset >= 110f || state.isRefreshingHome
+
+            val eqTransition = rememberInfiniteTransition(label = "pull_eq")
+            val bar1Height by eqTransition.animateFloat(
+                initialValue = 6f,
+                targetValue = 18f,
+                animationSpec = infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+                label = "bar1"
+            )
+            val bar2Height by eqTransition.animateFloat(
+                initialValue = 17f,
+                targetValue = 6f,
+                animationSpec = infiniteRepeatable(tween(380, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+                label = "bar2"
+            )
+            val bar3Height by eqTransition.animateFloat(
+                initialValue = 10f,
+                targetValue = 20f,
+                animationSpec = infiniteRepeatable(tween(460, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse),
+                label = "bar3"
+            )
+
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .zIndex(10f)
-                    .padding(top = 100.dp)
-                    .offset { IntOffset(0, (currentPullOffset * 0.4f).roundToInt()) }
-                    .background(Color(0xFFE2E2E2).copy(alpha = 0.16f * refreshAlpha), RoundedCornerShape(50))
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                    .zIndex(15f)
+                    .padding(top = 96.dp)
+                    .offset { IntOffset(0, (currentPullOffset * 0.42f).roundToInt()) }
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        if (isDark) Color(0xFF1E1E24).copy(alpha = 0.88f * refreshAlpha)
+                        else Color.White.copy(alpha = 0.90f * refreshAlpha)
+                    )
+                    .border(
+                        0.5.dp,
+                        if (isDark) Color.White.copy(alpha = (if (isThresholdReached) 0.28f else 0.14f) * refreshAlpha)
+                        else Color.Black.copy(alpha = (if (isThresholdReached) 0.22f else 0.10f) * refreshAlpha),
+                        RoundedCornerShape(50)
+                    )
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        color = AccentRed,
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    if (state.isRefreshingHome) {
+                        // Dancing soundwave equalizer bars
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(2.5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.height(20.dp)
+                        ) {
+                            Box(modifier = Modifier.width(3.dp).height((bar1Height.toInt()).dp).background(AccentRed, RoundedCornerShape(2.dp)))
+                            Box(modifier = Modifier.width(3.dp).height((bar2Height.toInt()).dp).background(Color(0xFFFF5252), RoundedCornerShape(2.dp)))
+                            Box(modifier = Modifier.width(3.dp).height((bar3Height.toInt()).dp).background(AccentRed, RoundedCornerShape(2.dp)))
+                        }
+                    } else {
+                        // Rotational wave icon tracking pull progress
+                        val rot = (currentPullOffset * 2.4f) % 360f
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = null,
+                            tint = if (isThresholdReached) AccentRed else textPrimary.copy(alpha = 0.65f),
+                            modifier = Modifier
+                                .size(16.dp)
+                                .graphicsLayer { rotationZ = rot }
+                        )
+                    }
+
                     Text(
-                        if (state.isRefreshingHome) "Refreshing..." else "Pull to refresh",
-                        color = textPrimary.copy(alpha = refreshAlpha),
+                        text = when {
+                            state.isRefreshingHome -> "Syncing fresh albums & mixes..."
+                            isThresholdReached -> "Release to tune freshest mixes"
+                            else -> "Pull to tune fresh waves"
+                        },
+                        color = if (isThresholdReached) textPrimary else textPrimary.copy(alpha = 0.75f),
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = if (isThresholdReached) FontWeight.SemiBold else FontWeight.Medium
                     )
+                }
+            }
+        }
+
+        // Animated Completion Popup of Updated Items
+        AnimatedVisibility(
+            visible = showRefreshCompletionPopup,
+            enter = slideInVertically(
+                initialOffsetY = { -it },
+                animationSpec = spring(dampingRatio = 0.75f, stiffness = 380f)
+            ) + fadeIn(tween(200)) + scaleIn(initialScale = 0.88f),
+            exit = slideOutVertically(
+                targetOffsetY = { -it },
+                animationSpec = tween(220, easing = FastOutSlowInEasing)
+            ) + fadeOut(tween(180)) + scaleOut(targetScale = 0.90f),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .zIndex(25f)
+                .padding(top = 92.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        if (isDark) Color(0xFF1E1E24).copy(alpha = 0.95f)
+                        else Color.White.copy(alpha = 0.96f)
+                    )
+                    .border(
+                        0.5.dp,
+                        if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.12f),
+                        RoundedCornerShape(50)
+                    )
+                    .padding(horizontal = 18.dp, vertical = 9.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .background(AccentRed.copy(alpha = 0.15f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = AccentRed,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Refreshed",
+                            color = textPrimary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Fresh mixes, albums & trending tracks updated",
+                            color = textPrimary.copy(alpha = 0.65f),
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Normal
+                        )
+                    }
                 }
             }
         }
@@ -274,7 +443,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .offset { IntOffset(0, currentPullOffset.roundToInt()) }
                 .edgeFade(bgFade),
-            contentPadding = PaddingValues(top = 110.dp, bottom = 120.dp)
+            contentPadding = PaddingValues(top = 110.dp, bottom = LocalDynamicBottomPadding.current)
         ) {
             // Header title
             item(key = "feed_header") {
@@ -287,8 +456,8 @@ fun HomeScreen(
                     Text(
                         text = "Listen Now",
                         color = textPrimary,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 31.sp,
+                        fontWeight = FontWeight.Black
                     )
                 }
                 Spacer(modifier = Modifier.height(14.dp))
@@ -310,6 +479,7 @@ fun HomeScreen(
                             ?: ""
                     }
                     var heroBounds by remember { mutableStateOf<Rect?>(null) }
+                    val bannerHazeState = remember { HazeState() }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -318,34 +488,40 @@ fun HomeScreen(
                             .onGloballyPositioned { coords -> heroBounds = coords.boundsInRoot() }
                             .clip(RoundedCornerShape(22.dp))
                     ) {
-                        // Apple Music dynamic gradient background fallback
-                        AppleMusicGradientCover(
-                            title = heroAlbum.title ?: "Featured Album",
-                            artist = heroAlbum.artist ?: "",
-                            modifier = Modifier.fillMaxSize(),
-                            cornerRadius = 22.dp
-                        )
-                        if (heroCover.isNotBlank() && heroCover.startsWith("http")) {
-                            AsyncImage(
-                                model = heroCover,
-                                contentDescription = heroAlbum.title ?: "",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                        // Background layers with Haze blur provider
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            Color.Transparent,
-                                            Color.Black.copy(alpha = 0.20f),
-                                            Color.Black.copy(alpha = if (isDark) 0.88f else 0.65f)
+                                .haze(bannerHazeState)
+                        ) {
+                            AppleMusicGradientCover(
+                                title = heroAlbum.title ?: "Featured Album",
+                                artist = heroAlbum.artist ?: "",
+                                modifier = Modifier.fillMaxSize(),
+                                cornerRadius = 22.dp
+                            )
+                            if (heroCover.isNotBlank() && heroCover.startsWith("http")) {
+                                AsyncImage(
+                                    model = heroCover,
+                                    contentDescription = heroAlbum.title ?: "",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                Color.Transparent,
+                                                Color.Black.copy(alpha = 0.20f),
+                                                Color.Black.copy(alpha = if (isDark) 0.88f else 0.65f)
+                                            )
                                         )
                                     )
-                                )
-                        )
+                            )
+                        }
                         // Frosted badge
                         Box(
                             modifier = Modifier
@@ -373,22 +549,26 @@ fun HomeScreen(
                             Text("${heroAlbum.artist ?: ""} • ${heroSongs.size} tracks", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                             Spacer(modifier = Modifier.height(14.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Button(
+                                FrostedButton(
                                     onClick = {
                                         heroSongs.firstOrNull()?.let { onPlay(it, heroSongs, heroBounds) }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                                    active = true,
+                                    isDark = isDark,
                                     shape = RoundedCornerShape(50),
+                                    hazeState = bannerHazeState,
                                     contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
                                 ) {
-                                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = if (isDark) Color.White else Color(0xFF141416), modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Play Album", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text("Play Album", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Button(
+                                FrostedButton(
                                     onClick = { onSelectAlbum(heroAlbum, heroBounds) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE2E2E2).copy(alpha = 0.18f), contentColor = Color.White),
+                                    active = false,
+                                    isDark = isDark,
                                     shape = RoundedCornerShape(50),
+                                    hazeState = bannerHazeState,
                                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                                 ) {
                                     Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -743,7 +923,14 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        var spotlightHeaderBounds by remember { mutableStateOf<Rect?>(null) }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onGloballyPositioned { spotlightHeaderBounds = it.boundsInRoot() }
+                                .clickable { onSelectArtist(spotlightArtist, spotlightHeaderBounds) },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .size(72.dp)
@@ -1056,7 +1243,7 @@ fun SeeAllScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .edgeFade(if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)),
-            contentPadding = PaddingValues(top = 170.dp, bottom = 130.dp)
+            contentPadding = PaddingValues(top = 170.dp, bottom = LocalDynamicBottomPadding.current)
         ) {
             itemsIndexed(songs, key = { index, song -> "seeall_${song.id}_$index" }) { _, song ->
                 var itemBounds by remember { mutableStateOf<Rect?>(null) }

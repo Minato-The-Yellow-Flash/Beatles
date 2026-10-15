@@ -1,5 +1,7 @@
 package com.beatles.player.ui.components
 import com.beatles.player.ui.theme.AppTheme
+import com.beatles.player.ui.theme.isDarkTheme
+import com.beatles.player.ui.components.FrostedButton
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -383,7 +385,7 @@ fun AddAlbumDialog(
                     Text("Cancel", color = AppTheme.fg(), fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 }
 
-                Button(
+                FrostedButton(
                     onClick = {
                         val finalTitle = albumTitle.ifBlank { "Untitled Project" }
                         val finalArtist = artistName.ifBlank { "Beatles Artist" }
@@ -399,11 +401,12 @@ fun AddAlbumDialog(
                         )
                         onClose()
                     },
+                    active = true,
+                    isDark = isDarkTheme(state.themeMode),
                     modifier = Modifier.weight(1f).height(46.dp),
-                    shape = RoundedCornerShape(50),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+                    shape = RoundedCornerShape(50)
                 ) {
-                    Text("Create Album", color = Color(0xFF141416), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Create Album", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
