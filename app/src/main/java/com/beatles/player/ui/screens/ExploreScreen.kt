@@ -29,6 +29,7 @@ import com.beatles.player.ui.glassRefraction
 import com.beatles.player.ui.motion.liquidPress
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -266,12 +267,16 @@ fun ExploreScreen(
                 ) {
                     items(GENRES) { (name, color) ->
                         var pillBounds by remember { mutableStateOf<Rect?>(null) }
+                        val pillInteraction = remember { MutableInteractionSource() }
                         Box(
                             modifier = Modifier
+                                .liquidPress(pillInteraction)
+                                .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
                                 .clip(RoundedCornerShape(50))
-                                .background(if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f))
+                                .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
+                                .glassRefraction(50.dp, isDark = isDark)
                                 .onGloballyPositioned { pillBounds = it.boundsInRoot() }
-                                .clickable {
+                                .clickable(interactionSource = pillInteraction, indication = null) {
                                     if (onSelectGenre != null) {
                                         onSelectGenre(name, pillBounds)
                                     } else {
@@ -291,7 +296,7 @@ fun ExploreScreen(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     name,
-                                    color = textSecondary,
+                                    color = if (isDark) Color.White else Color(0xFF141416),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -452,11 +457,18 @@ fun ExploreScreen(
                     ) {
                         items(chartGenres) { g ->
                             val isSelected = selectedChartGenre == g
+                            val chipInteraction = remember { MutableInteractionSource() }
                             Box(
                                 modifier = Modifier
+                                    .liquidPress(chipInteraction)
+                                    .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
                                     .clip(RoundedCornerShape(50))
-                                    .background(if (isSelected) AccentRed else (if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f)))
-                                    .clickable {
+                                    .background(
+                                        if (isSelected) AccentRed
+                                        else (if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
+                                    )
+                                    .glassRefraction(50.dp, isDark = isDark)
+                                    .clickable(interactionSource = chipInteraction, indication = null) {
                                         selectedChartGenre = g
                                         isTopChartsExpanded = false
                                     }
@@ -465,9 +477,9 @@ fun ExploreScreen(
                             ) {
                                 Text(
                                     text = g,
-                                    color = if (isSelected) Color.White else textSecondary,
+                                    color = if (isSelected) Color.White else (if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF141416)),
                                     fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
                                 )
                             }
                         }
@@ -515,21 +527,45 @@ fun ExploreScreen(
             }
         }
 
-        // Header: "Browse" Title (Hidden when category detail overlay is open)
+        // Fixed Header: "Browse" Title with subtle layer blur backdrop (Hidden when category detail overlay is open)
         if (selectedGenreForDetail == null) {
-            Column(
+            val isScrolled = headerOffset() < -10f
+            val headerBlurAlpha by animateFloatAsState(
+                targetValue = if (isScrolled) 1f else 0f,
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                label = "exploreHeaderBlurAlpha"
+            )
+
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .offset { IntOffset(0, (headerOffset() * 0.85f).roundToInt()) }
-                    .graphicsLayer { alpha = headerAlpha() }
-                    .padding(top = 110.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
+                    .align(Alignment.TopCenter)
+                    .zIndex(5f)
             ) {
-                Text("Browse", color = textPrimary, fontSize = 31.sp, fontWeight = FontWeight.Black)
-                Text(
-                    "Discover something new",
-                    color = textSecondary,
-                    fontSize = 13.sp
-                )
+                if (headerBlurAlpha > 0.001f) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer { alpha = headerBlurAlpha }
+                            .background(
+                                if (isDark) Color(0xFF14151B).copy(alpha = 0.50f)
+                                else Color(0xFFFFFFFF).copy(alpha = 0.65f)
+                            )
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 110.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
+                ) {
+                    Text("Browse", color = textPrimary, fontSize = 31.sp, fontWeight = FontWeight.Black)
+                    Text(
+                        "Discover something new",
+                        color = textSecondary,
+                        fontSize = 13.sp
+                    )
+                }
             }
         }
 

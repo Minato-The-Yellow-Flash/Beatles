@@ -2,6 +2,8 @@ package com.beatles.player.ui.screens
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,8 +12,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.zIndex
+import com.beatles.player.ui.glassRefraction
+import com.beatles.player.ui.motion.liquidPress
+import dev.chrisbanes.haze.HazeStyle
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Album
@@ -78,8 +87,11 @@ fun LibraryScreen(
     val tabPillBg = if (isDark) Color(0xFFE2E2E2).copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.06f)
     val tabIndicatorBg = if (isDark) Color.White.copy(alpha = 0.16f) else Color.White
 
+    val listState = rememberLazyListState()
+
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .edgeFade(if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)),
@@ -89,13 +101,17 @@ fun LibraryScreen(
                 "albums" -> {
                     // Album section: grid/cards of user & default albums
                     item {
+                        val createAlbumInteraction = remember { MutableInteractionSource() }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
-                                .clip(RoundedCornerShape(16.dp) )
+                                .liquidPress(createAlbumInteraction)
+                                .shadow(2.dp, RoundedCornerShape(16.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.10f))
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(cardBg)
-                                .clickable { viewModel.setShowAddAlbumDialog(true) }
+                                .glassRefraction(16.dp, isDark = isDark)
+                                .clickable(interactionSource = createAlbumInteraction, indication = null) { viewModel.setShowAddAlbumDialog(true) }
                                 .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -358,9 +374,21 @@ fun LibraryScreen(
                                     Text(song.artist, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                     Text(song.genre, color = textSecondary, fontSize = 12.sp)
                                 }
-                                IconButton(onClick = { viewModel.playArtistMix(song.artist) }) {
-                                    Icon(Icons.Default.Radio, contentDescription = "Play Artist Mix", tint = AccentRed, modifier = Modifier.size(20.dp))
+                                val mixInteraction = remember { MutableInteractionSource() }
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .liquidPress(mixInteraction)
+                                        .shadow(2.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                                        .clip(CircleShape)
+                                        .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
+                                        .glassRefraction(18.dp, isDark = isDark, isCircle = true)
+                                        .clickable(interactionSource = mixInteraction, indication = null) { viewModel.playArtistMix(song.artist) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Radio, contentDescription = "Play Artist Mix", tint = AccentRed, modifier = Modifier.size(18.dp))
                                 }
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = textMuted)
                             }
                         }
@@ -476,7 +504,7 @@ fun LibraryScreen(
             }
         }
 
-        // Sticky Dynamic Header with Add & Glass Segmented Control
+        // Fixed Top Sticky Header with Subtle Layer Blur (no hard blur, no edges) & Glass Segmented Control
         val density = LocalDensity.current
         val sections = listOf("liked songs", "albums", "artists", "offline")
         val currentIdx = sections.indexOf(section).coerceAtLeast(0)
@@ -486,74 +514,120 @@ fun LibraryScreen(
             label = "librarySegmentIndicator"
         )
 
-        Column(
+        val isScrolled = headerOffset() < -5f || listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 10
+        val headerBlurAlpha by animateFloatAsState(
+            targetValue = if (isScrolled) 1f else 0f,
+            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+            label = "libraryHeaderBlurAlpha"
+        )
+
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .offset { IntOffset(0, (headerOffset() * 0.85f).roundToInt()) }
-                .graphicsLayer { alpha = headerAlpha() }
+                .align(Alignment.TopCenter)
+                .zIndex(5f)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 110.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Library", color = textPrimary, fontSize = 31.sp, fontWeight = FontWeight.Black)
+            // Subtle layer blur backdrop like the nav bar without edges (layer blur not hard blur)
+            if (headerBlurAlpha > 0.001f) {
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .background(AccentRed, CircleShape)
-                        .clickable { viewModel.setShowAddAlbumDialog(true) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Album", tint = Color.White, modifier = Modifier.size(16.dp))
-                }
+                        .matchParentSize()
+                        .graphicsLayer { alpha = headerBlurAlpha }
+                        .then(
+                            if (hazeState != null) {
+                                Modifier.hazeChild(
+                                    state = hazeState,
+                                    shape = RectangleShape,
+                                    style = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
+                                )
+                            } else Modifier
+                        )
+                        .background(
+                            if (isDark) Color(0xFF14151B).copy(alpha = 0.50f)
+                            else Color(0xFFFFFFFF).copy(alpha = 0.65f)
+                        )
+                )
             }
 
-            // Sleek immersive segmented tab pill (no blur) with smooth sliding indicator
-            BoxWithConstraints(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(tabPillBg)
-                    .padding(3.dp)
+                    .padding(bottom = 12.dp)
             ) {
-                val tabWidth = constraints.maxWidth / sections.size.toFloat()
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .width(with(density) { tabWidth.toDp() })
-                        .offset { IntOffset((indicatorFraction * tabWidth).roundToInt(), 0) }
-                        .clip(RoundedCornerShape(50))
-                        .background(tabIndicatorBg)
-                )
                 Row(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 110.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    sections.forEach { s ->
-                        val isActive = section == s
-                        val label = if (s == "liked songs") "Liked" else s.replaceFirstChar { it.uppercaseChar() }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) { section = s },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                label,
-                                color = if (isActive) (if (isDark) Color.White else Color(0xFF141416)) else textSecondary,
-                                fontSize = 12.5.sp,
-                                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Medium
-                            )
+                    Text("Library", color = textPrimary, fontSize = 31.sp, fontWeight = FontWeight.Black)
+                    val addInteraction = remember { MutableInteractionSource() }
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .liquidPress(addInteraction)
+                            .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                            .clip(CircleShape)
+                            .background(AccentRed)
+                            .glassRefraction(17.dp, isDark = isDark, isCircle = true)
+                            .clickable(interactionSource = addInteraction, indication = null) { viewModel.setShowAddAlbumDialog(true) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Album", tint = Color.White, modifier = Modifier.size(16.dp))
+                    }
+                }
+
+                // Nav bar liquid glass segmented tab pill with smooth sliding indicator
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .height(44.dp)
+                        .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                        .clip(RoundedCornerShape(50))
+                        .background(if (isDark) Color(0xFF181A22).copy(alpha = 0.44f) else Color(0xFFFFFFFF).copy(alpha = 0.60f))
+                        .glassRefraction(50.dp, isDark = isDark)
+                        .padding(3.dp)
+                ) {
+                    val tabWidth = constraints.maxWidth / sections.size.toFloat()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(with(density) { tabWidth.toDp() })
+                            .offset { IntOffset((indicatorFraction * tabWidth).roundToInt(), 0) }
+                            .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                            .clip(RoundedCornerShape(50))
+                            .background(if (isDark) Color.White.copy(alpha = 0.20f) else Color(0xFFE2E2E2))
+                            .glassRefraction(50.dp, isDark = isDark)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        sections.forEach { s ->
+                            val isActive = section == s
+                            val label = if (s == "liked songs") "Liked" else s.replaceFirstChar { it.uppercaseChar() }
+                            val tabInteraction = remember { MutableInteractionSource() }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .liquidPress(tabInteraction)
+                                    .clickable(
+                                        interactionSource = tabInteraction,
+                                        indication = null
+                                    ) { section = s },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    label,
+                                    color = if (isActive) (if (isDark) Color.White else Color(0xFF141416)) else (if (isDark) Color.White.copy(alpha = 0.60f) else Color(0xFF141416).copy(alpha = 0.60f)),
+                                    fontSize = 12.5.sp,
+                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
                         }
                     }
                 }

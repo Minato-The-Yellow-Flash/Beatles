@@ -21,6 +21,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.draw.shadow
+import com.beatles.player.ui.glassRefraction
+import com.beatles.player.ui.motion.liquidPress
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
@@ -187,16 +191,15 @@ fun SearchScreen(
                                 contentPadding = PaddingValues(bottom = 6.dp)
                             ) {
                                 items(autocorrectChips, key = { "chip_$it" }) { chipText ->
+                                    val chipInteraction = remember { MutableInteractionSource() }
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(20.dp))
-                                            .background(chipBg)
-                                            .border(
-                                                width = 1.dp,
-                                                color = if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f),
-                                                shape = RoundedCornerShape(20.dp)
-                                            )
-                                            .clickable {
+                                            .liquidPress(chipInteraction)
+                                            .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                                            .clip(RoundedCornerShape(50))
+                                            .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
+                                            .glassRefraction(50.dp, isDark = isDark)
+                                            .clickable(interactionSource = chipInteraction, indication = null) {
                                                 onQueryChange(chipText)
                                                 onSearch(chipText)
                                                 focusManager.clearFocus()
@@ -213,9 +216,9 @@ fun SearchScreen(
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
                                                 text = chipText,
-                                                color = textPrimary,
+                                                color = if (isDark) Color.White else Color(0xFF141416),
                                                 fontSize = 13.sp,
-                                                fontWeight = FontWeight.Medium,
+                                                fontWeight = FontWeight.SemiBold,
                                                 maxLines = 1
                                             )
                                         }
@@ -266,22 +269,32 @@ fun SearchScreen(
                                     maxLines = 1
                                 )
                             }
-                            FrostedButton(
-                                onClick = { onSelectArtist(matchedArtist.first, artistBounds) },
-                                modifier = Modifier.height(36.dp)
+                            val viewInteraction = remember { MutableInteractionSource() }
+                            Box(
+                                modifier = Modifier
+                                    .height(36.dp)
+                                    .liquidPress(viewInteraction)
+                                    .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (isDark) Color(0xFF383842).copy(alpha = 0.45f) else Color(0xFFE2E2E2).copy(alpha = 0.65f))
+                                    .glassRefraction(50.dp, isDark = isDark)
+                                    .clickable(interactionSource = viewInteraction, indication = null) {
+                                        onSelectArtist(matchedArtist.first, artistBounds)
+                                    }
+                                    .padding(horizontal = 12.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         Icons.Default.Person,
                                         contentDescription = null,
-                                        tint = Color.White,
+                                        tint = if (isDark) Color.White else Color(0xFF141416),
                                         modifier = Modifier.size(14.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("View Artist", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                    Text("View Artist", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = if (isDark) Color.White else Color(0xFF141416))
                                 }
                             }
                         }

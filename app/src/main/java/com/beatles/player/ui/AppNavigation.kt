@@ -89,6 +89,8 @@ import com.beatles.player.ui.theme.isDarkTheme
 import com.beatles.player.viewmodel.PlayerViewModel
 import com.beatles.player.viewmodel.Tab
 import com.beatles.player.ui.components.getAppleMusicGradientColors
+import androidx.compose.ui.graphics.RectangleShape
+import com.beatles.player.ui.motion.liquidPress
 import com.beatles.player.ui.motion.LiquidMotion
 import com.beatles.player.ui.theme.QualityManager
 import com.beatles.player.ui.theme.VisualQuality
@@ -474,14 +476,41 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
                 // ═══ 2. STICKY TOP HEADER (Floating Logo + User Avatar) ═══
                 if (!state.showProfilePage && state.showSeeAllSection == null && state.currentTab != Tab.SEARCH && state.selectedAlbum == null && playerProgress.value <= 0.01f && !state.isExpanded) {
+                    val isScrolled = headerOffsetPx < -10f
+                    val headerBlurAlpha by animateFloatAsState(
+                        targetValue = if (isScrolled) 1f else 0f,
+                        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                        label = "headerBlurAlpha"
+                    )
+
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.TopCenter)
                             .zIndex(10f)
-                            .offset { IntOffset(0, headerOffsetPx.roundToInt()) }
-                            .graphicsLayer { alpha = headerAlphaProvider() }
                     ) {
+                        // Subtle layer blur backdrop like the nav bar without edges (layer blur not hard blur)
+                        if (headerBlurAlpha > 0.001f) {
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .graphicsLayer { alpha = headerBlurAlpha }
+                                    .then(
+                                        if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                                            Modifier.hazeChild(
+                                                state = hazeState,
+                                                shape = RectangleShape,
+                                                style = GlassHazeStyle
+                                            )
+                                        } else Modifier
+                                    )
+                                    .background(
+                                        if (isDark) Color(0xFF14151B).copy(alpha = 0.50f)
+                                        else Color(0xFFFFFFFF).copy(alpha = 0.65f)
+                                    )
+                            )
+                        }
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -496,12 +525,16 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 modifier = Modifier.size(40.dp)
                             )
                             
+                            val profileInteraction = remember { MutableInteractionSource() }
                             Box(
                                 modifier = Modifier
                                     .size(38.dp)
+                                    .liquidPress(profileInteraction)
+                                    .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                     .clip(CircleShape)
-                                    .background(headerAvatarBg)
-                                    .clickable { viewModel.setProfileOpen(true) },
+                                    .background(if (isDark) Color(0xFF383842).copy(alpha = 0.45f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
+                                    .glassRefraction(19.dp, isDark = isDark, isCircle = true)
+                                    .clickable(interactionSource = profileInteraction, indication = null) { viewModel.setProfileOpen(true) },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(

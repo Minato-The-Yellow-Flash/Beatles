@@ -29,8 +29,8 @@ class AppUpdateManagerTest {
     fun testLiveCheckForUpdatesFindsRelease1_3() = runBlocking {
         val update = AppUpdateManager.checkForUpdates("1.2")
         println("Discovered live update: $update")
-        assertNotNull("Update must be detected when local is 1.2 and GitHub has release 1.3", update)
-        assertEquals("1.3", update?.versionName)
+        assertNotNull("Update must be detected when local is 1.2 and GitHub has releases newer than 1.2", update)
+        assertTrue("Live version should be newer than 1.2", AppUpdateManager.isNewerVersion(update?.versionName ?: "", "1.2"))
         assertTrue("APK URL should point to Beatles-App.apk", update?.apkUrl?.endsWith(".apk", ignoreCase = true) == true)
     }
 }

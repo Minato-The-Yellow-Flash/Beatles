@@ -566,7 +566,7 @@ fun HomeScreen(
                                             shape = RoundedCornerShape(50),
                                             style = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
                                         )
-                                        .background(Color(0xFF383842).copy(alpha = if (isDark) 0.35f else 0.45f))
+                                        .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color.White.copy(alpha = 0.88f))
                                         .glassRefraction(50.dp, isDark)
                                         .clickable(
                                             interactionSource = playInteraction,
@@ -605,7 +605,7 @@ fun HomeScreen(
                                             shape = RoundedCornerShape(50),
                                             style = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
                                         )
-                                        .background(Color(0xFF383842).copy(alpha = if (isDark) 0.28f else 0.35f))
+                                        .background(if (isDark) Color(0xFF383842).copy(alpha = 0.28f) else Color.White.copy(alpha = 0.72f))
                                         .glassRefraction(50.dp, isDark)
                                         .clickable(
                                             interactionSource = viewInteraction,
@@ -720,13 +720,21 @@ fun HomeScreen(
                                         Text("${albumSongs.size} tracks", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                                     }
                                     // Play button overlay
+                                    val playInteraction = remember { MutableInteractionSource() }
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.BottomEnd)
                                             .padding(8.dp)
                                             .size(34.dp)
-                                            .background(Color.White, CircleShape)
-                                            .clickable {
+                                            .liquidPress(playInteraction)
+                                            .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.20f))
+                                            .clip(CircleShape)
+                                            .background(if (isDark) Color.White else Color(0xFF141416))
+                                            .glassRefraction(17.dp, isDark = isDark, isCircle = true)
+                                            .clickable(
+                                                interactionSource = playInteraction,
+                                                indication = null
+                                            ) {
                                                 albumSongs.firstOrNull()?.let { onPlay(it, albumSongs, cardBounds) }
                                             },
                                         contentAlignment = Alignment.Center
@@ -734,7 +742,7 @@ fun HomeScreen(
                                         Icon(
                                             Icons.Default.PlayArrow,
                                             contentDescription = "Play Album",
-                                            tint = Color.Black,
+                                            tint = if (isDark) Color.Black else Color.White,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
@@ -827,24 +835,16 @@ fun HomeScreen(
                         val g = genres[idx]
                         val isSelected = g == selectedGenre
                         val chipInteraction = remember { MutableInteractionSource() }
-                        val isChipPressed by chipInteraction.collectIsPressedAsState()
-                        val chipScale by animateFloatAsState(
-                            targetValue = if (isChipPressed) 0.94f else 1.0f,
-                            animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
-                            label = "chipScale"
-                        )
                         Box(
                             modifier = Modifier
-                                .graphicsLayer {
-                                    scaleX = chipScale
-                                    scaleY = chipScale
-                                }
+                                .liquidPress(chipInteraction)
+                                .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
                                 .clip(RoundedCornerShape(50))
                                 .background(
                                     if (isSelected) AccentRed
-                                    else if (isDark) Color.White.copy(alpha = 0.10f)
-                                    else Color.Black.copy(alpha = 0.06f)
+                                    else (if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
                                 )
+                                .glassRefraction(50.dp, isDark = isDark)
                                 .clickable(interactionSource = chipInteraction, indication = null) {
                                     selectedGenre = g
                                 }
@@ -853,9 +853,9 @@ fun HomeScreen(
                         ) {
                             Text(
                                 text = g,
-                                color = if (isSelected) Color.White else textPrimary.copy(alpha = 0.80f),
+                                color = if (isSelected) Color.White else (if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF141416)),
                                 fontSize = 13.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
                             )
                         }
                     }
