@@ -118,6 +118,8 @@ data class PlayerUiState(
     val lastFailedArtistMix: String? = null,
     val selectedArtist: String? = null,
     val selectedArtistBounds: Rect? = null,
+    val selectedGenre: String? = null,
+    val selectedGenreBounds: Rect? = null,
     val availableUpdate: com.beatles.player.data.UpdateInfo? = null,
     val isCheckingUpdate: Boolean = false,
     val updateDownloadProgress: Float? = null,
@@ -529,6 +531,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setSelectedArtist(artistName: String?, bounds: Rect? = null) {
         _uiState.update { it.copy(selectedArtist = artistName, selectedArtistBounds = bounds) }
+    }
+
+    fun setSelectedGenre(genre: String?, bounds: Rect? = null) {
+        _uiState.update { it.copy(selectedGenre = genre, selectedGenreBounds = bounds) }
     }
     
     fun openAlbumForSong(song: Song) {

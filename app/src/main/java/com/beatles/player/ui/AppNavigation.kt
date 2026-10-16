@@ -243,12 +243,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && !state.isExpanded && state.selectedAlbum == null && state.selectedArtist != null) { progress ->
         try { progress.collect {}; viewModel.setSelectedArtist(null) } catch (_: Exception) {}
     }
-    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && !state.isExpanded && state.selectedArtist == null && state.selectedAlbum == null && state.showSeeAllSection != null) { progress ->
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && !state.isExpanded && state.selectedAlbum == null && state.selectedArtist == null && state.selectedGenre != null) { progress ->
+        try { progress.collect {}; viewModel.setSelectedGenre(null) } catch (_: Exception) {}
+    }
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && !state.isExpanded && state.selectedArtist == null && state.selectedAlbum == null && state.selectedGenre == null && state.showSeeAllSection != null) { progress ->
         try { progress.collect {}; viewModel.setSeeAllSection(null) } catch (_: Exception) {}
     }
 
     // 5. Tab stack: if on any tab other than Home (Explore, Library, Search), pop back to Home
-    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && !state.isExpanded && state.selectedArtist == null && state.selectedAlbum == null && state.showSeeAllSection == null && state.currentTab != Tab.HOME) { progress ->
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && !state.isExpanded && state.selectedArtist == null && state.selectedAlbum == null && state.selectedGenre == null && state.showSeeAllSection == null && state.currentTab != Tab.HOME) { progress ->
         try { progress.collect {}; viewModel.setTab(Tab.HOME) } catch (_: Exception) {}
     }
 
@@ -427,7 +430,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             headerOffset = animatedHeaderOffset,
                                             headerAlpha = headerAlphaProvider,
                                             onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) },
-                                            onSearch = { viewModel.search(it); viewModel.setTab(Tab.SEARCH) }
+                                            onSearch = { viewModel.search(it); viewModel.setTab(Tab.SEARCH) },
+                                            onSelectGenre = { g, b -> viewModel.setSelectedGenre(g, b) }
                                         )
                                         Tab.LIBRARY -> LibraryScreen(
                                             state = screenState,
@@ -535,26 +539,39 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
 
                 // Bottom: Mini Player + Borderless Translucent Nav
-                val isOverlayActive = (state.isExpanded && playerProgress.value >= 0.99f) || state.selectedAlbum != null || state.selectedArtist != null || state.showProfilePage
-                val effectiveBottomAlpha = if (isOverlayActive) 0f else 1f
+                val isOverlayActive = (state.isExpanded && playerProgress.value >= 0.99f) ||
+                    state.selectedAlbum != null ||
+                    state.selectedArtist != null ||
+                    state.selectedGenre != null ||
+                    state.showProfilePage
 
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .zIndex(10f)
-                        .navigationBarsPadding()
-                        .imePadding()
-                        .graphicsLayer {
-                            alpha = effectiveBottomAlpha
-                            translationY = (1f - effectiveBottomAlpha) * 32f
-                        }
-                        .pointerInput(effectiveBottomAlpha) {
-                            if (effectiveBottomAlpha > 0.01f) {
-                                detectTapGestures { /* consume touches to prevent mistouches to the list underneath */ }
+                val playerFade = (1f - playerProgress.value * 2.2f).coerceIn(0f, 1f)
+                val targetBottomAlpha = if (isOverlayActive) 0f else playerFade
+
+                val bottomBarAlpha by animateFloatAsState(
+                    targetValue = targetBottomAlpha,
+                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                    label = "bottomBarAlpha"
+                )
+
+                if (bottomBarAlpha > 0.001f) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .zIndex(10f)
+                            .navigationBarsPadding()
+                            .imePadding()
+                            .graphicsLayer {
+                                alpha = bottomBarAlpha
+                                translationY = (1f - bottomBarAlpha) * 32f
                             }
-                        }
-                ) {
+                            .pointerInput(bottomBarAlpha) {
+                                if (bottomBarAlpha > 0.01f) {
+                                    detectTapGestures { /* consume touches to prevent mistouches to the list underneath */ }
+                                }
+                            }
+                    ) {
                     val isScrolling = scrolledState
                     val scrollShrinkRaw by animateFloatAsState(
                         targetValue = if (isScrolling) 1f else 0f,
@@ -1488,6 +1505,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         }
                     }
                 }
+                }
 
                 // Add Album Dialog Overlay
                 AnimatedVisibility(
@@ -1501,6 +1519,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         onClose = { viewModel.setShowAddAlbumDialog(false) }
                     )
                 }
+
+                // Fluid Genre Detail Overlay (Expanding continuous shared-element animation from browse genre card)
+                FluidGenreDetailOverlay(
+                    genre = state.selectedGenre,
+                    sourceBounds = state.selectedGenreBounds,
+                    state = state,
+                    onClose = { viewModel.setSelectedGenre(null) },
+                    onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) }
+                )
 
                 // Fluid Artist Detail Overlay (Expanding continuous shared-element animation from artist item)
                 FluidArtistDetailOverlay(
@@ -1870,7 +1897,7 @@ private fun MiniPlayerSeekLine(
  * 3. In dark mode: subtle white specular reflection (12% alpha)
  * 4. In light mode (white screen): 10% darker reflection (18% alpha) for crisp definition
  */
-private fun Modifier.glassRefraction(
+internal fun Modifier.glassRefraction(
     cornerRadius: Dp,
     isDark: Boolean,
     isCircle: Boolean = false
@@ -1894,8 +1921,9 @@ private fun Modifier.glassRefraction(
     drawContent()
 
     // 3. Inner content refraction bevel: subtle secondary lines inset by 0.5dp (disconnected)
+    // Dark mode: +10% on up/down (0.066f). Light mode: lowered (0.06f)
     val innerStrokeW = 0.5.dp.toPx()
-    val innerPeakAlpha = if (isDark) 0.06f else 0.09f
+    val innerPeakAlpha = if (isDark) 0.066f else 0.06f
     val innerBottomAlpha = innerPeakAlpha * 0.70f
     drawRoundRect(
         brush = Brush.verticalGradient(
@@ -1918,8 +1946,9 @@ private fun Modifier.glassRefraction(
     )
 
     // 4. Outer content refraction reflection: upper curve + lower curve
+    // Dark mode: +10% on up/down (0.242f). Light mode: lowered up/down (0.18f)
     val outerStrokeW = 0.5.dp.toPx()
-    val outerPeakAlpha = if (isDark) 0.22f else 0.28f
+    val outerPeakAlpha = if (isDark) 0.242f else 0.18f
     val outerBottomAlpha = outerPeakAlpha * 0.75f
     drawRoundRect(
         brush = Brush.verticalGradient(
@@ -1937,24 +1966,26 @@ private fun Modifier.glassRefraction(
         style = Stroke(width = outerStrokeW)
     )
 
-    // 5. Right & Left edges border with 10% more brightness than up and down (outerPeakAlpha * 1.10f)
-    val sidePeakAlpha = outerPeakAlpha * 1.10f
+    // 5. Right & Left edges border:
+    // Light mode: +20% visibility (0.336f). Dark mode: -5% visibility (0.230f)
+    val sidePeakAlpha = if (isDark) 0.230f else 0.336f
     drawRoundRect(
         brush = Brush.horizontalGradient(
-            // Left edge border (+10% brighter)
+            // Left edge border
             0.0f to reflectionColor.copy(alpha = sidePeakAlpha),
             0.15f to Color.Transparent,
             // Horizontal middle gap
             0.85f to Color.Transparent,
-            // Right edge border (+10% brighter)
+            // Right edge border
             1.0f to reflectionColor.copy(alpha = sidePeakAlpha)
         ),
         cornerRadius = CornerRadius(cornerPx, cornerPx),
         style = Stroke(width = outerStrokeW)
     )
 
-    // 6. Inner side bevel border (+10% brighter than inner up/down)
-    val innerSideAlpha = innerPeakAlpha * 1.10f
+    // 6. Inner side bevel border:
+    // Light mode: +20% (0.108f). Dark mode: -5% (0.063f)
+    val innerSideAlpha = if (isDark) 0.063f else 0.108f
     drawRoundRect(
         brush = Brush.horizontalGradient(
             0.0f to reflectionColor.copy(alpha = innerSideAlpha),

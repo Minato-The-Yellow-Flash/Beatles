@@ -47,7 +47,11 @@ import com.beatles.player.viewmodel.PlayerUiState
 import androidx.compose.ui.zIndex
 import com.beatles.player.ui.components.FrostedButton
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
+import com.beatles.player.ui.glassRefraction
+import com.beatles.player.ui.motion.liquidPress
 import com.beatles.player.ui.components.edgeFade
 import com.beatles.player.ui.components.AppleMusicGradientCover
 import androidx.compose.animation.core.spring
@@ -549,31 +553,80 @@ fun HomeScreen(
                             Text("${heroAlbum.artist ?: ""} • ${heroSongs.size} tracks", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
                             Spacer(modifier = Modifier.height(14.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                FrostedButton(
-                                    onClick = {
-                                        heroSongs.firstOrNull()?.let { onPlay(it, heroSongs, heroBounds) }
-                                    },
-                                    active = true,
-                                    isDark = isDark,
-                                    shape = RoundedCornerShape(50),
-                                    hazeState = bannerHazeState,
-                                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
+                                val playInteraction = remember { MutableInteractionSource() }
+                                Box(
+                                    modifier = Modifier
+                                        .liquidPress(playInteraction)
+                                        .clip(RoundedCornerShape(50))
+                                        .hazeChild(
+                                            state = bannerHazeState,
+                                            shape = RoundedCornerShape(50),
+                                            style = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
+                                        )
+                                        .background(Color(0xFF383842).copy(alpha = if (isDark) 0.35f else 0.45f))
+                                        .glassRefraction(50.dp, isDark)
+                                        .clickable(
+                                            interactionSource = playInteraction,
+                                            indication = null
+                                        ) {
+                                            heroSongs.firstOrNull()?.let { onPlay(it, heroSongs, heroBounds) }
+                                        }
+                                        .padding(horizontal = 18.dp, vertical = 9.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = if (isDark) Color.White else Color(0xFF141416), modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Play Album", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Default.PlayArrow,
+                                            contentDescription = null,
+                                            tint = if (isDark) Color.White else Color(0xFF141416),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "Play Album",
+                                            color = if (isDark) Color.White else Color(0xFF141416),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
-                                FrostedButton(
-                                    onClick = { onSelectAlbum(heroAlbum, heroBounds) },
-                                    active = false,
-                                    isDark = isDark,
-                                    shape = RoundedCornerShape(50),
-                                    hazeState = bannerHazeState,
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+
+                                val viewInteraction = remember { MutableInteractionSource() }
+                                Box(
+                                    modifier = Modifier
+                                        .liquidPress(viewInteraction)
+                                        .clip(RoundedCornerShape(50))
+                                        .hazeChild(
+                                            state = bannerHazeState,
+                                            shape = RoundedCornerShape(50),
+                                            style = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
+                                        )
+                                        .background(Color(0xFF383842).copy(alpha = if (isDark) 0.28f else 0.35f))
+                                        .glassRefraction(50.dp, isDark)
+                                        .clickable(
+                                            interactionSource = viewInteraction,
+                                            indication = null
+                                        ) {
+                                            onSelectAlbum(heroAlbum, heroBounds)
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("View Album", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            "View Album",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
                                 }
                             }
                         }

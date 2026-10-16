@@ -205,7 +205,8 @@ fun ExploreScreen(
     headerOffset: () -> Float = { 0f },
     headerAlpha: () -> Float = { 1f },
     onPlay: (Song, List<Song>, Rect?) -> Unit,
-    onSearch: (String) -> Unit
+    onSearch: (String) -> Unit,
+    onSelectGenre: ((String, Rect?) -> Unit)? = null
 ) {
     val isDark = isDarkTheme(state.themeMode)
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
@@ -267,8 +268,12 @@ fun ExploreScreen(
                                 .background(if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f))
                                 .onGloballyPositioned { pillBounds = it.boundsInRoot() }
                                 .clickable {
-                                    selectedGenreOriginBounds = pillBounds
-                                    selectedGenreForDetail = name
+                                    if (onSelectGenre != null) {
+                                        onSelectGenre(name, pillBounds)
+                                    } else {
+                                        selectedGenreOriginBounds = pillBounds
+                                        selectedGenreForDetail = name
+                                    }
                                 }
                                 .padding(horizontal = 14.dp, vertical = 8.dp)
                         ) {
@@ -327,8 +332,12 @@ fun ExploreScreen(
                                             .border(1.dp, if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
                                             .onGloballyPositioned { cardBounds = it.boundsInRoot() }
                                             .clickable {
-                                                selectedGenreOriginBounds = cardBounds
-                                                selectedGenreForDetail = name
+                                                if (onSelectGenre != null) {
+                                                    onSelectGenre(name, cardBounds)
+                                                } else {
+                                                    selectedGenreOriginBounds = cardBounds
+                                                    selectedGenreForDetail = name
+                                                }
                                             }
                                     ) {
                                         LiveMorphingGradientCard(
@@ -521,13 +530,15 @@ fun ExploreScreen(
         }
 
         // Fluid Genre Detail Overlay: expanding animation matching expanded album page, page color matching artwork/genre
-        FluidGenreDetailOverlay(
-            genre = selectedGenreForDetail,
-            sourceBounds = selectedGenreOriginBounds,
-            state = state,
-            onClose = { selectedGenreForDetail = null },
-            onPlay = onPlay
-        )
+        if (onSelectGenre == null) {
+            FluidGenreDetailOverlay(
+                genre = selectedGenreForDetail,
+                sourceBounds = selectedGenreOriginBounds,
+                state = state,
+                onClose = { selectedGenreForDetail = null },
+                onPlay = onPlay
+            )
+        }
     }
 }
 
@@ -607,11 +618,15 @@ fun FluidGenreDetailOverlay(
     val p = progress.value
     val curGenre = currentGenre
 
-    BackHandler(enabled = (p > 0.01f || genre != null)) {
+    fun handleClose() {
         scope.launch {
-            progress.animateTo(0f, tween(200))
+            progress.animateTo(0f, tween(240, easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)))
             onClose()
         }
+    }
+
+    BackHandler(enabled = (p > 0.01f || genre != null)) {
+        handleClose()
     }
 
     if (curGenre != null && p > 0.001f) {
@@ -672,11 +687,8 @@ fun FluidGenreDetailOverlay(
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onDragEnd = {
-                                if (dragY > 200f) {
-                                    scope.launch {
-                                        progress.animateTo(0f, tween(200))
-                                        onClose()
-                                    }
+                                if (dragY > 140f) {
+                                    handleClose()
                                 } else {
                                     dragY = 0f
                                 }
@@ -684,6 +696,9 @@ fun FluidGenreDetailOverlay(
                             onVerticalDrag = { _, dragAmount ->
                                 if (dragAmount > 0 || dragY > 0) {
                                     dragY = (dragY + dragAmount).coerceAtLeast(0f)
+                                    if (dragY > 220f) {
+                                        handleClose()
+                                    }
                                 }
                             }
                         )
@@ -710,35 +725,13 @@ fun FluidGenreDetailOverlay(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(top = 44.dp, bottom = LocalDynamicBottomPadding.current + 28.dp)
                         ) {
-                    // Album Page Hero Section: Centered 200dp Cover with shadow + LiveMorphingGradient + Parallax & Blur
+                    // Album Page Hero Section: Centered 200dp Cover placeholder + Parallax & Blur
                     item {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(200.dp)
-                                    .graphicsLayer {
-                                        scaleX = artScale
-                                        scaleY = artScale
-                                        alpha = artAlpha
-                                        translationY = artTranslateY
-                                    }
-                                    .then(if (artBlur > 0.dp) Modifier.blur(artBlur) else Modifier)
-                                    .shadow(18.dp, RoundedCornerShape(22.dp))
-                                    .clip(RoundedCornerShape(22.dp))
-                            ) {
-                                LiveMorphingGradientCard(
-                                    palette = palette,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black.copy(alpha = 0.12f))
-                                )
-                            }
+                            Spacer(modifier = Modifier.size(200.dp))
                             Spacer(modifier = Modifier.height(20.dp))
                             Column(
                                 modifier = Modifier
@@ -916,6 +909,74 @@ fun FluidGenreDetailOverlay(
                             }
                         }
                     }
+                }
+            }
+
+            // 3. Back Button (Top Left)
+            IconButton(
+                onClick = { handleClose() },
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, top = 8.dp)
+                    .size(40.dp)
+                    .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // 4. Shared Morph Hero Category Card: glides seamlessly from tapped origin card to centered hero position
+            val targetArtworkSize = 200.dp
+            val targetArtworkSizePx = with(density) { targetArtworkSize.toPx() }
+            val targetTopPx = with(density) { 44.dp.toPx() }
+            val targetLeftPx = (screenWpx - targetArtworkSizePx) / 2f
+
+            val curArtLeft = origin.left + (targetLeftPx - origin.left) * p
+            val curArtTop = origin.top + (targetTopPx + artTranslateY - origin.top) * p + dragY
+            val curArtWidth = origin.width + (targetArtworkSizePx - origin.width) * p
+            val curArtHeight = origin.height + (targetArtworkSizePx - origin.height) * p
+            val curArtCorner = with(density) { (18.dp.toPx() + (22.dp.toPx() - 18.dp.toPx()) * p).toDp() }
+
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(curArtLeft.roundToInt(), curArtTop.roundToInt()) }
+                    .size(
+                        width = with(density) { curArtWidth.toDp() },
+                        height = with(density) { curArtHeight.toDp() }
+                    )
+                    .graphicsLayer {
+                        scaleX = if (p >= 0.95f) artScale else 1f
+                        scaleY = if (p >= 0.95f) artScale else 1f
+                        alpha = if (p >= 0.95f) artAlpha.coerceIn(0.08f, 1f) else 1f
+                    }
+                    .then(if (artBlur > 0.dp && p >= 0.95f) Modifier.blur(artBlur) else Modifier)
+                    .clip(RoundedCornerShape(curArtCorner))
+                    .shadow(elevation = (18.dp * p).coerceAtLeast(0.dp), shape = RoundedCornerShape(curArtCorner))
+            ) {
+                LiveMorphingGradientCard(
+                    palette = palette,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.12f))
+                )
+                if (p < 0.85f) {
+                    val titleAlpha = ((0.85f - p) / 0.85f).coerceIn(0f, 1f)
+                    Text(
+                        curGenre,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .graphicsLayer { alpha = titleAlpha }
+                    )
                 }
             }
         }

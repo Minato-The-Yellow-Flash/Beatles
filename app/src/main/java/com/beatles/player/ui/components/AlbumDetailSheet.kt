@@ -224,7 +224,7 @@ fun FluidAlbumDetailOverlay(
         val artScale = (1f - (scrollOffset / 1400f) * p).coerceIn(0.72f, 1f)
         val artAlpha = (1f - (scrollOffset / 340f) * p).coerceIn(0f, 1f)
         val originCardWidth = origin.width.coerceAtLeast(10f)
-        val originCardHeight = if (origin.height > origin.width * 1.15f) origin.width else origin.height.coerceAtLeast(10f)
+        val originCardHeight = origin.height.coerceAtLeast(10f)
         val originCornerPx = if (originCardWidth <= with(density) { 72.dp.toPx() }) originCardWidth / 2f else with(density) { 18.dp.toPx() }
 
         val clampedP = p.coerceIn(0f, 1f)
@@ -652,13 +652,17 @@ fun FluidAlbumDetailOverlay(
             // 5. Shared Morph Hero Artwork: glides seamlessly from tapped origin card to centered hero position
             val curArtLeft = origin.left + (targetLeftPx - origin.left) * clampedP
             val curArtTop = origin.top + (targetTopPx + artTranslateY - origin.top) * clampedP + dragY
-            val curArtSize = originCardWidth + (targetArtworkSizePx - originCardWidth) * clampedP
+            val curArtWidth = originCardWidth + (targetArtworkSizePx - originCardWidth) * clampedP
+            val curArtHeight = originCardHeight + (targetArtworkSizePx - originCardHeight) * clampedP
             val curArtCorner = originCornerPx + (with(density) { 22.dp.toPx() } - originCornerPx) * clampedP
 
             Box(
                 modifier = Modifier
                     .offset { IntOffset(curArtLeft.roundToInt(), curArtTop.roundToInt()) }
-                    .size(with(density) { curArtSize.toDp() })
+                    .size(
+                        width = with(density) { curArtWidth.toDp() },
+                        height = with(density) { curArtHeight.toDp() }
+                    )
                     .graphicsLayer {
                         scaleX = if (clampedP >= 0.95f) artScale else 1f
                         scaleY = if (clampedP >= 0.95f) artScale else 1f

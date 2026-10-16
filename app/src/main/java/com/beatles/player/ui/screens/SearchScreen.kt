@@ -236,7 +236,6 @@ fun SearchScreen(
                                 .padding(horizontal = 16.dp, vertical = 6.dp)
                                 .clip(RoundedCornerShape(18.dp))
                                 .background(if (isDark) Color(0xFF1E2026) else Color.White)
-                                .onGloballyPositioned { artistBounds = it.boundsInRoot() }
                                 .clickable { onSelectArtist(matchedArtist.first, artistBounds) }
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -247,6 +246,7 @@ fun SearchScreen(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .size(54.dp)
+                                    .onGloballyPositioned { artistBounds = it.boundsInRoot() }
                                     .clip(CircleShape)
                             )
                             Spacer(modifier = Modifier.width(12.dp))

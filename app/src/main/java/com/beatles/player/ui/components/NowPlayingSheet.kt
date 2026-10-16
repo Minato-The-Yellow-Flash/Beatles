@@ -460,6 +460,7 @@ fun NowPlayingSheet(
 
         val baseCoverSize = defaultCoverSize.coerceAtLeast(100.dp)
         val coverScale = (currentCoverSize / baseCoverSize).coerceAtLeast(0.01f)
+        val effectiveCoverCorner = currentCoverCorner / coverScale.coerceAtLeast(0.01f)
 
         // Apple Music-Style Interactive Foreground Album Artwork (glides to top-left when Next Up or Lyrics is active, morphs to mini player when closing)
         if (coverAlpha > 0.01f && morphProgress > 0.0001f) {
@@ -480,7 +481,7 @@ fun NowPlayingSheet(
                             scaleY = coverScale * artStretchY
                         }
                         shadowElevation = if (isCompactCover) 4.dp.toPx() else (16.dp.toPx() * morphProgress)
-                        shape = RoundedCornerShape(currentCoverCorner)
+                        shape = RoundedCornerShape(effectiveCoverCorner)
                         clip = true
                     }
             ) {
@@ -795,7 +796,7 @@ fun NowPlayingSheet(
                 if (isPlaying && isLyricsActive) {
                     val anchorRealtime = SystemClock.elapsedRealtime()
                     val anchorPos = currentPosition
-                    while (isActive) {
+                    while (isActive && isLyricsActive) {
                         withFrameMillis {
                             val elapsed = SystemClock.elapsedRealtime() - anchorRealtime
                             // Compensate for Bluetooth / speaker audio output buffer latency (~35ms)
@@ -808,7 +809,7 @@ fun NowPlayingSheet(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 130.dp, bottom = if (isLyricsActive && !controlsVisible) 30.dp else 180.dp)
+                    .padding(top = 130.dp, bottom = 180.dp)
                     .graphicsLayer {
                         scaleY = lyrStretchY
                         translationY = lyrTransY
@@ -863,8 +864,8 @@ fun NowPlayingSheet(
                     val anchorSpotPx = with(density) { anchorSpotDp.roundToPx() }
 
                     // Auto-scroll active line smoothly into the fixed anchor spot
-                    LaunchedEffect(currentIdx, manualScrolled) {
-                        if (currentIdx in processedLyrics.indices && !manualScrolled && !isLyricsDragged) {
+                    LaunchedEffect(currentIdx, manualScrolled, isLyricsActive) {
+                        if (isLyricsActive && currentIdx in processedLyrics.indices && !manualScrolled && !isLyricsDragged) {
                             val item = listState.layoutInfo.visibleItemsInfo.find { it.index == currentIdx }
                             if (item != null) {
                                 val delta = item.offset - anchorSpotPx
@@ -919,7 +920,7 @@ fun NowPlayingSheet(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(start = 28.dp, end = 28.dp),
-                            contentPadding = PaddingValues(top = anchorSpotDp, bottom = if (isLyricsActive && !controlsVisible) 220.dp else 360.dp),
+                            contentPadding = PaddingValues(top = anchorSpotDp, bottom = 360.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             itemsIndexed(processedLyrics, key = { idx, line -> "lyric_${line.timeMs}_$idx" }) { idx, line ->
