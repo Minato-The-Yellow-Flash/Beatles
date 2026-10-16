@@ -32,6 +32,7 @@ private val AccentRed = Color(0xFFF82C38)
 fun AppUpdateDialog(
     update: UpdateInfo,
     progress: Float?,
+    status: String? = null,
     isDark: Boolean,
     onInstall: () -> Unit,
     onDismiss: () -> Unit
@@ -134,7 +135,8 @@ fun AppUpdateDialog(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "Downloading update... ${(progress * 100).toInt()}%",
+                            if (!status.isNullOrBlank()) "Downloading... ${(progress * 100).toInt()}% • $status"
+                            else "Downloading update... ${(progress * 100).toInt()}%",
                             fontSize = 12.sp,
                             color = textSecondary,
                             fontWeight = FontWeight.Medium

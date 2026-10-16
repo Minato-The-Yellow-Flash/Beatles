@@ -1543,6 +1543,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     AppUpdateDialog(
                         update = state.availableUpdate!!,
                         progress = state.updateDownloadProgress,
+                        status = state.updateDownloadStatus,
                         isDark = isDark,
                         onInstall = { viewModel.downloadAndInstallUpdate(currentContext) },
                         onDismiss = { viewModel.dismissUpdate() }

@@ -121,6 +121,7 @@ data class PlayerUiState(
     val availableUpdate: com.beatles.player.data.UpdateInfo? = null,
     val isCheckingUpdate: Boolean = false,
     val updateDownloadProgress: Float? = null,
+    val updateDownloadStatus: String? = null,
     val updateErrorMessage: String? = null,
     val updateNotice: String? = null
 )
@@ -475,7 +476,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun dismissUpdate() {
-        _uiState.update { it.copy(availableUpdate = null, updateErrorMessage = null) }
+        _uiState.update { it.copy(availableUpdate = null, updateDownloadProgress = null, updateDownloadStatus = null, updateErrorMessage = null) }
     }
 
     fun dismissUpdateNotice() {
@@ -485,15 +486,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun downloadAndInstallUpdate(context: android.content.Context) {
         val update = _uiState.value.availableUpdate ?: return
         viewModelScope.launch {
-            _uiState.update { it.copy(updateDownloadProgress = 0f, updateErrorMessage = null) }
+            _uiState.update { it.copy(updateDownloadProgress = 0f, updateDownloadStatus = "Connecting...", updateErrorMessage = null) }
             com.beatles.player.data.AppUpdateManager.downloadAndInstallApk(
                 context = context,
                 apkUrl = update.apkUrl,
-                onProgress = { progress ->
-                    _uiState.update { it.copy(updateDownloadProgress = progress) }
+                onProgress = { progress, status ->
+                    _uiState.update { it.copy(updateDownloadProgress = progress, updateDownloadStatus = status) }
                 },
                 onError = { err ->
-                    _uiState.update { it.copy(updateDownloadProgress = null, updateErrorMessage = err) }
+                    _uiState.update { it.copy(updateDownloadProgress = null, updateDownloadStatus = null, updateErrorMessage = err) }
                 }
             )
         }
