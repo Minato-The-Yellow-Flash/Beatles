@@ -9,8 +9,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.draw.shadow
+import com.beatles.player.ui.glassRefraction
+import com.beatles.player.ui.motion.liquidPress
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -75,18 +79,23 @@ fun ProfileScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val backInteraction = remember { MutableInteractionSource() }
+                val isDark = AppTheme.isDark
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(40.dp)
+                        .liquidPress(backInteraction)
+                        .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                         .clip(CircleShape)
-                        .background(AppTheme.card)
-                        .clickable { onClose() },
+                        .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
+                        .glassRefraction(20.dp, isDark = isDark, isCircle = true)
+                        .clickable(interactionSource = backInteraction, indication = null) { onClose() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = AppTheme.fg(),
+                        tint = if (isDark) Color.White else Color(0xFF141416),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -97,21 +106,24 @@ fun ProfileScreen(
                     modifier = Modifier.size(36.dp)
                 )
 
-                Button(
-                    onClick = {
-                        if (nameText.isNotBlank()) {
-                            viewModel.setUserName(nameText.trim())
+                val saveInteraction = remember { MutableInteractionSource() }
+                Box(
+                    modifier = Modifier
+                        .liquidPress(saveInteraction)
+                        .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                        .clip(RoundedCornerShape(50))
+                        .background(if (isDark) Color.White else Color(0xFF141416))
+                        .glassRefraction(50.dp, isDark = isDark)
+                        .clickable(interactionSource = saveInteraction, indication = null) {
+                            if (nameText.isNotBlank()) {
+                                viewModel.setUserName(nameText.trim())
+                            }
+                            onClose()
                         }
-                        onClose()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (AppTheme.isDark) Color.White else Color(0xFF141416),
-                        contentColor = if (AppTheme.isDark) Color(0xFF141416) else Color.White
-                    ),
-                    shape = RoundedCornerShape(50),
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp)
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("Save", color = if (AppTheme.isDark) Color(0xFF141416) else Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Save", color = if (isDark) Color(0xFF141416) else Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 

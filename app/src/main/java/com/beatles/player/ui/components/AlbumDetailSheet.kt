@@ -23,6 +23,8 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.beatles.player.ui.glassRefraction
+import com.beatles.player.ui.motion.liquidPress
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -396,26 +398,25 @@ fun FluidAlbumDetailOverlay(
                                     horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val buttonBg = if (!hasRealCover) {
-                                        defaultArtColors.first.copy(alpha = if (isDark) 0.30f else 0.20f)
-                                    } else {
-                                        if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.08f)
-                                    }
-                                    val buttonIconTint = if (!hasRealCover) {
-                                        if (isDark) Color.White else defaultArtColors.third
-                                    } else {
-                                        textPrimary
-                                    }
-                                    val playBtnBg = if (!hasRealCover) defaultArtColors.first else textPrimary
-                                    val playBtnIconTint = if (!hasRealCover) Color.White else if (isDark) Color.Black else Color.White
+                                    val buttonBg = if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f)
+                                    val buttonIconTint = if (isDark) Color.White else Color(0xFF141416)
+                                    val playBtnBg = if (isDark) Color.White else Color(0xFF141416)
+                                    val playBtnIconTint = if (isDark) Color.Black else Color.White
 
-                                    // Shuffle Button (transparent borderless circle)
+                                    // Shuffle Button (liquid glass circle)
+                                    val shuffleInteraction = remember { MutableInteractionSource() }
                                     Box(
                                         modifier = Modifier
                                             .size(50.dp)
+                                            .liquidPress(shuffleInteraction)
+                                            .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                             .clip(CircleShape)
                                             .background(buttonBg)
-                                            .clickable {
+                                            .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                            .clickable(
+                                                interactionSource = shuffleInteraction,
+                                                indication = null
+                                            ) {
                                                 if (alb.songs.isNotEmpty()) {
                                                     val shuffled = alb.songs.shuffled()
                                                     onPlay(shuffled.first(), shuffled)
@@ -431,13 +432,20 @@ fun FluidAlbumDetailOverlay(
                                         )
                                     }
 
-                                    // Large Center Play Button
+                                    // Large Center Play Button (liquid glass circle)
+                                    val playInteraction = remember { MutableInteractionSource() }
                                     Box(
                                         modifier = Modifier
                                             .size(64.dp)
+                                            .liquidPress(playInteraction)
+                                            .shadow(4.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.18f))
                                             .clip(CircleShape)
                                             .background(playBtnBg)
-                                            .clickable {
+                                            .glassRefraction(32.dp, isDark = isDark, isCircle = true)
+                                            .clickable(
+                                                interactionSource = playInteraction,
+                                                indication = null
+                                            ) {
                                                 if (alb.songs.isNotEmpty()) onPlay(alb.songs.first(), alb.songs)
                                             },
                                         contentAlignment = Alignment.Center
@@ -450,13 +458,20 @@ fun FluidAlbumDetailOverlay(
                                         )
                                     }
 
-                                    // Save to Library / Add to Set Button (transparent borderless circle)
+                                    // Save to Library / Add to Set Button (liquid glass circle)
+                                    val saveInteraction = remember { MutableInteractionSource() }
                                     Box(
                                         modifier = Modifier
                                             .size(50.dp)
+                                            .liquidPress(saveInteraction)
+                                            .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                             .clip(CircleShape)
                                             .background(buttonBg)
-                                            .clickable { showSetDialog = true },
+                                            .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                            .clickable(
+                                                interactionSource = saveInteraction,
+                                                indication = null
+                                            ) { showSetDialog = true },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
@@ -600,17 +615,22 @@ fun FluidAlbumDetailOverlay(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = { handleClose() },
+                        val backInteraction = remember { MutableInteractionSource() }
+                        Box(
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(40.dp)
+                                .liquidPress(backInteraction)
+                                .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                 .clip(CircleShape)
-                                .background(if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f))
+                                .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
+                                .glassRefraction(20.dp, isDark = isDark, isCircle = true)
+                                .clickable(interactionSource = backInteraction, indication = null) { handleClose() },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back",
-                                tint = textPrimary,
+                                tint = if (isDark) Color.White else Color(0xFF141416),
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -632,17 +652,22 @@ fun FluidAlbumDetailOverlay(
                                 }
                         )
 
-                        IconButton(
-                            onClick = { showInfoDialog = true },
+                        val infoInteraction = remember { MutableInteractionSource() }
+                        Box(
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(40.dp)
+                                .liquidPress(infoInteraction)
+                                .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                 .clip(CircleShape)
-                                .background(if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f))
+                                .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
+                                .glassRefraction(20.dp, isDark = isDark, isCircle = true)
+                                .clickable(interactionSource = infoInteraction, indication = null) { showInfoDialog = true },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Outlined.Info,
                                 contentDescription = "Info",
-                                tint = textPrimary,
+                                tint = if (isDark) Color.White else Color(0xFF141416),
                                 modifier = Modifier.size(20.dp)
                             )
                         }

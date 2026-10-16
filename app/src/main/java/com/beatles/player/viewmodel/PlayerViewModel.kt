@@ -120,6 +120,8 @@ data class PlayerUiState(
     val selectedArtistBounds: Rect? = null,
     val selectedGenre: String? = null,
     val selectedGenreBounds: Rect? = null,
+    val selectedAlbumSet: AlbumSet? = null,
+    val selectedAlbumSetBounds: Rect? = null,
     val availableUpdate: com.beatles.player.data.UpdateInfo? = null,
     val isCheckingUpdate: Boolean = false,
     val updateDownloadProgress: Float? = null,
@@ -535,6 +537,29 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setSelectedGenre(genre: String?, bounds: Rect? = null) {
         _uiState.update { it.copy(selectedGenre = genre, selectedGenreBounds = bounds) }
+    }
+
+    fun setSelectedAlbumSet(set: AlbumSet?, bounds: Rect? = null) {
+        _uiState.update { it.copy(selectedAlbumSet = set, selectedAlbumSetBounds = bounds) }
+        if (set != null && set.albums.any { it.songs.isEmpty() }) {
+            viewModelScope.launch {
+                val updatedAlbums = set.albums.map { alb ->
+                    if (alb.songs.isNotEmpty()) alb
+                    else {
+                        val resolved = try {
+                            repo.lookupAlbumById(alb.id) ?: repo.searchOriginalAlbum("${alb.title} ${alb.artist}")
+                        } catch (_: Exception) { null }
+                        if (resolved != null && resolved.songs.isNotEmpty()) alb.copy(songs = resolved.songs) else alb
+                    }
+                }
+                val fullSet = set.copy(albums = updatedAlbums)
+                _uiState.update { st ->
+                    if (st.selectedAlbumSet?.id == set.id) {
+                        st.copy(selectedAlbumSet = fullSet)
+                    } else st
+                }
+            }
+        }
     }
     
     fun openAlbumForSong(song: Song) {

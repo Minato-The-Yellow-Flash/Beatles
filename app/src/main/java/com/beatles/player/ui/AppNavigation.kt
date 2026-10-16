@@ -81,6 +81,7 @@ import com.beatles.player.ui.components.AddAlbumDialog
 import com.beatles.player.ui.components.AlbumDetailSheet
 import com.beatles.player.ui.components.AppUpdateDialog
 import com.beatles.player.ui.components.FluidAlbumDetailOverlay
+import com.beatles.player.ui.components.FluidAlbumSetDetailOverlay
 import com.beatles.player.ui.components.FluidArtistDetailOverlay
 import com.beatles.player.ui.components.NowPlayingSheet
 import com.beatles.player.ui.screens.*
@@ -422,6 +423,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             onSeeAll = { section -> viewModel.setSeeAllSection(section.ifEmpty { null }) },
                                             onSelectAlbum = { alb, bounds -> viewModel.setSelectedAlbum(alb, bounds) },
                                             onPlayAlbumSet = { viewModel.playAlbumSet(it) },
+                                            onSelectAlbumSet = { set, bounds -> viewModel.setSelectedAlbumSet(set, bounds) },
                                             onLoadMoreTopSongs = { viewModel.loadMoreTopSongs() },
                                             onRefresh = { viewModel.refreshHomeScreen() }
                                         )
@@ -543,6 +545,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     state.selectedAlbum != null ||
                     state.selectedArtist != null ||
                     state.selectedGenre != null ||
+                    state.selectedAlbumSet != null ||
                     state.showProfilePage
 
                 val playerFade = (1f - playerProgress.value * 2.2f).coerceIn(0f, 1f)
@@ -1550,6 +1553,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     onPlay = { s, pl -> viewModel.playSong(s, pl) }
                 )
 
+                // Fluid Album Set Detail Overlay (Interactive HorizontalPager Carousel)
+                FluidAlbumSetDetailOverlay(
+                    albumSet = state.selectedAlbumSet,
+                    sourceBounds = state.selectedAlbumSetBounds,
+                    state = state,
+                    viewModel = viewModel,
+                    onClose = { viewModel.setSelectedAlbumSet(null) },
+                    onPlay = { s, pl -> viewModel.playSong(s, pl) },
+                    onPlayAlbumSet = { viewModel.playAlbumSet(it) }
+                )
+
                 // Profile Screen Overlay (Native iOS push slide transition)
                 AnimatedVisibility(
                     visible = state.showProfilePage,
@@ -1921,9 +1935,9 @@ internal fun Modifier.glassRefraction(
     drawContent()
 
     // 3. Inner content refraction bevel: subtle secondary lines inset by 0.5dp (disconnected)
-    // Dark mode: +10% on up/down (0.066f). Light mode: lowered (0.06f)
+    // Dark mode: increased on up/down (0.09f). Light mode: lowered up/down (0.04f)
     val innerStrokeW = 0.5.dp.toPx()
-    val innerPeakAlpha = if (isDark) 0.066f else 0.06f
+    val innerPeakAlpha = if (isDark) 0.09f else 0.04f
     val innerBottomAlpha = innerPeakAlpha * 0.70f
     drawRoundRect(
         brush = Brush.verticalGradient(
@@ -1946,9 +1960,9 @@ internal fun Modifier.glassRefraction(
     )
 
     // 4. Outer content refraction reflection: upper curve + lower curve
-    // Dark mode: +10% on up/down (0.242f). Light mode: lowered up/down (0.18f)
+    // Dark mode: increased reflective up/down (0.35f). Light mode: lowered up/down to 10% (0.10f)
     val outerStrokeW = 0.5.dp.toPx()
-    val outerPeakAlpha = if (isDark) 0.242f else 0.18f
+    val outerPeakAlpha = if (isDark) 0.35f else 0.10f
     val outerBottomAlpha = outerPeakAlpha * 0.75f
     drawRoundRect(
         brush = Brush.verticalGradient(
@@ -1967,8 +1981,8 @@ internal fun Modifier.glassRefraction(
     )
 
     // 5. Right & Left edges border:
-    // Light mode: +20% visibility (0.336f). Dark mode: -5% visibility (0.230f)
-    val sidePeakAlpha = if (isDark) 0.230f else 0.336f
+    // Dark mode: side edges kept at 5% (0.05f). Light mode: increased side edges (0.45f)
+    val sidePeakAlpha = if (isDark) 0.05f else 0.45f
     drawRoundRect(
         brush = Brush.horizontalGradient(
             // Left edge border
@@ -1984,8 +1998,8 @@ internal fun Modifier.glassRefraction(
     )
 
     // 6. Inner side bevel border:
-    // Light mode: +20% (0.108f). Dark mode: -5% (0.063f)
-    val innerSideAlpha = if (isDark) 0.063f else 0.108f
+    // Dark mode: side bevel at 2% (0.02f). Light mode: increased side bevel (0.14f)
+    val innerSideAlpha = if (isDark) 0.02f else 0.14f
     drawRoundRect(
         brush = Brush.horizontalGradient(
             0.0f to reflectionColor.copy(alpha = innerSideAlpha),

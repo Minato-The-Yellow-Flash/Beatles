@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -98,6 +99,7 @@ fun HomeScreen(
     onSeeAll: (String) -> Unit,
     onSelectAlbum: (Album, Rect?) -> Unit = { _, _ -> },
     onPlayAlbumSet: (AlbumSet) -> Unit = {},
+    onSelectAlbumSet: (AlbumSet, Rect?) -> Unit = { _, _ -> },
     onLoadMoreTopSongs: () -> Unit = {},
     onRefresh: () -> Unit = {}
 ) {
@@ -557,6 +559,7 @@ fun HomeScreen(
                                 Box(
                                     modifier = Modifier
                                         .liquidPress(playInteraction)
+                                        .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                         .clip(RoundedCornerShape(50))
                                         .hazeChild(
                                             state = bannerHazeState,
@@ -595,6 +598,7 @@ fun HomeScreen(
                                 Box(
                                     modifier = Modifier
                                         .liquidPress(viewInteraction)
+                                        .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                         .clip(RoundedCornerShape(50))
                                         .hazeChild(
                                             state = bannerHazeState,
@@ -616,13 +620,13 @@ fun HomeScreen(
                                         Icon(
                                             Icons.AutoMirrored.Filled.ArrowForward,
                                             contentDescription = null,
-                                            tint = Color.White,
+                                            tint = if (isDark) Color.White else Color(0xFF141416),
                                             modifier = Modifier.size(16.dp)
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             "View Album",
-                                            color = Color.White,
+                                            color = if (isDark) Color.White else Color(0xFF141416),
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.SemiBold
                                         )
@@ -1066,17 +1070,29 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        Button(
-                            onClick = {
-                                onPlayArtistMix(spotlightArtist, spotlightSongs)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentRed),
-                            shape = RoundedCornerShape(50),
-                            modifier = Modifier.fillMaxWidth().height(44.dp)
+                        val mixInteraction = remember { MutableInteractionSource() }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .liquidPress(mixInteraction)
+                                .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                                .clip(RoundedCornerShape(50))
+                                .background(AccentRed)
+                                .glassRefraction(50.dp, isDark)
+                                .clickable(
+                                    interactionSource = mixInteraction,
+                                    indication = null
+                                ) {
+                                    onPlayArtistMix(spotlightArtist, spotlightSongs)
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Play Artist Mix", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Play Artist Mix", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -1222,6 +1238,7 @@ fun HomeScreen(
                                 set = set,
                                 isDark = isDark,
                                 onSelectAlbum = { onSelectAlbum(it, null) },
+                                onSelectAlbumSet = onSelectAlbumSet,
                                 onPlayAlbumSet = onPlayAlbumSet
                             )
                         }
@@ -1366,16 +1383,22 @@ fun SeeAllScreen(
                     .padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = onBack,
+                val backInteraction = remember { MutableInteractionSource() }
+                Box(
                     modifier = Modifier
-                        .size(38.dp)
-                        .background(if (isDark) Color(0xFF26262A) else Color(0xFFE5E7EB), CircleShape)
+                        .size(40.dp)
+                        .liquidPress(backInteraction)
+                        .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
+                        .glassRefraction(20.dp, isDark = isDark, isCircle = true)
+                        .clickable(interactionSource = backInteraction, indication = null) { onBack() },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = textPrimary,
+                        tint = if (isDark) Color.White else Color(0xFF141416),
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -1403,106 +1426,259 @@ fun AlbumSetHomeCard(
     set: AlbumSet,
     isDark: Boolean,
     onSelectAlbum: (Album) -> Unit,
+    onSelectAlbumSet: (AlbumSet, Rect?) -> Unit,
     onPlayAlbumSet: (AlbumSet) -> Unit = {}
 ) {
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
     val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
     val textMuted = if (isDark) Color.White.copy(alpha = 0.45f) else Color(0xFF9CA3AF)
-    val cardBg = if (isDark) Color(0xFFE2E2E2).copy(alpha = 0.12f) else Color.White
+    val cardBg = if (isDark) Color(0xFF1E1E24).copy(alpha = 0.70f) else Color.White
     val setAlbums = set.albums ?: emptyList()
+    var cardBounds by remember { mutableStateOf<Rect?>(null) }
+    val cardInteraction = remember { MutableInteractionSource() }
 
     Box(
         modifier = Modifier
-            .width(220.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .width(236.dp)
+            .onGloballyPositioned { coords -> cardBounds = coords.boundsInRoot() }
+            .liquidPress(cardInteraction)
+            .shadow(
+                elevation = 4.dp,
+                shape = RoundedCornerShape(22.dp),
+                spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.12f)
+            )
+            .clip(RoundedCornerShape(22.dp))
             .background(cardBg)
+            .border(
+                0.5.dp,
+                if (isDark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.08f),
+                RoundedCornerShape(22.dp)
+            )
+            .clickable(interactionSource = cardInteraction, indication = null) {
+                onSelectAlbumSet(set, cardBounds)
+            }
             .padding(14.dp)
     ) {
         Column {
-            // Stacked album covers
+            // Authentic physical fan of cards preview
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(105.dp)
+                    .height(130.dp),
+                contentAlignment = Alignment.Center
             ) {
-                val covers = setAlbums.mapNotNull { it.coverUrl }.filter { it.isNotBlank() }.take(3)
+                val covers = setAlbums.mapNotNull { alb ->
+                    val c = alb.coverUrl.ifBlank {
+                        alb.songs.firstOrNull { it.coverUrl.isNotBlank() }?.coverUrl ?: ""
+                    }
+                    alb to c
+                }.take(3)
+
                 if (covers.isEmpty()) {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(12.dp))
+                            .size(96.dp)
+                            .clip(RoundedCornerShape(14.dp))
                             .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = textMuted, modifier = Modifier.size(36.dp))
                     }
-                } else {
-                    covers.forEachIndexed { idx, cover ->
-                        val offsetXDp = (idx * 24).dp
-                        val scale = 1f - (covers.size - 1 - idx) * 0.06f
+                } else if (covers.size == 1) {
+                    val (alb, cover) = covers[0]
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .shadow(6.dp, RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(14.dp))
+                    ) {
+                        AppleMusicGradientCover(
+                            title = alb.title,
+                            artist = alb.artist,
+                            modifier = Modifier.fillMaxSize(),
+                            cornerRadius = 14.dp,
+                            showLabel = false
+                        )
+                        if (cover.isNotBlank() && cover.startsWith("http")) {
+                            AsyncImage(model = cover, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        }
+                    }
+                } else if (covers.size == 2) {
+                    // 2 cards fanned
+                    covers.forEachIndexed { idx, (alb, cover) ->
+                        val angle = if (idx == 0) -9f else 9f
+                        val offsetX = if (idx == 0) (-22).dp else 22.dp
+                        val z = if (idx == 0) 1f else 2f
                         Box(
                             modifier = Modifier
-                                .size(90.dp)
-                                .offset(x = offsetXDp)
-                                .scale(scale)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    setAlbums.getOrNull(idx)?.let { onSelectAlbum(it) }
+                                .offset(x = offsetX, y = 4.dp)
+                                .zIndex(z)
+                                .graphicsLayer {
+                                    rotationZ = angle
+                                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.9f)
                                 }
+                                .size(96.dp)
+                                .shadow(5.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.40f))
+                                .clip(RoundedCornerShape(14.dp))
+                                .border(0.5.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(14.dp))
                         ) {
                             AppleMusicGradientCover(
-                                title = setAlbums.getOrNull(idx)?.title ?: "Album",
-                                artist = setAlbums.getOrNull(idx)?.artist ?: "",
+                                title = alb.title,
+                                artist = alb.artist,
                                 modifier = Modifier.fillMaxSize(),
-                                cornerRadius = 12.dp,
+                                cornerRadius = 14.dp,
                                 showLabel = false
                             )
-                            AsyncImage(
-                                model = cover,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
+                            if (cover.isNotBlank() && cover.startsWith("http")) {
+                                AsyncImage(model = cover, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            }
+                        }
+                    }
+                } else {
+                    // 3 cards physical fan (Left, Right, Center)
+                    val card0 = covers[0]
+                    val card1 = covers[1] // Center/Middle
+                    val card2 = covers[2]
+
+                    // Left Card (Index 0)
+                    Box(
+                        modifier = Modifier
+                            .offset(x = (-34).dp, y = 8.dp)
+                            .zIndex(1f)
+                            .graphicsLayer {
+                                rotationZ = -13f
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.9f)
+                            }
+                            .size(94.dp)
+                            .shadow(4.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.40f))
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+                    ) {
+                        AppleMusicGradientCover(
+                            title = card0.first.title,
+                            artist = card0.first.artist,
+                            modifier = Modifier.fillMaxSize(),
+                            cornerRadius = 14.dp,
+                            showLabel = false
+                        )
+                        if (card0.second.isNotBlank() && card0.second.startsWith("http")) {
+                            AsyncImage(model = card0.second, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        }
+                    }
+
+                    // Right Card (Index 2)
+                    Box(
+                        modifier = Modifier
+                            .offset(x = 34.dp, y = 8.dp)
+                            .zIndex(2f)
+                            .graphicsLayer {
+                                rotationZ = 13f
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.9f)
+                            }
+                            .size(94.dp)
+                            .shadow(4.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.40f))
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+                    ) {
+                        AppleMusicGradientCover(
+                            title = card2.first.title,
+                            artist = card2.first.artist,
+                            modifier = Modifier.fillMaxSize(),
+                            cornerRadius = 14.dp,
+                            showLabel = false
+                        )
+                        if (card2.second.isNotBlank() && card2.second.startsWith("http")) {
+                            AsyncImage(model = card2.second, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        }
+                    }
+
+                    // Middle/Center Card (Index 1) - sits prominently in the center!
+                    Box(
+                        modifier = Modifier
+                            .offset(x = 0.dp, y = (-4).dp)
+                            .zIndex(3f)
+                            .graphicsLayer {
+                                rotationZ = 0f
+                                scaleX = 1.04f
+                                scaleY = 1.04f
+                            }
+                            .size(96.dp)
+                            .shadow(10.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.55f))
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                    ) {
+                        AppleMusicGradientCover(
+                            title = card1.first.title,
+                            artist = card1.first.artist,
+                            modifier = Modifier.fillMaxSize(),
+                            cornerRadius = 14.dp,
+                            showLabel = false
+                        )
+                        if (card1.second.isNotBlank() && card1.second.startsWith("http")) {
+                            AsyncImage(model = card1.second, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(set.name ?: "Album Set", color = textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             Spacer(modifier = Modifier.height(2.dp))
             Text("${setAlbums.size} albums • ${(set.description ?: "").ifBlank { "Curated Set" }}", color = textSecondary, fontSize = 11.sp, maxLines = 1)
+
             if (setAlbums.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
+                    val playSetInteraction = remember { MutableInteractionSource() }
+                    Box(
                         modifier = Modifier
+                            .liquidPress(playSetInteraction)
+                            .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                             .clip(RoundedCornerShape(50))
                             .background(AccentRed)
-                            .clickable { onPlayAlbumSet(set) }
-                            .padding(horizontal = 12.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .glassRefraction(50.dp, isDark = isDark)
+                            .clickable(interactionSource = playSetInteraction, indication = null) {
+                                onPlayAlbumSet(set)
+                            }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Play Set", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Play Set", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
 
-                    Row(
+                    val expandInteraction = remember { MutableInteractionSource() }
+                    Box(
                         modifier = Modifier
+                            .liquidPress(expandInteraction)
+                            .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                             .clip(RoundedCornerShape(50))
-                            .background(if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f))
-                            .clickable { setAlbums.firstOrNull()?.let { onSelectAlbum(it) } }
-                            .padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
+                            .glassRefraction(50.dp, isDark = isDark)
+                            .clickable(interactionSource = expandInteraction, indication = null) {
+                                onSelectAlbumSet(set, cardBounds)
+                            }
+                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("View", color = textPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = textPrimary, modifier = Modifier.size(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Expand", color = if (isDark) Color.White else Color(0xFF141416), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = if (isDark) Color.White else Color(0xFF141416),
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
                     }
                 }
             }

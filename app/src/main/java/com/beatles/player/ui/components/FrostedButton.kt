@@ -1,7 +1,6 @@
 package com.beatles.player.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -14,55 +13,51 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.beatles.player.ui.glassRefraction
 import com.beatles.player.ui.motion.liquidPress
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.hazeChild
 
 object FrostedButtonDefaults {
-    val BlurRadius: Dp = 6.dp
-    val BorderWidth: Dp = 1.dp
+    val BlurRadius: Dp = 4.dp
 
     fun containerColor(isActive: Boolean, isDark: Boolean = true, isEnabled: Boolean = true): Color {
         if (!isEnabled) {
             return if (isDark) Color.White.copy(alpha = 0.04f) else Color.Black.copy(alpha = 0.03f)
         }
         return if (isActive) {
-            if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.10f)
+            if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f)
         } else {
-            if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f)
-        }
-    }
-
-    fun borderColor(isActive: Boolean, isDark: Boolean = true, isEnabled: Boolean = true): Color {
-        if (!isEnabled) return Color.Transparent
-        return if (isActive) {
-            if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.18f)
-        } else {
-            if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.10f)
+            if (isDark) Color(0xFF383842).copy(alpha = 0.22f) else Color(0xFFE2E2E2).copy(alpha = 0.28f)
         }
     }
 
     fun contentColor(isActive: Boolean, isDark: Boolean = true, isEnabled: Boolean = true): Color {
         if (!isEnabled) {
-            return if (isDark) Color.White.copy(alpha = 0.30f) else Color.Black.copy(alpha = 0.25f)
+            return if (isDark) Color.White.copy(alpha = 0.30f) else Color(0xFF141416).copy(alpha = 0.25f)
         }
         return if (isActive) {
             if (isDark) Color.White else Color(0xFF141416)
         } else {
-            if (isDark) Color.White.copy(alpha = 0.85f) else Color.Black.copy(alpha = 0.75f)
+            if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF141416).copy(alpha = 0.85f)
         }
     }
 }
 
 /**
- * Standard Frosted Button (R2).
- * Replaces solid white enabled states across the application with a translucent
- * frosted overlay (14-22% alpha, 1dp subtle border, bright white content, lens press scale).
+ * Standard Liquid Glass Frosted Button:
+ * Adopts the nav bar visual setting:
+ * - Edge refraction (Modifier.glassRefraction)
+ * - Subtle shadow
+ * - Backdrop blur (Haze 4.dp)
+ * - Optimized for light mode and dark mode
+ * - Liquid press spring
  */
 @Composable
 fun FrostedButton(
@@ -72,17 +67,22 @@ fun FrostedButton(
     enabled: Boolean = true,
     isDark: Boolean = true,
     shape: Shape = RoundedCornerShape(50),
+    cornerRadius: Dp = 50.dp,
+    isCircle: Boolean = false,
     hazeState: HazeState? = null,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
     content: @Composable RowScope.() -> Unit
 ) {
     val containerBg = FrostedButtonDefaults.containerColor(active, isDark, enabled)
-    val borderCol = FrostedButtonDefaults.borderColor(active, isDark, enabled)
     val contentCol = FrostedButtonDefaults.contentColor(active, isDark, enabled)
+
+    val shadowElevation = if (enabled) 3.dp else 0.dp
+    val shadowColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f)
 
     val baseMod = modifier
         .liquidPress(interactionSource)
+        .shadow(shadowElevation, shape, spotColor = shadowColor, ambientColor = shadowColor)
         .clip(shape)
 
     val blurMod = if (hazeState != null && enabled) {
@@ -97,7 +97,7 @@ fun FrostedButton(
 
     val finalMod = blurMod
         .background(containerBg)
-        .then(if (borderCol != Color.Transparent) Modifier.border(FrostedButtonDefaults.BorderWidth, borderCol, shape) else Modifier)
+        .glassRefraction(cornerRadius, isDark, isCircle = isCircle)
         .clickable(
             interactionSource = interactionSource,
             indication = null,
@@ -118,7 +118,7 @@ fun FrostedButton(
 }
 
 /**
- * Standard Frosted Icon Button (R2).
+ * Standard Liquid Glass Frosted Icon Button.
  */
 @Composable
 fun FrostedIconButton(
@@ -128,17 +128,20 @@ fun FrostedIconButton(
     enabled: Boolean = true,
     isDark: Boolean = true,
     shape: Shape = CircleShape,
+    size: Dp = 40.dp,
     hazeState: HazeState? = null,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     content: @Composable () -> Unit
 ) {
     FrostedButton(
         onClick = onClick,
-        modifier = modifier,
+        modifier = modifier.size(size),
         active = active,
         enabled = enabled,
         isDark = isDark,
         shape = shape,
+        cornerRadius = size / 2,
+        isCircle = true,
         hazeState = hazeState,
         interactionSource = interactionSource,
         contentPadding = PaddingValues(0.dp)

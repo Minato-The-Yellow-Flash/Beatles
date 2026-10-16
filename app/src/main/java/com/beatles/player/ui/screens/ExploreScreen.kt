@@ -23,6 +23,10 @@ import androidx.compose.runtime.*
 import com.beatles.player.data.Song
 import kotlinx.coroutines.async
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.draw.shadow
+import com.beatles.player.ui.glassRefraction
+import com.beatles.player.ui.motion.liquidPress
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -777,18 +781,25 @@ fun FluidGenreDetailOverlay(
                             horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val buttonBg = if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.08f)
-                            val buttonIconTint = Color.White
-                            val playBtnBg = Color.White
-                            val playBtnIconTint = Color.Black
+                            val buttonBg = if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f)
+                            val buttonIconTint = if (isDark) Color.White else Color(0xFF141416)
+                            val playBtnBg = if (isDark) Color.White else Color(0xFF141416)
+                            val playBtnIconTint = if (isDark) Color.Black else Color.White
 
-                            // Shuffle Button (50dp borderless circle)
+                            // Shuffle Button (50dp liquid glass circle)
+                            val shuffleInteraction = remember { MutableInteractionSource() }
                             Box(
                                 modifier = Modifier
                                     .size(50.dp)
+                                    .liquidPress(shuffleInteraction)
+                                    .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                     .clip(CircleShape)
                                     .background(buttonBg)
-                                    .clickable {
+                                    .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                    .clickable(
+                                        interactionSource = shuffleInteraction,
+                                        indication = null
+                                    ) {
                                         if (genreTracks.isNotEmpty()) {
                                             val shuffled = genreTracks.shuffled()
                                             onPlay(shuffled.first(), shuffled, null)
@@ -804,13 +815,20 @@ fun FluidGenreDetailOverlay(
                                 )
                             }
 
-                            // Large Center Play Button (64dp borderless circle)
+                            // Large Center Play Button (64dp liquid glass circle)
+                            val playInteraction = remember { MutableInteractionSource() }
                             Box(
                                 modifier = Modifier
                                     .size(64.dp)
+                                    .liquidPress(playInteraction)
+                                    .shadow(4.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.18f))
                                     .clip(CircleShape)
                                     .background(playBtnBg)
-                                    .clickable {
+                                    .glassRefraction(32.dp, isDark = isDark, isCircle = true)
+                                    .clickable(
+                                        interactionSource = playInteraction,
+                                        indication = null
+                                    ) {
                                         if (genreTracks.isNotEmpty()) onPlay(genreTracks.first(), genreTracks, null)
                                     },
                                 contentAlignment = Alignment.Center
@@ -823,15 +841,22 @@ fun FluidGenreDetailOverlay(
                                 )
                             }
 
-                            // Save Button (50dp borderless circle on right side)
+                            // Save Button (50dp liquid glass circle on right side)
+                            val saveInteraction = remember { MutableInteractionSource() }
                             var isGenreSaved by remember { mutableStateOf(false) }
                             val context = androidx.compose.ui.platform.LocalContext.current
                             Box(
                                 modifier = Modifier
                                     .size(50.dp)
+                                    .liquidPress(saveInteraction)
+                                    .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                     .clip(CircleShape)
                                     .background(buttonBg)
-                                    .clickable {
+                                    .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                    .clickable(
+                                        interactionSource = saveInteraction,
+                                        indication = null
+                                    ) {
                                         isGenreSaved = !isGenreSaved
                                         if (isGenreSaved && genreTracks.isNotEmpty()) {
                                             for (s in genreTracks.take(15)) {
@@ -913,18 +938,24 @@ fun FluidGenreDetailOverlay(
             }
 
             // 3. Back Button (Top Left)
-            IconButton(
-                onClick = { handleClose() },
+            val backInteraction = remember { MutableInteractionSource() }
+            Box(
                 modifier = Modifier
                     .statusBarsPadding()
                     .padding(start = 12.dp, top = 8.dp)
                     .size(40.dp)
-                    .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                    .liquidPress(backInteraction)
+                    .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                    .clip(CircleShape)
+                    .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
+                    .glassRefraction(20.dp, isDark = isDark, isCircle = true)
+                    .clickable(interactionSource = backInteraction, indication = null) { handleClose() },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = Color.White,
+                    tint = if (isDark) Color.White else Color(0xFF141416),
                     modifier = Modifier.size(20.dp)
                 )
             }

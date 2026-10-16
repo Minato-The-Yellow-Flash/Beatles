@@ -834,7 +834,12 @@ fun NowPlayingSheet(
                     }
             ) {
                 if (processedLyrics.isNotEmpty()) {
-                    val listState = rememberLazyListState()
+                    val initialLineIdx = remember(processedLyrics) {
+                        LyricsProcessor.findActiveLineIndex(processedLyrics, currentPosition).coerceAtLeast(0)
+                    }
+                    val listState = rememberLazyListState(
+                        initialFirstVisibleItemIndex = (initialLineIdx - 1).coerceAtLeast(0)
+                    )
                     val currentIdx by remember(processedLyrics) {
                         derivedStateOf {
                             LyricsProcessor.findActiveLineIndex(processedLyrics, livePositionMs)
@@ -863,23 +868,27 @@ fun NowPlayingSheet(
                     val anchorSpotDp = 72.dp
                     val anchorSpotPx = with(density) { anchorSpotDp.roundToPx() }
 
-                    // Auto-scroll active line smoothly into the fixed anchor spot
+                    // Auto-scroll active line smoothly into the fixed anchor spot without thrashing intermediate items
                     LaunchedEffect(currentIdx, manualScrolled, isLyricsActive) {
                         if (isLyricsActive && currentIdx in processedLyrics.indices && !manualScrolled && !isLyricsDragged) {
                             val item = listState.layoutInfo.visibleItemsInfo.find { it.index == currentIdx }
                             if (item != null) {
-                                val delta = item.offset - anchorSpotPx
-                                if (kotlin.math.abs(delta) > 2) {
-                                    listState.animateScrollBy(
-                                        value = delta.toFloat(),
-                                        animationSpec = spring(
-                                            dampingRatio = 0.52f,
-                                            stiffness = 260f
+                                // Only perform animated delta spring once lyrics entry transition is completed/settled
+                                if (lyricsProgress >= 0.88f) {
+                                    val delta = item.offset - anchorSpotPx
+                                    if (kotlin.math.abs(delta) > 2) {
+                                        listState.animateScrollBy(
+                                            value = delta.toFloat(),
+                                            animationSpec = spring(
+                                                dampingRatio = 0.52f,
+                                                stiffness = 260f
+                                            )
                                         )
-                                    )
+                                    }
                                 }
                             } else {
-                                listState.animateScrollToItem(
+                                // Instantly position at target index so LazyColumn doesn't compose/measure dozens of intermediate items during album cover morph
+                                listState.scrollToItem(
                                     index = (currentIdx - 1).coerceAtLeast(0),
                                     scrollOffset = 0
                                 )

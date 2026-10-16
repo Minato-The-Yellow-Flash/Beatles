@@ -13,7 +13,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import com.beatles.player.ui.glassRefraction
+import com.beatles.player.ui.motion.liquidPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -392,18 +395,25 @@ fun FluidArtistDetailOverlay(
                                     horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val buttonBg = if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.08f)
-                                    val buttonIconTint = textPrimary
-                                    val playBtnBg = textPrimary
+                                    val buttonBg = if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f)
+                                    val buttonIconTint = if (isDark) Color.White else Color(0xFF141416)
+                                    val playBtnBg = if (isDark) Color.White else Color(0xFF141416)
                                     val playBtnIconTint = if (isDark) Color.Black else Color.White
 
-                                    // Shuffle Button (50dp borderless circle)
+                                    // Shuffle Button (50dp liquid glass circle)
+                                    val shuffleInteraction = remember { MutableInteractionSource() }
                                     Box(
                                         modifier = Modifier
                                             .size(50.dp)
+                                            .liquidPress(shuffleInteraction)
+                                            .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                             .clip(CircleShape)
                                             .background(buttonBg)
-                                            .clickable {
+                                            .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                            .clickable(
+                                                interactionSource = shuffleInteraction,
+                                                indication = null
+                                            ) {
                                                 if (artistTracks.isNotEmpty()) {
                                                     val shuffled = artistTracks.shuffled()
                                                     onPlay(shuffled.first(), shuffled)
@@ -419,13 +429,20 @@ fun FluidArtistDetailOverlay(
                                         )
                                     }
 
-                                    // Center Play Button (64dp borderless circle)
+                                    // Center Play Button (64dp liquid glass circle)
+                                    val playInteraction = remember { MutableInteractionSource() }
                                     Box(
                                         modifier = Modifier
                                             .size(64.dp)
+                                            .liquidPress(playInteraction)
+                                            .shadow(4.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.18f))
                                             .clip(CircleShape)
                                             .background(playBtnBg)
-                                            .clickable {
+                                            .glassRefraction(32.dp, isDark = isDark, isCircle = true)
+                                            .clickable(
+                                                interactionSource = playInteraction,
+                                                indication = null
+                                            ) {
                                                 if (artistTracks.isNotEmpty()) {
                                                     onPlay(artistTracks.first(), artistTracks)
                                                 }
@@ -440,13 +457,20 @@ fun FluidArtistDetailOverlay(
                                         )
                                     }
 
-                                    // Artist Mix Button (50dp borderless circle)
+                                    // Artist Mix Button (50dp liquid glass circle)
+                                    val mixInteraction = remember { MutableInteractionSource() }
                                     Box(
                                         modifier = Modifier
                                             .size(50.dp)
+                                            .liquidPress(mixInteraction)
+                                            .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                             .clip(CircleShape)
                                             .background(buttonBg)
-                                            .clickable {
+                                            .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                            .clickable(
+                                                interactionSource = mixInteraction,
+                                                indication = null
+                                            ) {
                                                 Haptics.confirm(view)
                                                 onPlayArtistMix(curArtist)
                                                 scope.launch {
@@ -636,21 +660,27 @@ fun FluidArtistDetailOverlay(
                     }
 
                     // 4. Back Button (Top Left)
-                    IconButton(
-                        onClick = {
-                            Haptics.click(view)
-                            handleClose()
-                        },
+                    val backInteraction = remember { MutableInteractionSource() }
+                    Box(
                         modifier = Modifier
                             .statusBarsPadding()
                             .padding(start = 12.dp, top = 8.dp)
                             .size(40.dp)
-                            .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                            .liquidPress(backInteraction)
+                            .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                            .clip(CircleShape)
+                            .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
+                            .glassRefraction(20.dp, isDark = isDark, isCircle = true)
+                            .clickable(interactionSource = backInteraction, indication = null) {
+                                Haptics.click(view)
+                                handleClose()
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = Color.White,
+                            tint = if (isDark) Color.White else Color(0xFF141416),
                             modifier = Modifier.size(20.dp)
                         )
                     }
