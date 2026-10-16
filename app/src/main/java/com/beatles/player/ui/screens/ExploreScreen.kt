@@ -660,12 +660,14 @@ fun FluidGenreDetailOverlay(
                     .background(Color.Black.copy(alpha = 0.40f * p))
             )
 
-            // 2. Morphing Card Container
+            // 2. Full-screen Sheet with Vibrant Ambient Blur (GPU accelerated entrance/exit)
             Box(
                 modifier = Modifier
-                    .offset { IntOffset(curLeft.roundToInt(), (curTop + dragY).roundToInt()) }
-                    .size(with(density) { curWidth.toDp() }, with(density) { curHeight.toDp() })
-                    .clip(RoundedCornerShape(curCorner))
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = p.coerceIn(0f, 1f)
+                        translationY = (1f - p) * with(density) { 36.dp.toPx() } + dragY
+                    }
                     .background(pageOpaqueBg)
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
@@ -687,40 +689,21 @@ fun FluidGenreDetailOverlay(
                         )
                     }
             ) {
-                // If closing, show category preview
-                if (p < 0.22f) {
+                // Ambient Blurred Artwork Backdrop inside morphing card
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LiveMorphingGradientBackground(
+                        palette = palette,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .blur(80.dp)
+                            .graphicsLayer { alpha = 0.65f }
+                    )
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Brush.linearGradient(listOf(genreColor, palette.secondaryColor))),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(curGenre, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    }
+                            .background(Color.Black.copy(alpha = if (isDark) 0.65f else 0.35f))
+                    )
                 }
-
-                if (p > 0.05f) {
-                    val contentAlpha = ((p - 0.18f) / 0.82f).coerceIn(0f, 1f)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer { alpha = contentAlpha }
-                    ) {
-                        // Ambient Blurred Artwork Backdrop inside morphing card
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            LiveMorphingGradientBackground(
-                                palette = palette,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .blur(80.dp)
-                                    .graphicsLayer { alpha = 0.65f }
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.Black.copy(alpha = if (isDark) 0.65f else 0.35f))
-                            )
-                        }
 
                         LazyColumn(
                             state = listState,
@@ -937,6 +920,4 @@ fun FluidGenreDetailOverlay(
             }
         }
     }
-}
-}
 }

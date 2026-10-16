@@ -1916,9 +1916,8 @@ private fun Modifier.glassRefraction(
         style = Stroke(width = innerStrokeW)
     )
 
-    // 4. Outer content refraction reflection: upper curve + lower curve, disconnected flanks
+    // 4. Outer content refraction reflection: upper curve + lower curve
     val outerStrokeW = 0.5.dp.toPx()
-    // 10% brighter borders/refractions (0.22f dark / 0.28f light)
     val outerPeakAlpha = if (isDark) 0.22f else 0.28f
     val outerBottomAlpha = outerPeakAlpha * 0.75f
     drawRoundRect(
@@ -1927,7 +1926,7 @@ private fun Modifier.glassRefraction(
             0.0f to reflectionColor.copy(alpha = outerPeakAlpha),
             0.18f to reflectionColor.copy(alpha = outerPeakAlpha * 0.35f),
             0.28f to Color.Transparent,
-            // DISCONNECTED GAP: flanks are completely transparent (never connected)
+            // Vertical middle gap
             0.72f to Color.Transparent,
             0.82f to reflectionColor.copy(alpha = outerBottomAlpha * 0.35f),
             // Lower curve reflection
@@ -1935,6 +1934,43 @@ private fun Modifier.glassRefraction(
         ),
         cornerRadius = CornerRadius(cornerPx, cornerPx),
         style = Stroke(width = outerStrokeW)
+    )
+
+    // 5. Right & Left edges border with 10% more brightness than up and down (outerPeakAlpha * 1.10f)
+    val sidePeakAlpha = outerPeakAlpha * 1.10f
+    drawRoundRect(
+        brush = Brush.horizontalGradient(
+            // Left edge border (+10% brighter)
+            0.0f to reflectionColor.copy(alpha = sidePeakAlpha),
+            0.15f to Color.Transparent,
+            // Horizontal middle gap
+            0.85f to Color.Transparent,
+            // Right edge border (+10% brighter)
+            1.0f to reflectionColor.copy(alpha = sidePeakAlpha)
+        ),
+        cornerRadius = CornerRadius(cornerPx, cornerPx),
+        style = Stroke(width = outerStrokeW)
+    )
+
+    // 6. Inner side bevel border (+10% brighter than inner up/down)
+    val innerSideAlpha = innerPeakAlpha * 1.10f
+    drawRoundRect(
+        brush = Brush.horizontalGradient(
+            0.0f to reflectionColor.copy(alpha = innerSideAlpha),
+            0.12f to Color.Transparent,
+            0.88f to Color.Transparent,
+            1.0f to reflectionColor.copy(alpha = innerSideAlpha)
+        ),
+        topLeft = Offset(innerStrokeW, innerStrokeW),
+        size = Size(
+            (size.width - innerStrokeW * 2).coerceAtLeast(0f),
+            (size.height - innerStrokeW * 2).coerceAtLeast(0f)
+        ),
+        cornerRadius = CornerRadius(
+            (cornerPx - innerStrokeW).coerceAtLeast(0f),
+            (cornerPx - innerStrokeW).coerceAtLeast(0f)
+        ),
+        style = Stroke(width = innerStrokeW)
     )
 }
 

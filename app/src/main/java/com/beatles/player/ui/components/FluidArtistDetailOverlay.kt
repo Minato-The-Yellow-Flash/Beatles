@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -242,78 +243,61 @@ fun FluidArtistDetailOverlay(
         val originCardHeight = if (origin.height > origin.width * 1.15f) origin.width else origin.height.coerceAtLeast(10f)
 
         val clampedP = p.coerceIn(0f, 1f)
-        val curCorner = with(density) { (originCornerPx * (1f - clampedP)).coerceIn(0f, originCornerPx).toDp() }
-        val curLeft = origin.left * (1f - clampedP)
-        val curTop = (origin.top * (1f - clampedP) + dragY).coerceAtLeast(0f)
-        val curWidth = (originCardWidth + (screenWpx - originCardWidth) * clampedP).coerceAtLeast(10f)
-        val curHeight = (originCardHeight + (screenHpx - originCardHeight) * clampedP).coerceAtLeast(10f)
+        val sheetAlpha = clampedP.coerceIn(0f, 1f)
+        val sheetSlideY = (1f - clampedP) * with(density) { 36.dp.toPx() } + dragY
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = {
+                            if (dragY > 120f) {
+                                handleClose()
+                            }
+                            dragY = 0f
+                        },
+                        onVerticalDrag = { _, delta ->
+                            if (delta > 0 || dragY > 0f) {
+                                dragY = (dragY + delta).coerceAtLeast(0f)
+                                if (dragY > 220f) {
+                                    handleClose()
+                                }
+                            }
+                        }
+                    )
+                }
+        ) {
             // Background scrim
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = (0.40f * clampedP).coerceIn(0f, 1f)))
+                    .graphicsLayer { alpha = (0.50f * clampedP).coerceIn(0f, 1f) }
+                    .background(Color.Black)
             )
 
-            // Morphing Card Container (interpolated physical bounds with zero aspect ratio distortion)
+            // Full-screen Sheet with Ambient Blur (GPU accelerated entrance/exit, zero layout thrashing)
             Box(
                 modifier = Modifier
-                    .offset { IntOffset(curLeft.roundToInt(), curTop.roundToInt()) }
-                    .size(with(density) { curWidth.toDp() }, with(density) { curHeight.toDp() })
-                    .clip(RoundedCornerShape(curCorner))
-                    .background(bgColor)
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures(
-                            onDragEnd = {
-                                if (dragY > 120f) {
-                                    handleClose()
-                                }
-                                dragY = 0f
-                            },
-                            onVerticalDrag = { _, delta ->
-                                if (delta > 0 || dragY > 0f) {
-                                    dragY = (dragY + delta).coerceAtLeast(0f)
-                                    if (dragY > 220f) {
-                                        handleClose()
-                                    }
-                                }
-                            }
-                        )
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = sheetAlpha
+                        translationY = sheetSlideY
                     }
+                    .background(bgColor)
             ) {
-                // Shared Element Artist Image cropped smoothly to container
+                // 1. Deep Ambient Blurred Base (100% visible, vibrant ambient blur!)
                 AsyncImage(
                     model = artistImage,
-                    contentDescription = curArtist,
+                    contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .blur(80.dp)
+                        .graphicsLayer { alpha = 0.55f }
                 )
 
-                if (clampedP > 0.60f) {
-                    val contentAlpha = ((clampedP - 0.60f) / 0.40f).coerceIn(0f, 1f)
-                    val contentSlide = (1f - clampedP) * with(density) { 24.dp.toPx() }
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                alpha = contentAlpha
-                                translationY = contentSlide
-                            }
-                    ) {
-                    // 1. Deep Ambient Blurred Base
-                    AsyncImage(
-                        model = artistImage,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .blur(80.dp)
-                            .graphicsLayer { alpha = 0.50f }
-                    )
-
-                    // 2. Parallax Motion Banner at top
+                // 2. Parallax Motion Banner at top
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -651,28 +635,7 @@ fun FluidArtistDetailOverlay(
                         }
                     }
 
-                    // 4. Parallax Hero Artwork (200dp with swipe up blur & scale)
-                    Box(
-                        modifier = Modifier
-                            .offset { IntOffset(targetLeftPx.roundToInt(), (targetTopPx + artTranslateY).roundToInt()) }
-                            .size(targetArtworkSize)
-                            .graphicsLayer {
-                                scaleX = artScale
-                                scaleY = artScale
-                                alpha = artAlpha
-                            }
-                            .then(if (artBlur > 0.dp) Modifier.blur(artBlur) else Modifier)
-                            .clip(RoundedCornerShape(22.dp))
-                    ) {
-                        AsyncImage(
-                            model = artistImage,
-                            contentDescription = curArtist,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-
-                    // 5. Back Button (Top Left)
+                    // 4. Back Button (Top Left)
                     IconButton(
                         onClick = {
                             Haptics.click(view)
@@ -691,9 +654,34 @@ fun FluidArtistDetailOverlay(
                             modifier = Modifier.size(20.dp)
                         )
                     }
-                }
+            } // Closes Full-screen Sheet Box
+
+            // 5. Shared Morph Hero Artist Avatar: glides seamlessly from tapped origin card to centered hero position
+            val curArtLeft = origin.left + (targetLeftPx - origin.left) * clampedP
+            val curArtTop = origin.top + (targetTopPx + artTranslateY - origin.top) * clampedP + dragY
+            val curArtSize = originCardWidth + (targetArtworkSizePx - originCardWidth) * clampedP
+            val curArtCorner = originCornerPx + (with(density) { 24.dp.toPx() } - originCornerPx) * clampedP
+
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(curArtLeft.roundToInt(), curArtTop.roundToInt()) }
+                    .size(with(density) { curArtSize.toDp() })
+                    .graphicsLayer {
+                        scaleX = if (clampedP >= 0.95f) artScale else 1f
+                        scaleY = if (clampedP >= 0.95f) artScale else 1f
+                        alpha = if (clampedP >= 0.95f) artAlpha.coerceIn(0.08f, 1f) else 1f
+                    }
+                    .then(if (artBlur > 0.dp && clampedP >= 0.95f) Modifier.blur(artBlur) else Modifier)
+                    .clip(RoundedCornerShape(with(density) { curArtCorner.toDp() }))
+                    .shadow(elevation = (12.dp * clampedP).coerceAtLeast(0.dp), shape = RoundedCornerShape(with(density) { curArtCorner.toDp() }))
+            ) {
+                AsyncImage(
+                    model = artistImage,
+                    contentDescription = curArtist,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
             }
         }
     }
-}
 }

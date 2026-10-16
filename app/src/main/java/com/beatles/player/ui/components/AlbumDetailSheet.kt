@@ -228,97 +228,70 @@ fun FluidAlbumDetailOverlay(
         val originCornerPx = if (originCardWidth <= with(density) { 72.dp.toPx() }) originCardWidth / 2f else with(density) { 18.dp.toPx() }
 
         val clampedP = p.coerceIn(0f, 1f)
-        val curContainerCorner = with(density) { (originCornerPx * (1f - clampedP)).coerceIn(0f, originCornerPx).toDp() }
-        val curLeft = origin.left * (1f - clampedP)
-        val curTop = (origin.top * (1f - clampedP) + dragY).coerceAtLeast(0f)
-        val curWidth = (originCardWidth + (screenWpx - originCardWidth) * clampedP).coerceAtLeast(10f)
-        val curHeight = (originCardHeight + (screenHpx - originCardHeight) * clampedP).coerceAtLeast(10f)
+        val sheetAlpha = clampedP.coerceIn(0f, 1f)
+        val sheetSlideY = (1f - clampedP) * with(density) { 36.dp.toPx() } + dragY
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures(
+                        onDragEnd = {
+                            if (dragY > 120f) {
+                                handleClose()
+                            }
+                            dragY = 0f
+                        },
+                        onVerticalDrag = { _, delta ->
+                            if (delta > 0 || dragY > 0f) {
+                                dragY = (dragY + delta).coerceAtLeast(0f)
+                                if (dragY > 220f) {
+                                    handleClose()
+                                }
+                            }
+                        }
+                    )
+                }
+        ) {
             // Background scrim
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = (0.40f * clampedP).coerceIn(0f, 1f)))
+                    .graphicsLayer { alpha = (0.50f * clampedP).coerceIn(0f, 1f) }
+                    .background(Color.Black)
             )
 
-            // Morphing Card Container (interpolated physical bounds with zero aspect ratio distortion)
+            // Full-screen Sheet with Ambient Blur (GPU accelerated entrance/exit, zero layout thrashing)
             Box(
                 modifier = Modifier
-                    .offset { IntOffset(curLeft.roundToInt(), curTop.roundToInt()) }
-                    .size(with(density) { curWidth.toDp() }, with(density) { curHeight.toDp() })
-                    .clip(RoundedCornerShape(curContainerCorner))
-                    .background(albumPageBg)
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures(
-                            onDragEnd = {
-                                if (dragY > 120f) {
-                                    handleClose()
-                                }
-                                dragY = 0f
-                            },
-                            onVerticalDrag = { _, delta ->
-                                if (delta > 0 || dragY > 0f) {
-                                    dragY = (dragY + delta).coerceAtLeast(0f)
-                                    if (dragY > 220f) {
-                                        handleClose()
-                                    }
-                                }
-                            }
-                        )
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = sheetAlpha
+                        translationY = sheetSlideY
                     }
+                    .background(albumPageBg)
             ) {
-                // Shared Element Cover Image (crops smoothly to container aspect ratio without ANY distortion)
+                // 1. Deep Ambient Blurred Base (100% visible, vibrant ambient blur!)
                 if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
                     AsyncImage(
                         model = resolvedCover,
-                        contentDescription = alb.title,
+                        contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .blur(80.dp)
+                            .graphicsLayer { alpha = 0.55f }
                     )
                 } else {
                     AppleMusicGradientCover(
                         title = alb.title,
                         artist = alb.artist,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().blur(80.dp).graphicsLayer { alpha = 0.50f },
                         showLabel = false
                     )
                 }
 
-                // Rich Detail View Content fading in gracefully when container expands
-                if (clampedP > 0.60f) {
-                    val contentAlpha = ((clampedP - 0.60f) / 0.40f).coerceIn(0f, 1f)
-                    val contentSlide = (1f - clampedP) * with(density) { 24.dp.toPx() }
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                alpha = contentAlpha
-                                translationY = contentSlide
-                            }
-                    ) {
-                    // 1. Deep Ambient Blurred Base
-                    if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
-                        AsyncImage(
-                            model = resolvedCover,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .blur(80.dp)
-                                .graphicsLayer { alpha = 0.50f }
-                        )
-                    } else {
-                        AppleMusicGradientCover(
-                            title = alb.title,
-                            artist = alb.artist,
-                            modifier = Modifier.fillMaxSize().blur(80.dp).graphicsLayer { alpha = 0.45f },
-                            showLabel = false
-                        )
-                    }
-
-                    // 2. Parallax Video Motion Banner at top
+                // 2. Parallax Video Motion Banner at top
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -674,28 +647,32 @@ fun FluidAlbumDetailOverlay(
                             )
                         }
                     }
-                }
             }
 
-            // 5. Shared Morph Artwork: centered hero artwork with swipe-up parallax and progressive blur
+            // 5. Shared Morph Hero Artwork: glides seamlessly from tapped origin card to centered hero position
+            val curArtLeft = origin.left + (targetLeftPx - origin.left) * clampedP
+            val curArtTop = origin.top + (targetTopPx + artTranslateY - origin.top) * clampedP + dragY
+            val curArtSize = originCardWidth + (targetArtworkSizePx - originCardWidth) * clampedP
+            val curArtCorner = originCornerPx + (with(density) { 22.dp.toPx() } - originCornerPx) * clampedP
+
             Box(
                 modifier = Modifier
-                    .offset { IntOffset(targetLeftPx.roundToInt(), (targetTopPx + artTranslateY).roundToInt()) }
-                    .size(targetArtworkSize)
+                    .offset { IntOffset(curArtLeft.roundToInt(), curArtTop.roundToInt()) }
+                    .size(with(density) { curArtSize.toDp() })
                     .graphicsLayer {
-                        scaleX = artScale
-                        scaleY = artScale
-                        alpha = if (p >= 0.95f) artAlpha.coerceIn(0.08f, 1f) else 1f
+                        scaleX = if (clampedP >= 0.95f) artScale else 1f
+                        scaleY = if (clampedP >= 0.95f) artScale else 1f
+                        alpha = if (clampedP >= 0.95f) artAlpha.coerceIn(0.08f, 1f) else 1f
                     }
-                    .then(if (artBlur > 0.dp && p >= 0.95f) Modifier.blur(artBlur) else Modifier)
-                    .clip(RoundedCornerShape(22.dp))
-                    .shadow(elevation = (12.dp * clampedP).coerceAtLeast(0.dp), shape = RoundedCornerShape(22.dp))
+                    .then(if (artBlur > 0.dp && clampedP >= 0.95f) Modifier.blur(artBlur) else Modifier)
+                    .clip(RoundedCornerShape(with(density) { curArtCorner.toDp() }))
+                    .shadow(elevation = (12.dp * clampedP).coerceAtLeast(0.dp), shape = RoundedCornerShape(with(density) { curArtCorner.toDp() }))
             ) {
                 // Live gradient cover as robust foundation
                 AppleMusicGradientCover(
                     title = alb.title,
                     artist = alb.artist,
-                    cornerRadius = 22.dp,
+                    cornerRadius = with(density) { curArtCorner.toDp() },
                     modifier = Modifier.fillMaxSize()
                 )
                 if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
@@ -708,7 +685,6 @@ fun FluidAlbumDetailOverlay(
                 }
             }
         }
-    }
 
         // Save Album or Add to Album Set Dialog
         if (showSetDialog) {
