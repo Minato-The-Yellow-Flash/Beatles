@@ -621,7 +621,6 @@ fun HomeScreen(
                                         scaleX = cardScale
                                         scaleY = cardScale
                                     }
-                                    .onGloballyPositioned { coords -> cardBounds = coords.boundsInRoot() }
                                     .clickable(
                                         interactionSource = interactionSource,
                                         indication = null
@@ -630,6 +629,7 @@ fun HomeScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(156.dp)
+                                        .onGloballyPositioned { coords -> cardBounds = coords.boundsInRoot() }
                                         .clip(RoundedCornerShape(18.dp))
                                 ) {
                                     // Live gradient fallback

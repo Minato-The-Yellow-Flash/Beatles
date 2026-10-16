@@ -16,6 +16,7 @@ import okhttp3.Request
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import java.net.URLEncoder
+import java.util.Locale
 
 object MusicRepository {
     private val httpClient = OkHttpClient()
@@ -1573,68 +1574,182 @@ object MusicRepository {
 
     suspend fun fetchRealAlbumsForArtist(
         artist: String,
-        limit: Int = 4,
+        limit: Int = 35,
         loadTracksForFirst: Boolean = true
     ): List<Album> = withContext(Dispatchers.IO) {
         val cleanArtist = artist.replace(" - Topic", "").replace(Regex("(?i)vevo|official"), "").trim()
         if (cleanArtist.isBlank()) return@withContext emptyList()
         try {
+            val targetNorm = ArtistMixEngine.normalizeArtistName(cleanArtist)
             val enc = URLEncoder.encode(cleanArtist, "UTF-8")
-            val req = Request.Builder()
-                .url("https://itunes.apple.com/search?term=$enc&entity=album&limit=$limit")
-                .header("User-Agent", "BeatlesApp/2.0 (Android; en-US)")
-                .build()
-            val resp = httpClient.newCall(req).execute()
-            val body = resp.body?.string() ?: return@withContext emptyList()
-            val json = gson.fromJson(body, JsonObject::class.java)
-            val results = json.getAsJsonArray("results") ?: return@withContext emptyList()
-            val albumStubs = mutableListOf<Pair<Album, String>>()
-            for (i in 0 until results.size()) {
-                val item = results[i].asJsonObject
+
+            // 1. Resolve canonical artistId from iTunes
+            var canonicalArtistId: Long? = null
+            try {
+                val artistReq = Request.Builder()
+                    .url("https://itunes.apple.com/search?term=$enc&entity=musicArtist&limit=3")
+                    .header("User-Agent", "BeatlesApp/2.0 (Android; en-US)")
+                    .build()
+                val artistResp = httpClient.newCall(artistReq).execute()
+                val artistBody = artistResp.body?.string()
+                if (artistBody != null) {
+                    val aJson = gson.fromJson(artistBody, JsonObject::class.java)
+                    val aResults = aJson.getAsJsonArray("results")
+                    if (aResults != null) {
+                        for (i in 0 until aResults.size()) {
+                            val aObj = aResults[i].asJsonObject
+                            val aName = aObj.get("artistName")?.asString ?: ""
+                            val aNorm = ArtistMixEngine.normalizeArtistName(aName)
+                            if (aNorm == targetNorm || aNorm.startsWith(targetNorm) || targetNorm.startsWith(aNorm)) {
+                                canonicalArtistId = aObj.get("artistId")?.asLong
+                                break
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // 2. Fetch discography using canonical artistId lookup, with fallback to attribute=artistTerm
+            val rawResults = mutableListOf<JsonObject>()
+            if (canonicalArtistId != null) {
+                try {
+                    val discogReq = Request.Builder()
+                        .url("https://itunes.apple.com/lookup?id=$canonicalArtistId&entity=album&limit=60")
+                        .header("User-Agent", "BeatlesApp/2.0 (Android; en-US)")
+                        .build()
+                    val discogResp = httpClient.newCall(discogReq).execute()
+                    val discogBody = discogResp.body?.string()
+                    if (discogBody != null) {
+                        val dJson = gson.fromJson(discogBody, JsonObject::class.java)
+                        val dResults = dJson.getAsJsonArray("results")
+                        if (dResults != null) {
+                            for (i in 0 until dResults.size()) {
+                                rawResults.add(dResults[i].asJsonObject)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            if (rawResults.size < 5) {
+                try {
+                    val searchReq = Request.Builder()
+                        .url("https://itunes.apple.com/search?term=$enc&entity=album&attribute=artistTerm&limit=60")
+                        .header("User-Agent", "BeatlesApp/2.0 (Android; en-US)")
+                        .build()
+                    val searchResp = httpClient.newCall(searchReq).execute()
+                    val searchBody = searchResp.body?.string()
+                    if (searchBody != null) {
+                        val sJson = gson.fromJson(searchBody, JsonObject::class.java)
+                        val sResults = sJson.getAsJsonArray("results")
+                        if (sResults != null) {
+                            for (i in 0 until sResults.size()) {
+                                rawResults.add(sResults[i].asJsonObject)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            data class AlbumCandidate(
+                val album: Album,
+                val collectionId: String,
+                val isAlbumOrEp: Boolean,
+                val trackCount: Int,
+                val releaseDate: String
+            )
+
+            val candidates = mutableListOf<AlbumCandidate>()
+            val seenTitles = mutableSetOf<String>()
+
+            for (item in rawResults) {
                 val wrapperType = item.get("wrapperType")?.asString ?: ""
                 val collectionType = item.get("collectionType")?.asString ?: ""
-                if (wrapperType == "collection" || collectionType == "Album") {
-                    val cId = item.get("collectionId")?.asString ?: continue
-                    val name = item.get("collectionName")?.asString ?: continue
-                    val art = item.get("artistName")?.asString ?: cleanArtist
-                    val cover = item.get("artworkUrl100")?.asString
-                        ?.replace("100x100bb", "1000x1000bb")
-                        ?: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800"
-                    val genre = item.get("primaryGenreName")?.asString ?: "Music"
-                    val rawDate = item.get("releaseDate")?.asString ?: "2024"
-                    val year = if (rawDate.length >= 4) rawDate.take(4) else "2024"
-                    val date = if (rawDate.length >= 10) rawDate.take(10) else "2024"
+                if (wrapperType != "collection" && collectionType != "Album") continue
 
-                    val stub = Album(
-                        id = "alb_$cId",
-                        title = name,
-                        artist = art,
-                        coverUrl = cover,
-                        genre = genre,
-                        releaseYear = year,
-                        releaseDate = date,
-                        type = "Album",
-                        songs = emptyList()
-                    )
-                    albumStubs.add(stub to cId)
+                val cId = item.get("collectionId")?.asString ?: continue
+                val name = item.get("collectionName")?.asString ?: continue
+                val art = item.get("artistName")?.asString ?: cleanArtist
+                val colArtistId = item.get("artistId")?.asLong
+
+                val lowerName = name.lowercase(Locale.ROOT)
+                // Filter noise: tribute, karaoke, ringtone, instrumental, parody
+                if (lowerName.contains("tribute") || lowerName.contains("karaoke") ||
+                    lowerName.contains("ringtone") || lowerName.contains("parody") ||
+                    lowerName.contains("instrumental version")
+                ) continue
+
+                // Reject if target artist is merely a guest feature in collection title
+                if (lowerName.contains("(feat. $targetNorm") || lowerName.contains("[feat. $targetNorm")) continue
+
+                // Strictly validate lead / primary artist identity
+                val normArt = ArtistMixEngine.normalizeArtistName(art)
+                val primaryArtist = normArt.split(",", "&", "feat.", "ft.", "/", " and ").firstOrNull()?.trim() ?: ""
+                val isArtistLead = (primaryArtist == targetNorm || normArt.startsWith(targetNorm) || targetNorm.startsWith(primaryArtist))
+                val isIdMatch = canonicalArtistId != null && colArtistId == canonicalArtistId && isArtistLead
+
+                if (!isIdMatch && !isArtistLead) {
+                    continue
                 }
+
+                // Deduplicate by clean title
+                val cleanTitleKey = name.lowercase(Locale.ROOT)
+                    .replace(Regex("(?i)\\s*-\\s*(single|ep)"), "")
+                    .replace(Regex("(?i)\\s*\\[.*?\\]"), "")
+                    .replace(Regex("[^a-z0-9]"), "")
+                    .trim()
+                if (cleanTitleKey.isBlank() || cleanTitleKey in seenTitles) continue
+                seenTitles.add(cleanTitleKey)
+
+                val cover = item.get("artworkUrl100")?.asString
+                    ?.replace("100x100bb", "1000x1000bb")
+                    ?: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800"
+                val genre = item.get("primaryGenreName")?.asString ?: "Music"
+                val rawDate = item.get("releaseDate")?.asString ?: "2024"
+                val year = if (rawDate.length >= 4) rawDate.take(4) else "2024"
+                val date = if (rawDate.length >= 10) rawDate.take(10) else "2024"
+                val trackCount = item.get("trackCount")?.asInt ?: 1
+
+                val isAlbumOrEp = trackCount > 1 || lowerName.contains(" - ep") || (!lowerName.endsWith(" - single") && !lowerName.contains("single"))
+
+                val stub = Album(
+                    id = "alb_$cId",
+                    title = name,
+                    artist = art,
+                    coverUrl = cover,
+                    genre = genre,
+                    releaseYear = year,
+                    releaseDate = date,
+                    type = if (isAlbumOrEp) "Album" else "Single",
+                    songs = emptyList()
+                )
+                candidates.add(AlbumCandidate(stub, cId, isAlbumOrEp, trackCount, date))
             }
+
+            // Prioritize Albums and EPs first, then sort by track count desc, then release date desc
+            candidates.sortWith(
+                compareByDescending<AlbumCandidate> { it.isAlbumOrEp }
+                    .thenByDescending { it.trackCount }
+                    .thenByDescending { it.releaseDate }
+            )
+
+            val selectedStubs = candidates.take(limit)
 
             // Concurrently resolve tracklists for all albums so no album ever shows 0 songs
             val albumsWithTracks = kotlinx.coroutines.coroutineScope {
-                albumStubs.map { (stub, cId) ->
+                selectedStubs.map { candidate ->
                     async {
                         val tracks = try {
-                            lookupAlbumById(cId)?.songs ?: emptyList()
+                            lookupAlbumById(candidate.collectionId)?.songs ?: emptyList()
                         } catch (_: Exception) { emptyList() }
                         if (tracks.isNotEmpty()) {
-                            stub.copy(songs = tracks)
+                            candidate.album.copy(songs = tracks)
                         } else {
-                            val fallback = searchOriginalAlbum("${stub.title} ${stub.artist}")
+                            val fallback = searchOriginalAlbum("${candidate.album.title} ${candidate.album.artist}")
                             if (fallback != null && fallback.songs.isNotEmpty()) {
-                                stub.copy(songs = fallback.songs)
+                                candidate.album.copy(songs = fallback.songs)
                             } else {
-                                stub
+                                candidate.album
                             }
                         }
                     }

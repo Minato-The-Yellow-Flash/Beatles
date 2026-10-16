@@ -98,6 +98,27 @@ fun FluidArtistDetailOverlay(
     var artistTracks by remember { mutableStateOf<List<Song>>(emptyList()) }
     var realArtistAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var isTracksLoading by remember { mutableStateOf(false) }
+    var isClosing by remember { mutableStateOf(false) }
+
+    fun handleClose() {
+        if (isClosing) return
+        isClosing = true
+        scope.launch {
+            progress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 260,
+                    easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
+                )
+            )
+            currentArtist = null
+            currentOriginBounds = null
+            artistTracks = emptyList()
+            realArtistAlbums = emptyList()
+            isClosing = false
+            onClose()
+        }
+    }
 
     LaunchedEffect(artist) {
         if (artist != null) {
@@ -105,6 +126,7 @@ fun FluidArtistDetailOverlay(
             if (sourceBounds != null) {
                 currentOriginBounds = sourceBounds
             }
+            isClosing = false
 
             // 1. Immediate local tracks
             val localTracks = (state.favoriteSongs + state.recentlyPlayed + state.downloadedSongs +
@@ -129,11 +151,11 @@ fun FluidArtistDetailOverlay(
                 isTracksLoading = false
             }
 
-            // Concurrently fetch real albums & EPs from iTunes
+            // Concurrently fetch all real albums & EPs from iTunes
             scope.launch {
                 try {
                     val itunesAlbums = withContext(Dispatchers.IO) {
-                        MusicRepository.fetchRealAlbumsForArtist(artist, loadTracksForFirst = false)
+                        MusicRepository.fetchRealAlbumsForArtist(artist, limit = 35, loadTracksForFirst = false)
                     }
                     if (itunesAlbums.isNotEmpty()) {
                         realArtistAlbums = (localAlbums + itunesAlbums).distinctBy { it.id }
@@ -145,26 +167,16 @@ fun FluidArtistDetailOverlay(
                 targetValue = 1f,
                 animationSpec = spring(dampingRatio = 0.84f, stiffness = 320f)
             )
-        } else {
-            progress.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 240, easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f))
-            )
-            currentArtist = null
-            currentOriginBounds = null
-            artistTracks = emptyList()
-            realArtistAlbums = emptyList()
+        } else if (!isClosing && currentArtist != null) {
+            handleClose()
         }
     }
 
     val p = progress.value
     val curArtist = currentArtist
 
-    BackHandler(enabled = (p > 0.01f || artist != null)) {
-        scope.launch {
-            progress.animateTo(0f, tween(200))
-            onClose()
-        }
+    BackHandler(enabled = state.selectedAlbum == null && (p > 0.01f || artist != null)) {
+        handleClose()
     }
 
     if (curArtist != null && p > 0.001f) {
@@ -226,12 +238,15 @@ fun FluidArtistDetailOverlay(
         )
         val originCornerPx = if (origin.width <= with(density) { 72.dp.toPx() }) origin.width / 2f else with(density) { 24.dp.toPx() }
 
+        val originCardWidth = origin.width.coerceAtLeast(10f)
+        val originCardHeight = if (origin.height > origin.width * 1.15f) origin.width else origin.height.coerceAtLeast(10f)
+
         val clampedP = p.coerceIn(0f, 1f)
-        val curCorner = with(density) { (originCornerPx * (1f - clampedP)).coerceAtLeast(0f).toDp() }
-        val curScaleX = (origin.width / screenWpx) + (1f - (origin.width / screenWpx)) * clampedP
-        val curScaleY = (origin.height / screenHpx) + (1f - (origin.height / screenHpx)) * clampedP
-        val curTransX = origin.left * (1f - clampedP)
-        val curTransY = origin.top * (1f - clampedP) + dragY
+        val curCorner = with(density) { (originCornerPx * (1f - clampedP)).coerceIn(0f, originCornerPx).toDp() }
+        val curLeft = origin.left * (1f - clampedP)
+        val curTop = (origin.top * (1f - clampedP) + dragY).coerceAtLeast(0f)
+        val curWidth = (originCardWidth + (screenWpx - originCardWidth) * clampedP).coerceAtLeast(10f)
+        val curHeight = (originCardHeight + (screenHpx - originCardHeight) * clampedP).coerceAtLeast(10f)
 
         Box(modifier = Modifier.fillMaxSize()) {
             // Background scrim
@@ -241,28 +256,18 @@ fun FluidArtistDetailOverlay(
                     .background(Color.Black.copy(alpha = (0.40f * clampedP).coerceIn(0f, 1f)))
             )
 
-            // Morphing Card Container (GPU-accelerated RenderThread scaling and translation)
+            // Morphing Card Container (interpolated physical bounds with zero aspect ratio distortion)
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = curScaleX.coerceIn(0.01f, 1.2f)
-                        scaleY = curScaleY.coerceIn(0.01f, 1.2f)
-                        translationX = curTransX
-                        translationY = curTransY
-                        transformOrigin = TransformOrigin(0f, 0f)
-                        clip = true
-                        shape = RoundedCornerShape(curCorner)
-                    }
+                    .offset { IntOffset(curLeft.roundToInt(), curTop.roundToInt()) }
+                    .size(with(density) { curWidth.toDp() }, with(density) { curHeight.toDp() })
+                    .clip(RoundedCornerShape(curCorner))
                     .background(bgColor)
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onDragEnd = {
                                 if (dragY > 120f) {
-                                    scope.launch {
-                                        progress.animateTo(0f, tween(200))
-                                        onClose()
-                                    }
+                                    handleClose()
                                 }
                                 dragY = 0f
                             },
@@ -270,28 +275,24 @@ fun FluidArtistDetailOverlay(
                                 if (delta > 0 || dragY > 0f) {
                                     dragY = (dragY + delta).coerceAtLeast(0f)
                                     if (dragY > 220f) {
-                                        scope.launch {
-                                            progress.animateTo(0f, tween(200))
-                                            onClose()
-                                        }
+                                        handleClose()
                                     }
                                 }
                             }
                         )
                     }
             ) {
-                if (p < 0.22f) {
-                    AsyncImage(
-                        model = artistImage,
-                        contentDescription = curArtist,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+                // Shared Element Artist Image cropped smoothly to container
+                AsyncImage(
+                    model = artistImage,
+                    contentDescription = curArtist,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
 
-                if (p > 0.05f) {
-                    val contentAlpha = ((p - 0.18f) / 0.82f).coerceIn(0f, 1f)
-                    val contentSlide = (1f - p) * with(density) { 36.dp.toPx() }
+                if (clampedP > 0.60f) {
+                    val contentAlpha = ((clampedP - 0.60f) / 0.40f).coerceIn(0f, 1f)
+                    val contentSlide = (1f - clampedP) * with(density) { 24.dp.toPx() }
 
                     Box(
                         modifier = Modifier
@@ -614,9 +615,6 @@ fun FluidArtistDetailOverlay(
                                         Column(
                                             modifier = Modifier
                                                 .width(140.dp)
-                                                .onGloballyPositioned { coordinates ->
-                                                    cardBounds = coordinates.boundsInRoot()
-                                                }
                                                 .clickable {
                                                     Haptics.click(view)
                                                     viewModel.setSelectedAlbum(album, cardBounds)
@@ -628,6 +626,9 @@ fun FluidArtistDetailOverlay(
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier
                                                     .size(140.dp)
+                                                    .onGloballyPositioned { coordinates ->
+                                                        cardBounds = coordinates.boundsInRoot()
+                                                    }
                                                     .clip(RoundedCornerShape(14.dp))
                                             )
                                             Spacer(modifier = Modifier.height(8.dp))
@@ -675,10 +676,7 @@ fun FluidArtistDetailOverlay(
                     IconButton(
                         onClick = {
                             Haptics.click(view)
-                            scope.launch {
-                                progress.animateTo(0f, tween(200))
-                                onClose()
-                            }
+                            handleClose()
                         },
                         modifier = Modifier
                             .statusBarsPadding()

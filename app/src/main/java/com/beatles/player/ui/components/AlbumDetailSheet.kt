@@ -1,5 +1,7 @@
 package com.beatles.player.ui.components
 
+import androidx.activity.compose.BackHandler
+import kotlinx.coroutines.launch
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -83,6 +85,26 @@ fun FluidAlbumDetailOverlay(
     var currentAlbum by remember { mutableStateOf<Album?>(null) }
     var currentOriginBounds by remember { mutableStateOf<Rect?>(null) }
     val progress = remember { Animatable(0f) }
+    var isClosing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun handleClose() {
+        if (isClosing) return
+        isClosing = true
+        scope.launch {
+            progress.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 260,
+                    easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
+                )
+            )
+            currentAlbum = null
+            currentOriginBounds = null
+            isClosing = false
+            onClose()
+        }
+    }
 
     LaunchedEffect(album) {
         if (album != null) {
@@ -90,6 +112,7 @@ fun FluidAlbumDetailOverlay(
             if (sourceBounds != null) {
                 currentOriginBounds = sourceBounds
             }
+            isClosing = false
             progress.animateTo(
                 targetValue = 1f,
                 animationSpec = spring(
@@ -97,21 +120,17 @@ fun FluidAlbumDetailOverlay(
                     stiffness = 320f
                 )
             )
-        } else {
-            progress.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(
-                    durationMillis = 240,
-                    easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
-                )
-            )
-            currentAlbum = null
-            currentOriginBounds = null
+        } else if (!isClosing && currentAlbum != null) {
+            handleClose()
         }
     }
 
     val p = progress.value
     val alb = currentAlbum ?: return
+
+    BackHandler(enabled = (album != null || currentAlbum != null || p > 0.01f)) {
+        handleClose()
+    }
 
     val resolvedCover = remember(alb) {
         if (alb.coverUrl.isNotBlank() && alb.coverUrl.startsWith("http")) alb.coverUrl
@@ -142,12 +161,6 @@ fun FluidAlbumDetailOverlay(
             screenHpx / 2f + targetArtworkSizePx / 4f
         )
 
-        // Fluid interpolation of artwork bounds
-        val curLeft = origin.left + (targetLeftPx - origin.left) * p
-        val curTop = origin.top + (targetTopPx - origin.top) * p
-        val curWidth = origin.width + (targetArtworkSizePx - origin.width) * p
-        val curHeight = origin.height + (targetArtworkSizePx - origin.height) * p
-        val curCorner = with(density) { (18.dp.toPx() + (22.dp.toPx() - 18.dp.toPx()) * p).toDp() }
 
         val hasRealCover = resolvedCover.isNotBlank() && resolvedCover.startsWith("http")
         val defaultArtColors = remember(alb.title, alb.artist) {
@@ -210,12 +223,16 @@ fun FluidAlbumDetailOverlay(
         val artBlur = ((scrollOffset / 14f) * p).coerceIn(0f, 24f).dp
         val artScale = (1f - (scrollOffset / 1400f) * p).coerceIn(0.72f, 1f)
         val artAlpha = (1f - (scrollOffset / 340f) * p).coerceIn(0f, 1f)
+        val originCardWidth = origin.width.coerceAtLeast(10f)
+        val originCardHeight = if (origin.height > origin.width * 1.15f) origin.width else origin.height.coerceAtLeast(10f)
+        val originCornerPx = if (originCardWidth <= with(density) { 72.dp.toPx() }) originCardWidth / 2f else with(density) { 18.dp.toPx() }
+
         val clampedP = p.coerceIn(0f, 1f)
-        val curContainerCorner = with(density) { (18.dp.toPx() * (1f - clampedP)).coerceAtLeast(0f).toDp() }
-        val curScaleX = (origin.width / screenWpx) + (1f - (origin.width / screenWpx)) * clampedP
-        val curScaleY = (origin.height / screenHpx) + (1f - (origin.height / screenHpx)) * clampedP
-        val curTransX = origin.left * (1f - clampedP)
-        val curTransY = origin.top * (1f - clampedP) + dragY
+        val curContainerCorner = with(density) { (originCornerPx * (1f - clampedP)).coerceIn(0f, originCornerPx).toDp() }
+        val curLeft = origin.left * (1f - clampedP)
+        val curTop = (origin.top * (1f - clampedP) + dragY).coerceAtLeast(0f)
+        val curWidth = (originCardWidth + (screenWpx - originCardWidth) * clampedP).coerceAtLeast(10f)
+        val curHeight = (originCardHeight + (screenHpx - originCardHeight) * clampedP).coerceAtLeast(10f)
 
         Box(modifier = Modifier.fillMaxSize()) {
             // Background scrim
@@ -225,25 +242,18 @@ fun FluidAlbumDetailOverlay(
                     .background(Color.Black.copy(alpha = (0.40f * clampedP).coerceIn(0f, 1f)))
             )
 
-            // Morphing Card Container (GPU-accelerated RenderThread scaling and translation)
+            // Morphing Card Container (interpolated physical bounds with zero aspect ratio distortion)
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = curScaleX.coerceIn(0.01f, 1.2f)
-                        scaleY = curScaleY.coerceIn(0.01f, 1.2f)
-                        translationX = curTransX
-                        translationY = curTransY
-                        transformOrigin = TransformOrigin(0f, 0f)
-                        clip = true
-                        shape = RoundedCornerShape(curContainerCorner)
-                    }
+                    .offset { IntOffset(curLeft.roundToInt(), curTop.roundToInt()) }
+                    .size(with(density) { curWidth.toDp() }, with(density) { curHeight.toDp() })
+                    .clip(RoundedCornerShape(curContainerCorner))
                     .background(albumPageBg)
                     .pointerInput(Unit) {
                         detectVerticalDragGestures(
                             onDragEnd = {
                                 if (dragY > 120f) {
-                                    onClose()
+                                    handleClose()
                                 }
                                 dragY = 0f
                             },
@@ -251,35 +261,34 @@ fun FluidAlbumDetailOverlay(
                                 if (delta > 0 || dragY > 0f) {
                                     dragY = (dragY + delta).coerceAtLeast(0f)
                                     if (dragY > 220f) {
-                                        onClose()
+                                        handleClose()
                                     }
                                 }
                             }
                         )
                     }
             ) {
-                if (p < 0.22f) {
-                    if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
-                        AsyncImage(
-                            model = resolvedCover,
-                            contentDescription = alb.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        AppleMusicGradientCover(
-                            title = alb.title,
-                            artist = alb.artist,
-                            modifier = Modifier.fillMaxSize(),
-                            showLabel = false
-                        )
-                    }
+                // Shared Element Cover Image (crops smoothly to container aspect ratio without ANY distortion)
+                if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
+                    AsyncImage(
+                        model = resolvedCover,
+                        contentDescription = alb.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    AppleMusicGradientCover(
+                        title = alb.title,
+                        artist = alb.artist,
+                        modifier = Modifier.fillMaxSize(),
+                        showLabel = false
+                    )
                 }
 
-                // Surrounding rich detail view content fading and sliding in smoothly
-                if (p > 0.05f) {
-                    val contentAlpha = ((p - 0.18f) / 0.82f).coerceIn(0f, 1f)
-                    val contentSlide = (1f - p) * with(density) { 36.dp.toPx() }
+                // Rich Detail View Content fading in gracefully when container expands
+                if (clampedP > 0.60f) {
+                    val contentAlpha = ((clampedP - 0.60f) / 0.40f).coerceIn(0f, 1f)
+                    val contentSlide = (1f - clampedP) * with(density) { 24.dp.toPx() }
 
                     Box(
                         modifier = Modifier
@@ -619,7 +628,7 @@ fun FluidAlbumDetailOverlay(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
-                            onClick = onClose,
+                            onClick = { handleClose() },
                             modifier = Modifier
                                 .size(38.dp)
                                 .clip(CircleShape)
