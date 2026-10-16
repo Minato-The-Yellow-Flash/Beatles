@@ -1,8 +1,8 @@
 {
-  "versionName": "1.2",
-  "versionCode": 3,
-  "releaseTitle": "Beatles v1.2",
-  "releaseNotes": "• Smooth 120 FPS album morph without distortion\n• Fixed back gesture navigation on artist page\n• Complete artist discography & strict artist purity\n• Faster playback with studio audio quality",
-  "apkUrl": "https://github.com/Minato-The-Yellow-Flash/Beatles/releases/download/v1.2/Beatles-App.apk",
-  "publishedAt": "2026-10-16T09:49:00Z"
+  "versionName": "1.3",
+  "versionCode": 4,
+  "releaseTitle": "Beatles v1.3",
+  "releaseNotes": "• Restored vibrant ambient album blur\n• 120 FPS lag-free hero artwork morph\n• +10% brighter left/right edge borders on glass nav bar & mini player\n• In-app self updates & GitHub releases sync",
+  "apkUrl": "https://github.com/Minato-The-Yellow-Flash/Beatles/releases/download/1.3/Beatles-App.apk",
+  "publishedAt": "2026-10-16T09:41:47Z"
 }

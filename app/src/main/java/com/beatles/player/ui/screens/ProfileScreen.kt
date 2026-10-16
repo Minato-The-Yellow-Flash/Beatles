@@ -334,6 +334,13 @@ fun ProfileScreen(
 
                 // App Updates Section
                 val context = LocalContext.current
+                val installedVersion = remember {
+                    try {
+                        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2"
+                    } catch (_: Exception) {
+                        "1.2"
+                    }
+                }
                 Text(
                     "APP UPDATES",
                     color = AppTheme.fg(0.45f),
@@ -361,7 +368,7 @@ fun ProfileScreen(
                                 Text(
                                     if (state.isCheckingUpdate) "Checking GitHub for updates..."
                                     else if (state.availableUpdate != null) "New version v${state.availableUpdate.versionName} available!"
-                                    else "v1.0 (Latest)",
+                                    else "v$installedVersion (Installed)",
                                     color = if (state.availableUpdate != null) ListenerRed else AppTheme.fg(0.55f),
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(top = 2.dp)

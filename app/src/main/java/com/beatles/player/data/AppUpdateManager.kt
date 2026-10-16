@@ -29,6 +29,7 @@ object AppUpdateManager {
     private const val GITHUB_OWNER = "Minato-The-Yellow-Flash"
     private const val GITHUB_REPO = "Beatles"
     private const val CDN_VERSION_URL = "https://raw.githubusercontent.com/$GITHUB_OWNER/$GITHUB_REPO/main/version.json"
+    private const val WEB_LATEST_RELEASE_URL = "https://github.com/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
     private const val API_URL = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
 
     private val httpClient = OkHttpClient.Builder()
@@ -36,18 +37,119 @@ object AppUpdateManager {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
+    // Client with redirects disabled to capture the 302 Location header instantly
+    private val noRedirectClient = httpClient.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
+
     private val gson = Gson()
 
     /**
      * Checks for a newer version than currentVersion.
-     * Tier 1: Fast raw.githubusercontent CDN (zero rate limits, never 403).
-     * Tier 2: GitHub Releases API fallback.
+     * Tier 1: GitHub Web Redirect (Zero rate limits, instant 302 detection of /releases/latest -> /releases/tag/<tag>).
+     * Tier 2: Fast raw.githubusercontent CDN (Zero rate limits, never 403).
+     * Tier 3: GitHub Releases API fallback (Rate limited to 60 req/hr).
      * Returns UpdateInfo if an update exists, null otherwise.
      */
     suspend fun checkForUpdates(currentVersion: String): UpdateInfo? = withContext(Dispatchers.IO) {
         val cleanCurrent = currentVersion.removePrefix("v").removePrefix("V").trim()
 
-        // Tier 1: Try GitHub CDN version.json (Zero rate limits, highly resilient)
+        // Tier 1: GitHub Web Redirect (100% Rate-Limit Proof, direct release detection)
+        try {
+            val headReq = Request.Builder()
+                .url(WEB_LATEST_RELEASE_URL)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml")
+                .build()
+
+            val headResp = noRedirectClient.newCall(headReq).execute()
+            val redirectLocation = if (headResp.code in 300..399) {
+                headResp.header("Location")
+            } else null
+
+            var releaseTag: String? = null
+            if (!redirectLocation.isNullOrBlank() && redirectLocation.contains("/releases/tag/")) {
+                releaseTag = redirectLocation.substringAfter("/releases/tag/").substringBefore("/").substringBefore("?").trim()
+            }
+
+            // If head/no-redirect didn't get location, try standard GET following redirects
+            if (releaseTag.isNullOrBlank()) {
+                val getReq = Request.Builder()
+                    .url(WEB_LATEST_RELEASE_URL)
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
+                    .build()
+                val getResp = httpClient.newCall(getReq).execute()
+                val finalUrl = getResp.request.url.toString()
+                if (finalUrl.contains("/releases/tag/")) {
+                    releaseTag = finalUrl.substringAfter("/releases/tag/").substringBefore("/").substringBefore("?").trim()
+                }
+            }
+
+            if (!releaseTag.isNullOrBlank()) {
+                val remoteVersion = releaseTag.removePrefix("v").removePrefix("V").trim()
+                if (isNewerVersion(remoteVersion, cleanCurrent)) {
+                    // Find actual APK asset from expanded assets page
+                    var apkUrl = "https://github.com/$GITHUB_OWNER/$GITHUB_REPO/releases/download/$releaseTag/Beatles-App.apk"
+                    var releaseNotes = "Beatles v$remoteVersion is available with new features and performance improvements."
+                    val releaseTitle = "Beatles v$remoteVersion"
+
+                    try {
+                        val assetsReq = Request.Builder()
+                            .url("https://github.com/$GITHUB_OWNER/$GITHUB_REPO/releases/expanded_assets/$releaseTag")
+                            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
+                            .build()
+                        val assetsResp = httpClient.newCall(assetsReq).execute()
+                        if (assetsResp.isSuccessful) {
+                            val assetsHtml = assetsResp.body?.string() ?: ""
+                            val apkMatch = Regex("""href="(/$GITHUB_OWNER/$GITHUB_REPO/releases/download/[^"]+\.apk)"""").find(assetsHtml)
+                                ?: Regex("""href="([^"]+\.apk)"""").find(assetsHtml)
+                            if (apkMatch != null) {
+                                val matchPath = apkMatch.groupValues[1]
+                                apkUrl = if (matchPath.startsWith("http")) matchPath else "https://github.com$matchPath"
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    try {
+                        val pageReq = Request.Builder()
+                            .url("https://github.com/$GITHUB_OWNER/$GITHUB_REPO/releases/tag/$releaseTag")
+                            .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
+                            .build()
+                        val pageResp = httpClient.newCall(pageReq).execute()
+                        if (pageResp.isSuccessful) {
+                            val pageHtml = pageResp.body?.string() ?: ""
+                            val notesMatch = Regex("""<div[^>]*class="[^"]*markdown-body[^"]*"[^>]*>(.*?)</div>""", RegexOption.DOT_MATCHES_ALL).find(pageHtml)
+                            if (notesMatch != null) {
+                                val cleanNotes = notesMatch.groupValues[1]
+                                    .replace(Regex("<[^>]*>"), "")
+                                    .replace("&quot;", "\"")
+                                    .replace("&amp;", "&")
+                                    .replace("&lt;", "<")
+                                    .replace("&gt;", ">")
+                                    .trim()
+                                if (cleanNotes.isNotBlank()) {
+                                    releaseNotes = cleanNotes
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    return@withContext UpdateInfo(
+                        versionName = remoteVersion,
+                        releaseTitle = releaseTitle,
+                        releaseNotes = releaseNotes,
+                        apkUrl = apkUrl,
+                        publishedAt = "",
+                        isPrerelease = false
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            // Fall through to Tier 2
+        }
+
+        // Tier 2: Try GitHub CDN version.json (Zero rate limits, highly resilient)
         try {
             val cdnReq = Request.Builder()
                 .url(CDN_VERSION_URL)
@@ -77,18 +179,15 @@ object AppUpdateManager {
                                     isPrerelease = false
                                 )
                             }
-                        } else {
-                            // Version from CDN is current or older - no update needed
-                            return@withContext null
                         }
                     }
                 }
             }
         } catch (_: Exception) {
-            // Fall through to Tier 2
+            // Fall through to Tier 3
         }
 
-        // Tier 2: GitHub Releases API fallback
+        // Tier 3: GitHub Releases API fallback
         try {
             val req = Request.Builder()
                 .url(API_URL)
@@ -127,7 +226,6 @@ object AppUpdateManager {
                 }
             }
 
-            // Fallback to html_url or direct download link
             val downloadUrl = apkUrl ?: json.get("html_url")?.asString ?: return@withContext null
 
             UpdateInfo(
@@ -144,12 +242,14 @@ object AppUpdateManager {
     }
 
     /**
-     * Compares two semantic version strings (e.g. "1.2.0" vs "1.1.9").
+     * Compares two semantic version strings (e.g. "1.3" vs "1.2", "v1.3" vs "1.2", "1.2.1" vs "1.2.0").
      */
     fun isNewerVersion(remote: String, current: String): Boolean {
         try {
-            val remoteParts = remote.split("-")[0].split(".").map { it.toIntOrNull() ?: 0 }
-            val currentParts = current.split("-")[0].split(".").map { it.toIntOrNull() ?: 0 }
+            val cleanRemote = remote.trim().removePrefix("v").removePrefix("V")
+            val cleanCurrent = current.trim().removePrefix("v").removePrefix("V")
+            val remoteParts = cleanRemote.split("-")[0].split(".").map { it.toIntOrNull() ?: 0 }
+            val currentParts = cleanCurrent.split("-")[0].split(".").map { it.toIntOrNull() ?: 0 }
             val maxLen = maxOf(remoteParts.size, currentParts.size)
 
             for (i in 0 until maxLen) {
@@ -176,7 +276,7 @@ object AppUpdateManager {
         try {
             val req = Request.Builder()
                 .url(apkUrl)
-                .header("User-Agent", "Beatles-Android-App")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
                 .build()
 
             val resp = httpClient.newCall(req).execute()
