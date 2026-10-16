@@ -28,6 +28,7 @@ data class UpdateInfo(
 object AppUpdateManager {
     private const val GITHUB_OWNER = "Minato-The-Yellow-Flash"
     private const val GITHUB_REPO = "Beatles"
+    private const val CDN_VERSION_URL = "https://raw.githubusercontent.com/$GITHUB_OWNER/$GITHUB_REPO/main/version.json"
     private const val API_URL = "https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest"
 
     private val httpClient = OkHttpClient.Builder()
@@ -38,10 +39,56 @@ object AppUpdateManager {
     private val gson = Gson()
 
     /**
-     * Checks GitHub Releases API for a newer version than currentVersion.
+     * Checks for a newer version than currentVersion.
+     * Tier 1: Fast raw.githubusercontent CDN (zero rate limits, never 403).
+     * Tier 2: GitHub Releases API fallback.
      * Returns UpdateInfo if an update exists, null otherwise.
      */
     suspend fun checkForUpdates(currentVersion: String): UpdateInfo? = withContext(Dispatchers.IO) {
+        val cleanCurrent = currentVersion.removePrefix("v").removePrefix("V").trim()
+
+        // Tier 1: Try GitHub CDN version.json (Zero rate limits, highly resilient)
+        try {
+            val cdnReq = Request.Builder()
+                .url(CDN_VERSION_URL)
+                .header("User-Agent", "Beatles-Android-App")
+                .build()
+
+            val cdnResp = httpClient.newCall(cdnReq).execute()
+            if (cdnResp.isSuccessful) {
+                val body = cdnResp.body?.string()
+                if (!body.isNullOrBlank()) {
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    val rawVer = json.get("versionName")?.asString?.trim()
+                    if (rawVer != null) {
+                        val remoteVersion = rawVer.removePrefix("v").removePrefix("V").trim()
+                        if (isNewerVersion(remoteVersion, cleanCurrent)) {
+                            val title = json.get("releaseTitle")?.asString ?: "Beatles Update (v$remoteVersion)"
+                            val notes = json.get("releaseNotes")?.asString ?: "Bug fixes and performance improvements."
+                            val apkUrl = json.get("apkUrl")?.asString ?: ""
+                            val publishedAt = json.get("publishedAt")?.asString ?: ""
+                            if (apkUrl.isNotBlank()) {
+                                return@withContext UpdateInfo(
+                                    versionName = remoteVersion,
+                                    releaseTitle = title,
+                                    releaseNotes = notes,
+                                    apkUrl = apkUrl,
+                                    publishedAt = publishedAt,
+                                    isPrerelease = false
+                                )
+                            }
+                        } else {
+                            // Version from CDN is current or older - no update needed
+                            return@withContext null
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Fall through to Tier 2
+        }
+
+        // Tier 2: GitHub Releases API fallback
         try {
             val req = Request.Builder()
                 .url(API_URL)
@@ -56,7 +103,6 @@ object AppUpdateManager {
             val json = gson.fromJson(body, JsonObject::class.java) ?: return@withContext null
             val rawTag = json.get("tag_name")?.asString?.trim() ?: return@withContext null
             val remoteVersion = rawTag.removePrefix("v").removePrefix("V").trim()
-            val cleanCurrent = currentVersion.removePrefix("v").removePrefix("V").trim()
 
             if (!isNewerVersion(remoteVersion, cleanCurrent)) {
                 return@withContext null

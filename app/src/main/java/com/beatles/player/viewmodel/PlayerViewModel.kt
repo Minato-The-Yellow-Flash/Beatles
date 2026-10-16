@@ -457,7 +457,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun checkForUpdates(silent: Boolean = false) {
         viewModelScope.launch {
             if (!silent) _uiState.update { it.copy(isCheckingUpdate = true, updateErrorMessage = null, updateNotice = null) }
-            val currentVersion = "1.0"
+            val currentVersion = try {
+                val app = getApplication<Application>()
+                app.packageManager.getPackageInfo(app.packageName, 0).versionName ?: "1.2"
+            } catch (_: Exception) {
+                "1.2"
+            }
             val update = com.beatles.player.data.AppUpdateManager.checkForUpdates(currentVersion)
             _uiState.update {
                 it.copy(
