@@ -2,7 +2,7 @@
   "versionName": "1.699",
   "versionCode": 10,
   "releaseTitle": "Beatles v1.699",
-  "releaseNotes": "• AirPods-Style Update Dialog: Redesigned with navbar liquid glass UI, bottom navigation bar insets, edge-to-edge window configuration, and prevented clipping\n• Mini Player Seekbar Haptics & Liquid Bubble: Added tactile ticking haptic feedback during seeking and tap-and-hold, with organic liquid-connected time display floating above the pill\n• Next Up Controls & Queue Styling: Translucent navbar edge glass UI with high-contrast text and icons optimized for both light and dark mode\n• Lyrics & Next Up Toggle Pills: Specular frosted borders and crystal-clear contrast across light and dark mode",
+  "releaseNotes": "• AirPods-Style Update Dialog: Full-screen edge-to-edge window configuration with navbar liquid glass UI preventing bottom clipping\n• Mini Player Seekbar Haptics & Time Bubble: Mechanical tactile ticks on touch-down, continuous ticks per second change, release confirmation, and organic time bubble floating above the mini player\n• Next Up Controls & Queue Styling: Clean pill UI matching Next Up button (frosted white active, translucent glass inactive without harsh borders)\n• Performance & Audio Engine: Real-time seek responsiveness and fluid gesture transitions",
   "apkUrl": "https://github.com/Minato-The-Yellow-Flash/Beatles/releases/download/1.699/Beatles-App.apk",
-  "publishedAt": "2026-10-17T12:35:00Z"
+  "publishedAt": "2026-10-17T12:50:00Z"
 }

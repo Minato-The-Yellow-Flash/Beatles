@@ -55,11 +55,16 @@ fun AppUpdateDialog(
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
     val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
 
-    // Ensure edge-to-edge on dialog window so navigation bar insets are accurately dispatched
+    // Ensure edge-to-edge on dialog window so navigation bar insets are accurately dispatched and no bottom clipping occurs
     DisposableEffect(view) {
         val dialogWindow = (view.parent as? DialogWindowProvider)?.window
         if (dialogWindow != null) {
             WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
+            dialogWindow.setLayout(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            dialogWindow.setBackgroundDrawableResource(android.R.color.transparent)
             dialogWindow.navigationBarColor = android.graphics.Color.TRANSPARENT
             dialogWindow.statusBarColor = android.graphics.Color.TRANSPARENT
         }
@@ -139,15 +144,15 @@ fun AppUpdateDialog(
             contentAlignment = Alignment.BottomCenter
         ) {
             val dialogShape = RoundedCornerShape(32.dp)
-            val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.76f) else Color(0xFFF2F3F7).copy(alpha = 0.88f)
-            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.15f)
+            val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.78f) else Color(0xFFFFFFFF).copy(alpha = 0.88f)
+            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.12f)
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
                     .navigationBarsPadding()
-                    .padding(bottom = 20.dp, top = 16.dp)
+                    .padding(bottom = 12.dp)
                     .graphicsLayer {
                         translationY = enterSlideY.value
                         alpha = enterAlpha.value
@@ -155,7 +160,7 @@ fun AppUpdateDialog(
                     .shadow(
                         elevation = 20.dp,
                         shape = dialogShape,
-                        spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.18f)
+                        spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.15f)
                     )
                     .clip(dialogShape)
                     .background(translucentBarBg)
@@ -165,7 +170,7 @@ fun AppUpdateDialog(
                         shape = dialogShape
                     )
                     .glassRefraction(32.dp, isDark = isDark)
-                    .padding(horizontal = 22.dp, vertical = 18.dp)
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
@@ -253,7 +258,7 @@ fun AppUpdateDialog(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 120.dp)
+                            .heightIn(max = 130.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(
                                 if (isDark) Color.White.copy(alpha = 0.06f)
@@ -276,7 +281,7 @@ fun AppUpdateDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 if (progress != null) {
                     Column(
