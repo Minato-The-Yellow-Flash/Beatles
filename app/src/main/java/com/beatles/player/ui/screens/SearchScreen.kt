@@ -22,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.draw.shadow
 import com.beatles.player.ui.glassRefraction
 import com.beatles.player.ui.motion.liquidPress
@@ -44,6 +45,7 @@ import com.beatles.player.data.Album
 import com.beatles.player.data.ArtistMixEngine
 import com.beatles.player.data.MusicRepository
 import com.beatles.player.data.Song
+import com.beatles.player.ui.components.AppleMusicGradientCover
 import com.beatles.player.ui.components.FrostedButton
 import com.beatles.player.ui.theme.isDarkTheme
 import com.beatles.player.ui.theme.LocalDynamicBottomPadding
@@ -61,7 +63,7 @@ fun SearchScreen(
     focusRequested: Boolean,
     onSearch: (String) -> Unit,
     onQueryChange: (String) -> Unit = {},
-    onSelectAlbum: (Album) -> Unit = {},
+    onSelectAlbum: (Album, Rect?) -> Unit = { _, _ -> },
     onPlay: (Song, List<Song>, Rect?) -> Unit,
     onMoveToPlayNext: (Song) -> Unit = {},
     onPlayArtistMix: (String) -> Unit = {},
@@ -378,52 +380,183 @@ fun SearchScreen(
                     }
                 }
 
-                // Original Album card if found
+                // Movie & Original Album card if found
                 if (state.searchedAlbum != null) {
                     item(key = "searched_album_card") {
                         val album = state.searchedAlbum!!
+                        val isSoundtrack = remember(album) {
+                            val t = album.title.lowercase()
+                            val g = (album.genre ?: "").lowercase()
+                            t.contains("soundtrack") || t.contains("motion picture") || t.contains("from \"") || 
+                            t.contains("original score") || g.contains("soundtrack") || t.contains("ost") ||
+                            t.contains("movie") || t.contains("film")
+                        }
+                        var cardBounds by remember { mutableStateOf<Rect?>(null) }
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val isPressed by interactionSource.collectIsPressedAsState()
+                        val cardScale by animateFloatAsState(
+                            targetValue = if (isPressed) 0.96f else 1.0f,
+                            animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+                            label = "searchAlbumCardScale"
+                        )
+                        val shape = RoundedCornerShape(20.dp)
+
                         Spacer(modifier = Modifier.height(14.dp))
                         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                            Text(
-                                "Original Album",
-                                color = textSecondary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .shadow(2.dp, RoundedCornerShape(16.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(if (isDark) Color(0xFF1E2026).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.90f))
-                                    .glassRefraction(16.dp, isDark = isDark)
-                                    .clickable { onSelectAlbum(album) }
-                                    .padding(12.dp),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                AsyncImage(
-                                    model = album.coverUrl,
-                                    contentDescription = album.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(62.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                )
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(album.title, color = textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(album.artist, color = textSecondary, fontSize = 12.sp, maxLines = 1)
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text("${album.releaseYear} • ${album.songs.size} tracks", color = textMuted, fontSize = 11.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(7.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isSoundtrack) Color(0xFFF82C38) else Color(0xFF3B82F6))
+                                    )
+                                    Spacer(modifier = Modifier.width(7.dp))
+                                    Text(
+                                        if (isSoundtrack) "Movie Soundtrack Album" else "Original Full Album",
+                                        color = textSecondary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
-                                Icon(
-                                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                    contentDescription = "Open Album",
-                                    tint = textSecondary,
-                                    modifier = Modifier.size(24.dp)
+                                Text(
+                                    "${album.songs.size} tracks",
+                                    color = textMuted,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
                                 )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .onGloballyPositioned { coords -> cardBounds = coords.boundsInRoot() }
+                                    .graphicsLayer {
+                                        scaleX = cardScale
+                                        scaleY = cardScale
+                                    }
+                                    .shadow(4.dp, shape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.12f))
+                                    .clip(shape)
+                                    .background(if (isDark) Color(0xFF1E2026).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.90f))
+                                    .border(1.dp, if (isDark) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.30f), shape)
+                                    .glassRefraction(20.dp, isDark = isDark)
+                                    .clickable(interactionSource = interactionSource, indication = null) {
+                                        onSelectAlbum(album, cardBounds)
+                                    }
+                                    .padding(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Album Cover with AppleMusicGradientCover fallback and badges
+                                    Box(
+                                        modifier = Modifier
+                                            .size(80.dp)
+                                            .clip(RoundedCornerShape(16.dp))
+                                    ) {
+                                        AppleMusicGradientCover(
+                                            title = album.title ?: "",
+                                            artist = album.artist ?: "",
+                                            modifier = Modifier.fillMaxSize(),
+                                            cornerRadius = 16.dp
+                                        )
+                                        if (album.coverUrl.isNotBlank() && album.coverUrl.startsWith("http")) {
+                                            AsyncImage(
+                                                model = album.coverUrl,
+                                                contentDescription = album.title,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = if (isDark) 0.55f else 0.35f))))
+                                        )
+                                        if (isSoundtrack) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomStart)
+                                                    .padding(5.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(Color(0xFFF82C38).copy(alpha = 0.90f))
+                                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    "MOVIE",
+                                                    color = Color.White,
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    letterSpacing = 0.5.sp
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(14.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            album.title,
+                                            color = textPrimary,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Text(
+                                            album.artist,
+                                            color = textSecondary,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                "${album.releaseYear} • ${album.songs.size} tracks",
+                                                color = textMuted,
+                                                fontSize = 11.sp
+                                            )
+                                            if (album.genre.isNotBlank() && album.genre != "Music") {
+                                                Text(
+                                                    " • ${album.genre}",
+                                                    color = textMuted,
+                                                    fontSize = 11.sp,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            "Tap to explore full movie album & tracks",
+                                            color = Color(0xFFF82C38),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.06f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                            contentDescription = "Open Album",
+                                            tint = textPrimary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                         }

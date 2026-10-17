@@ -399,11 +399,35 @@ object MusicRepository {
 
     suspend fun searchOriginalAlbum(query: String): Album? = withContext(Dispatchers.IO) {
         try {
-            val cleanQ = query.replace(Regex("(?i)official|audio|video|lyrics|full song"), "").trim()
+            val cleanQ = query.replace(Regex("(?i)official|audio|video|lyrics|full song|song"), "").trim()
             if (cleanQ.length < 2) return@withContext null
             val encoded = URLEncoder.encode(cleanQ, "UTF-8")
+
+            // 1. Search iTunes for song to find parent Movie / Soundtrack Album collectionId
+            val songReq = Request.Builder()
+                .url("https://itunes.apple.com/search?term=$encoded&media=music&entity=song&limit=5")
+                .header("User-Agent", "BeatlesApp/2.0 (Android; en-US)")
+                .build()
+            val songResp = httpClient.newCall(songReq).execute()
+            val songBody = songResp.body?.string()
+            if (!songBody.isNullOrBlank()) {
+                val json = gson.fromJson(songBody, JsonObject::class.java)
+                val results = json.getAsJsonArray("results")
+                if (results != null && results.size() > 0) {
+                    for (elem in results) {
+                        val item = elem.asJsonObject
+                        val collectionId = item.get("collectionId")?.asString
+                        if (!collectionId.isNullOrBlank()) {
+                            val alb = lookupAlbumById(collectionId)
+                            if (alb != null && alb.songs.isNotEmpty()) return@withContext alb
+                        }
+                    }
+                }
+            }
+
+            // 2. Fallback: Search entity=album directly
             val req = Request.Builder()
-                .url("https://itunes.apple.com/search?term=$encoded&media=music&entity=album&limit=1")
+                .url("https://itunes.apple.com/search?term=$encoded&media=music&entity=album&limit=3")
                 .header("User-Agent", "BeatlesApp/2.0 (Android; en-US)")
                 .build()
             val resp = httpClient.newCall(req).execute()
@@ -411,55 +435,14 @@ object MusicRepository {
             val json = gson.fromJson(body, JsonObject::class.java)
             val results = json.getAsJsonArray("results")
             if (results != null && results.size() > 0) {
-                val item = results[0].asJsonObject
-                val collectionId = item.get("collectionId")?.asString ?: "alb_${System.currentTimeMillis()}"
-                val albumName = item.get("collectionName")?.asString ?: cleanQ
-                val artistName = item.get("artistName")?.asString ?: "Artist"
-                val rawCover = item.get("artworkUrl100")?.asString ?: ""
-                val hqCover = rawCover.replace("100x100bb", "1000x1000bb").replace("60x60bb", "1000x1000bb")
-                val genre = item.get("primaryGenreName")?.asString ?: "Music"
-                val rawDate = item.get("releaseDate")?.asString ?: "2026-01-01"
-                val releaseYear = if (rawDate.length >= 4) rawDate.take(4) else "2026"
-                val releaseDate = if (rawDate.length >= 10) rawDate.take(10) else "2026"
-
-                // Fetch tracks for this album
-                val trackReq = Request.Builder()
-                    .url("https://itunes.apple.com/lookup?id=$collectionId&entity=song")
-                    .header("User-Agent", "BeatlesApp/2.0 (Android; en-US)")
-                    .build()
-                val trackResp = httpClient.newCall(trackReq).execute()
-                val trackBody = trackResp.body?.string()
-                val songs = mutableListOf<Song>()
-                if (trackBody != null) {
-                    val trackJson = gson.fromJson(trackBody, JsonObject::class.java)
-                    val trackResults = trackJson.getAsJsonArray("results")
-                    if (trackResults != null) {
-                        for (tr in trackResults) {
-                            val trObj = tr.asJsonObject
-                            if (trObj.get("wrapperType")?.asString == "track") {
-                                val tName = trObj.get("trackName")?.asString ?: ""
-                                val tArtist = trObj.get("artistName")?.asString ?: artistName
-                                val tDur = (trObj.get("trackTimeMillis")?.asLong ?: 210000L) / 1000L
-                                val tPreview = trObj.get("previewUrl")?.asString
-                                if (tName.isNotBlank()) {
-                                    songs.add(
-                                        Song(
-                                            id = "itunes_${trObj.get("trackId")?.asString ?: tName}",
-                                            title = tName,
-                                            artist = tArtist,
-                                            album = albumName,
-                                            coverUrl = hqCover,
-                                            durationSeconds = tDur.toInt(),
-                                            streamUrl = null
-                                        )
-                                    )
-                                }
-                            }
-                        }
+                for (elem in results) {
+                    val item = elem.asJsonObject
+                    val collectionId = item.get("collectionId")?.asString
+                    if (!collectionId.isNullOrBlank()) {
+                        val alb = lookupAlbumById(collectionId)
+                        if (alb != null && alb.songs.isNotEmpty()) return@withContext alb
                     }
                 }
-
-                return@withContext lookupAlbumById(collectionId)
             }
         } catch (_: Exception) {}
         null
@@ -1164,7 +1147,9 @@ object MusicRepository {
                             detectLanguage(it).equals("Punjabi", ignoreCase = true) || 
                             PUNJABI_ARTISTS.any { pa -> it.artist.contains(pa, ignoreCase = true) }
                         }
-                        if (punjabiFiltered.isNotEmpty()) return@withContext punjabiFiltered
+                        val more = try { search("top punjabi songs 2024").filter { !it.isAlbum } } catch (_: Exception) { emptyList() }
+                        val combined = (punjabiFiltered + more).distinctBy { "${it.title.lowercase().trim()}_${it.artist.lowercase().trim()}" }
+                        if (combined.isNotEmpty()) return@withContext combined
                     } else if (genre.equals("bollywood", ignoreCase = true)) {
                         val bollywoodFiltered = list.filter { song ->
                             val lang = detectLanguage(song)
@@ -1180,13 +1165,25 @@ object MusicRepository {
                                 HINDI_ARTISTS.any { ha -> a.contains(ha) }
                             )
                         }
-                        if (bollywoodFiltered.size >= 5) return@withContext bollywoodFiltered
+                        val more = try { search("top bollywood songs 2024").filter { !it.isAlbum } } catch (_: Exception) { emptyList() }
+                        val combined = (bollywoodFiltered + more).distinctBy { "${it.title.lowercase().trim()}_${it.artist.lowercase().trim()}" }
+                        if (combined.isNotEmpty()) return@withContext combined
                     } else if (genre.equals("pop", ignoreCase = true)) {
                         val popFiltered = list.filter { song ->
                             val lang = detectLanguage(song)
                             lang == "English" && !song.artist.contains("bts", ignoreCase = true)
                         }
-                        if (popFiltered.isNotEmpty()) return@withContext popFiltered
+                        val more = try { search("top pop hits 2024").filter { !it.isAlbum } } catch (_: Exception) { emptyList() }
+                        val combined = (popFiltered + more).distinctBy { "${it.title.lowercase().trim()}_${it.artist.lowercase().trim()}" }
+                        if (combined.isNotEmpty()) return@withContext combined
+                    } else if (genre.equals("hip-hop", ignoreCase = true)) {
+                        val more = try { search("top hip hop songs 2024").filter { !it.isAlbum } } catch (_: Exception) { emptyList() }
+                        val combined = (list + more).distinctBy { "${it.title.lowercase().trim()}_${it.artist.lowercase().trim()}" }
+                        if (combined.isNotEmpty()) return@withContext combined
+                    } else if (genre.equals("lo-fi", ignoreCase = true)) {
+                        val more = try { search("lofi chill beats songs").filter { !it.isAlbum } } catch (_: Exception) { emptyList() }
+                        val combined = (list + more).distinctBy { "${it.title.lowercase().trim()}_${it.artist.lowercase().trim()}" }
+                        if (combined.isNotEmpty()) return@withContext combined
                     } else if (list.isNotEmpty()) {
                         return@withContext list
                     }

@@ -101,6 +101,7 @@ fun HomeScreen(
     onSelectAlbum: (Album, Rect?) -> Unit = { _, _ -> },
     onPlayAlbumSet: (AlbumSet) -> Unit = {},
     onSelectAlbumSet: (AlbumSet, Rect?) -> Unit = { _, _ -> },
+    onSelectGenre: (String, Rect?) -> Unit = { _, _ -> },
     onLoadMoreTopSongs: () -> Unit = {},
     onRefresh: () -> Unit = {}
 ) {
@@ -147,10 +148,33 @@ fun HomeScreen(
         listOf("All", "Hip Hop", "Punjabi", "Bollywood", "Lo-Fi", "Pop", "Classical", "Indie", "R&B")
     }
 
-    // Filtered songs matching selected genre
-    val filteredGenreSongs = remember(selectedGenre, allRecs, state.albums) {
+    var dynamicGenreSongs by remember { mutableStateOf<Map<String, List<Song>>>(emptyMap()) }
+    LaunchedEffect(selectedGenre) {
+        if (selectedGenre != "All" && !dynamicGenreSongs.containsKey(selectedGenre)) {
+            val q = when (selectedGenre) {
+                "Punjabi" -> "top punjabi songs hits and classics"
+                "Bollywood" -> "top bollywood songs and golden hits"
+                "Hip Hop" -> "top hip hop rap classics and hits"
+                "Lo-Fi" -> "lofi chill beats songs"
+                "Pop" -> "top pop hits and all time classics"
+                "Classical" -> "indian classical music hits"
+                "Indie" -> "top indie folk songs"
+                "R&B" -> "top r&b soul classics and hits"
+                else -> "$selectedGenre top songs"
+            }
+            try {
+                val fetched = com.beatles.player.data.MusicRepository.search(q).filter { !it.isAlbum }
+                if (fetched.isNotEmpty()) {
+                    dynamicGenreSongs = dynamicGenreSongs + (selectedGenre to fetched)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    // Filtered songs matching selected genre with rich new & classic pool
+    val filteredGenreSongs = remember(selectedGenre, allRecs, state.albums, dynamicGenreSongs) {
         if (selectedGenre == "All") {
-            allRecs.take(8)
+            allRecs.take(12)
         } else {
             val g = selectedGenre.lowercase()
             val fromRecs = allRecs.filter { song ->
@@ -183,8 +207,9 @@ fun HomeScreen(
                     else -> text.contains(g)
                 }
             }
-            val merged = (fromRecs + fromAlbums).distinctBy { it.id }
-            if (merged.isNotEmpty()) merged.take(8) else allRecs.take(6)
+            val dynamic = dynamicGenreSongs[selectedGenre] ?: emptyList()
+            val merged = (fromRecs + fromAlbums + dynamic).distinctBy { it.id }
+            if (merged.isNotEmpty()) merged.take(16) else allRecs.take(8)
         }
     }
 
@@ -869,6 +894,75 @@ fun HomeScreen(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.padding(horizontal = 4.dp)
                                 )
+                            }
+                        }
+
+                        // "Show More" pill with arrow in navbar liquid glass UI
+                        item(key = "genre_show_more_${selectedGenre}") {
+                            var moreBounds by remember { mutableStateOf<Rect?>(null) }
+                            val moreInteraction = remember { MutableInteractionSource() }
+                            val isPressed by moreInteraction.collectIsPressedAsState()
+                            val moreScale by animateFloatAsState(
+                                targetValue = if (isPressed) 0.95f else 1.0f,
+                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+                                label = "showMoreScale"
+                            )
+                            val pillShape = RoundedCornerShape(22.dp)
+                            Box(
+                                modifier = Modifier
+                                    .width(135.dp)
+                                    .height(140.dp)
+                                    .onGloballyPositioned { moreBounds = it.boundsInRoot() }
+                                    .graphicsLayer {
+                                        scaleX = moreScale
+                                        scaleY = moreScale
+                                    }
+                                    .shadow(4.dp, pillShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                                    .clip(pillShape)
+                                    .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.65f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
+                                    .border(1.dp, if (isDark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.35f), pillShape)
+                                    .glassRefraction(22.dp, isDark = isDark)
+                                    .clickable(interactionSource = moreInteraction, indication = null) {
+                                        val targetGenre = if (selectedGenre == "All") "Pop" else selectedGenre
+                                        onSelectGenre(targetGenre, moreBounds)
+                                    }
+                                    .padding(14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(AccentRed),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = "Show More",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        "Show More",
+                                        color = textPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        if (selectedGenre == "All") "All Songs" else selectedGenre,
+                                        color = textMuted,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }

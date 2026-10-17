@@ -391,12 +391,12 @@ fun NowPlayingSheet(
 
         val lyricsProgress by animateFloatAsState(
             targetValue = if (isLyricsActive) 1f else 0f,
-            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 360f),
             label = "lyricsProgress"
         )
         val nextUpProgress by animateFloatAsState(
             targetValue = if (isNextUpActive) 1f else 0f,
-            animationSpec = spring(dampingRatio = 0.82f, stiffness = 340f),
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 360f),
             label = "nextUpProgress"
         )
 
@@ -435,7 +435,7 @@ fun NowPlayingSheet(
             label = "controlsAlpha"
         )
 
-        val compactProgress = maxOf(lyricsProgress, nextUpProgress)
+        val compactProgress = maxOf(lyricsProgress, nextUpProgress).coerceIn(0f, 1f)
         val coverSize = defaultCoverSize + (68.dp - defaultCoverSize) * compactProgress
         val coverLeft = defaultCoverLeft + (24.dp - defaultCoverLeft) * compactProgress
         val coverTop = defaultCoverTop + (54.dp - defaultCoverTop) * compactProgress
@@ -486,7 +486,7 @@ fun NowPlayingSheet(
                         val effectiveCoverAlpha = if (isLyricsActive) coverAlpha * controlsAlpha else coverAlpha
                         alpha = effectiveCoverAlpha
                         transformOrigin = TransformOrigin(0f, 0f)
-                        if (!isCompactCover && morphProgress >= 0.98f) {
+                        if (compactProgress <= 0.001f && morphProgress >= 0.98f) {
                             val dampScale = 1f - (kotlin.math.abs(animatedDragX) / 3000f).coerceIn(0f, 0.05f)
                             scaleX = coverScale * dampScale
                             scaleY = coverScale * dampScale
@@ -495,7 +495,8 @@ fun NowPlayingSheet(
                             scaleX = coverScale * artSqueezeX
                             scaleY = coverScale * artStretchY
                         }
-                        shadowElevation = if (isCompactCover) 4.dp.toPx() else (16.dp.toPx() * morphProgress)
+                        val baseElevation = lerp(16.dp, 4.dp, compactProgress)
+                        shadowElevation = (baseElevation.toPx() * morphProgress)
                         shape = RoundedCornerShape(effectiveCoverCorner)
                         clip = true
                     }
@@ -2081,22 +2082,19 @@ fun QueueSongItem(
         label = "queueDragOffset"
     )
 
-    val cardShape = RoundedCornerShape(16.dp)
+    val cardShape = RoundedCornerShape(50)
     val cardBg = Color.White.copy(alpha = 0.12f)
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 3.dp)
-            .height(64.dp)
-            .shadow(2.dp, cardShape, spotColor = Color.Black.copy(alpha = 0.25f))
+            .height(56.dp)
             .clip(cardShape)
-            .background(cardBg)
     ) {
         val totalWidthPx = constraints.maxWidth.toFloat()
-        val thresholdPx = totalWidthPx * 0.50f // Enforce at least 50% swipe threshold
+        val thresholdPx = totalWidthPx * 0.50f
         val dragFraction = if (thresholdPx > 0f) (kotlin.math.abs(animatedOffsetX) / thresholdPx).coerceIn(0f, 1f) else 0f
-        val dragBlur = (dragFraction * 18f).dp
-        val dragAlpha = (1f - dragFraction * 0.70f).coerceIn(0.25f, 1f)
+        val dragAlpha = (1f - dragFraction * 0.40f).coerceIn(0.4f, 1f)
 
         // Swipe Action Backgrounds
         if (offsetX > 20f) {
@@ -2109,13 +2107,13 @@ fun QueueSongItem(
                 contentAlignment = Alignment.CenterStart
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.PlaylistPlay, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                    Icon(Icons.Default.PlaylistPlay, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         if (isOverThreshold) "Release to Play Next" else "Swipe 50% to Play Next",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
+                        fontSize = 12.sp
                     )
                 }
             }
@@ -2133,7 +2131,7 @@ fun QueueSongItem(
                         if (isOverThreshold) "Release to Remove" else "Swipe 50% to Remove",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
+                        fontSize = 12.sp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
@@ -2141,14 +2139,13 @@ fun QueueSongItem(
             }
         }
 
-        // Foreground Card Row: transparent glass at rest; a solid backing fades in only while swiping so it never overlaps the green/red action colour
+        // Foreground Card Row: clean pill matching Next Up button UI
         Row(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(animatedOffsetX.roundToInt(), 0) }
                 .clip(cardShape)
-                .background(Color(0xFF1E2024).copy(alpha = (kotlin.math.abs(animatedOffsetX) / 40f).coerceIn(0f, 1f) * 0.95f))
-                .background(cardBg)
+                .background(if (kotlin.math.abs(animatedOffsetX) > 2f) Color(0xFF1E2024) else cardBg)
                 .pointerInput(totalWidthPx) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
@@ -2169,11 +2166,14 @@ fun QueueSongItem(
                         }
                     )
                 }
-                .clickable {
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
                     Haptics.click(view)
                     onPlay()
                 }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
@@ -2182,40 +2182,31 @@ fun QueueSongItem(
                     .graphicsLayer { alpha = dragAlpha },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Fixed hardware-clipped Box guarantees rounded corners never blur into squares
+                // High-res album artwork in rounded thumbnail
                 Box(
                     modifier = Modifier
-                        .size(46.dp)
-                        .graphicsLayer {
-                            shape = RoundedCornerShape(10.dp)
-                            clip = true
-                        }
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
                 ) {
                     AsyncImage(
                         model = song.coverUrl,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .blur(dragBlur)
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .blur(dragBlur)
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text(song.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(song.artist, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, maxLines = 1)
+                    Text(song.artist, color = Color.White.copy(alpha = 0.60f), fontSize = 11.sp, maxLines = 1)
                 }
             }
             // Up / Down Reorder buttons with haptic feedback
             Row(
-                modifier = Modifier
-                    .graphicsLayer { alpha = dragAlpha }
-                    .blur(dragBlur),
+                modifier = Modifier.graphicsLayer { alpha = dragAlpha },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (index > 0) {
@@ -2235,7 +2226,7 @@ fun QueueSongItem(
                         Icon(
                             Icons.Default.KeyboardArrowUp,
                             contentDescription = "Move up",
-                            tint = Color.White.copy(alpha = 0.7f),
+                            tint = Color.White.copy(alpha = 0.75f),
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -2257,7 +2248,7 @@ fun QueueSongItem(
                         Icon(
                             Icons.Default.KeyboardArrowDown,
                             contentDescription = "Move down",
-                            tint = Color.White.copy(alpha = 0.7f),
+                            tint = Color.White.copy(alpha = 0.75f),
                             modifier = Modifier.size(20.dp)
                         )
                     }

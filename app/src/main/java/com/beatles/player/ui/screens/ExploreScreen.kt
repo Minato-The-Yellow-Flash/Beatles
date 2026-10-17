@@ -224,11 +224,13 @@ fun ExploreScreen(
     var selectedGenreForDetail by remember { mutableStateOf<String?>(null) }
     var selectedGenreOriginBounds by remember { mutableStateOf<Rect?>(null) }
     val view = LocalView.current
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     var selectedChartGenre by remember { mutableStateOf("Global") }
     var isTopChartsExpanded by remember { mutableStateOf(false) }
     var isChartRefreshing by remember { mutableStateOf(false) }
     var dynamicChartSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var lastChartRefreshTime by remember { mutableLongStateOf(0L) }
     val chartGenres = remember { listOf("Global", "Punjabi", "Bollywood", "Pop", "Hip-Hop", "Lo-Fi") }
     val scope = rememberCoroutineScope()
 
@@ -236,7 +238,10 @@ fun ExploreScreen(
         isChartRefreshing = true
         try {
             val fetched = MusicRepository.getLiveGlobalTopCharts(selectedChartGenre)
-            if (fetched.isNotEmpty()) dynamicChartSongs = fetched
+            if (fetched.isNotEmpty()) {
+                dynamicChartSongs = fetched
+                lastChartRefreshTime = System.currentTimeMillis()
+            }
         } catch (_: Exception) {}
         isChartRefreshing = false
     }
@@ -391,14 +396,23 @@ fun ExploreScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             IconButton(
                                 onClick = {
-                                    com.beatles.player.ui.components.Haptics.tick(view)
-                                    scope.launch {
-                                        isChartRefreshing = true
-                                        try {
-                                            val fresh = MusicRepository.getLiveGlobalTopCharts(selectedChartGenre)
-                                            if (fresh.isNotEmpty()) dynamicChartSongs = fresh
-                                        } catch (_: Exception) {}
-                                        isChartRefreshing = false
+                                    val now = System.currentTimeMillis()
+                                    val elapsed = now - lastChartRefreshTime
+                                    if (elapsed < 120_000L && dynamicChartSongs.isNotEmpty()) {
+                                        val remainingSec = ((120_000L - elapsed) / 1000L).coerceAtLeast(1L)
+                                        com.beatles.player.ui.components.Haptics.reject(view)
+                                        android.widget.Toast.makeText(context, "Charts are fresh. Please wait ${remainingSec}s before refreshing", android.widget.Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        com.beatles.player.ui.components.Haptics.tick(view)
+                                        lastChartRefreshTime = now
+                                        scope.launch {
+                                            isChartRefreshing = true
+                                            try {
+                                                val fresh = MusicRepository.getLiveGlobalTopCharts(selectedChartGenre)
+                                                if (fresh.isNotEmpty()) dynamicChartSongs = fresh
+                                            } catch (_: Exception) {}
+                                            isChartRefreshing = false
+                                        }
                                     }
                                 },
                                 modifier = Modifier.size(32.dp)
@@ -576,22 +590,23 @@ fun FluidGenreDetailOverlay(
             genreTracks = local
             scope.launch {
                 try {
-                    val (q1, q2) = when (genre.lowercase().trim()) {
-                        "punjabi" -> "top punjabi songs 2024" to "latest punjabi hits"
-                        "bollywood" -> "top bollywood songs 2024" to "hindi romantic hits"
-                        "hip-hop" -> "top hip hop songs 2024" to "rap drill hits"
-                        "pop" -> "top pop hits 2024" to "viral pop songs"
-                        "lo-fi" -> "lofi chill beats songs" to "lofi study beats"
-                        "indie" -> "top indie songs 2024" to "best indie folk"
-                        "ghazal" -> "best ghazals hits" to "jagjit singh ghazals"
-                        "classical" -> "indian classical music hits" to "classical instrumental"
-                        "electronic" -> "electronic dance music hits" to "edm festival hits"
-                        "r&b" -> "top r&b soul songs" to "modern r&b playlist"
-                        else -> "$genre hits 2024" to "best $genre tracks"
+                    val (q1, q2, q3) = when (genre.lowercase().trim()) {
+                        "punjabi" -> Triple("top punjabi songs 2024", "latest punjabi hits", "best punjabi songs all time classics")
+                        "bollywood" -> Triple("top bollywood songs 2024", "hindi romantic hits", "best bollywood classic songs")
+                        "hip-hop" -> Triple("top hip hop songs 2024", "rap drill hits", "hip hop rap classics")
+                        "pop" -> Triple("top pop hits 2024", "viral pop songs", "all time pop classics")
+                        "lo-fi" -> Triple("lofi chill beats songs", "lofi study beats", "midnight lofi aesthetic vibes")
+                        "indie" -> Triple("top indie songs 2024", "best indie folk", "acoustic indie classics")
+                        "ghazal" -> Triple("best ghazals hits", "jagjit singh ghazals", "ghulam ali mehdi hassan ghazals")
+                        "classical" -> Triple("indian classical music hits", "classical instrumental", "classical raga gold")
+                        "electronic" -> Triple("electronic dance music hits", "edm festival hits", "electronic synthwave")
+                        "r&b" -> Triple("top r&b soul songs", "modern r&b playlist", "r&b soul 90s 2000s classics")
+                        else -> Triple("$genre hits 2024", "best $genre tracks", "classic $genre songs")
                     }
                     val d1 = async { MusicRepository.search(q1) }
                     val d2 = async { MusicRepository.search(q2) }
-                    val combined = (local + d1.await() + d2.await()).distinctBy { it.id }
+                    val d3 = async { MusicRepository.search(q3) }
+                    val combined = (local + d1.await() + d2.await() + d3.await()).distinctBy { it.id }
                     if (combined.isNotEmpty()) {
                         genreTracks = combined
                     }

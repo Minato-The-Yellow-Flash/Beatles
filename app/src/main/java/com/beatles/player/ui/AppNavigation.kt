@@ -431,6 +431,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             onSelectAlbum = { alb, bounds -> viewModel.setSelectedAlbum(alb, bounds) },
                                             onPlayAlbumSet = { viewModel.playAlbumSet(it) },
                                             onSelectAlbumSet = { set, bounds -> viewModel.setSelectedAlbumSet(set, bounds) },
+                                            onSelectGenre = { g, bounds -> viewModel.setSelectedGenre(g, bounds) },
                                             onLoadMoreTopSongs = { viewModel.loadMoreTopSongs() },
                                             onRefresh = { viewModel.refreshHomeScreen() }
                                         )
@@ -455,7 +456,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             focusRequested = searchFocusRequested,
                                             onSearch = { viewModel.search(it) },
                                             onQueryChange = { viewModel.fetchSearchSuggestions(it) },
-                                            onSelectAlbum = { viewModel.setSelectedAlbum(it) },
+                                            onSelectAlbum = { alb, bounds -> viewModel.setSelectedAlbum(alb, bounds) },
                                             onPlay = { s, _, bounds -> viewModel.playSong(s, playlist = null, isFromSearch = true, sourceBounds = bounds) },
                                             onMoveToPlayNext = { s -> viewModel.moveSongToPlayNext(s) },
                                             onPlayArtistMix = { viewModel.playArtistMix(it) },

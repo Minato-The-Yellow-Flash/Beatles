@@ -1,8 +1,8 @@
 {
-  "versionName": "1.699",
-  "versionCode": 10,
-  "releaseTitle": "Beatles v1.699",
-  "releaseNotes": "• Glowing Mini Player Time Bubble: Compact luminous pill with dynamic inner shadow/glow and live scrub time\n• Next Up Blur Preservation: Full rich ambient album blur now remains completely intact when viewing queue\n• Clean Queue Reorder Controls: Pure circular reorder buttons eliminating rectangular background layers\n• Header Auto-Hide: Floating logo and profile icon seamlessly hide when browsing artists, albums, sets, or genres\n• Fast Full-Screen Lyrics: Idle reading duration tuned to 4s for instant immersive typography\n• System Optimization: Removed ColorOS lyrics broadcast spam for improved battery and CPU efficiency",
-  "apkUrl": "https://github.com/Minato-The-Yellow-Flash/Beatles/releases/download/1.699/Beatles-App.apk",
-  "publishedAt": "2026-10-17T15:25:00Z"
+  "versionName": "1.8",
+  "versionCode": 11,
+  "releaseTitle": "Beatles v1.8",
+  "releaseNotes": "• Seamless Next Up Song Pills: Redesigned song queue items with pure pill curves matching the Next Up button and eliminated rectangular background artifacts\n• Smooth Album Morph Transition: Calibrated critically-damped spring mechanics eliminating snap or subtle jump when closing lyrics or queue\n• Explore by Genre 'Show More': Added fluid navbar glass 'Show More' card with arrow for unlimited genre exploration, combining new releases and all-time classics\n• Rich Top Charts with 2-Minute Cooldown: Expanded charts with 35–50+ tracks and smart 2-minute refresh throttling with tactile feedback\n• Movie Soundtrack Albums in Search: Search songs to reveal their parent Bollywood and cinema movie soundtrack albums with full album UI and fluid shared-element morph animation",
+  "apkUrl": "https://github.com/Minato-The-Yellow-Flash/Beatles/releases/download/v1.8/Beatles-App.apk",
+  "publishedAt": "2026-10-17T16:30:00Z"
 }
