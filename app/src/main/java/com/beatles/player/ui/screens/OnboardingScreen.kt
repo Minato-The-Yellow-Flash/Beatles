@@ -21,6 +21,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.beatles.player.ui.glassRefraction
+import com.beatles.player.ui.motion.liquidPress
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -281,7 +285,10 @@ fun OnboardStep1(onNext: (String) -> Unit) {
                     cursorBrush = SolidColor(if (isDark) Color.White else AccentRed),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(inputBg, RoundedCornerShape(50))
+                        .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                        .clip(RoundedCornerShape(50))
+                        .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.90f))
+                        .glassRefraction(50.dp, isDark = isDark)
                         .padding(horizontal = 20.dp, vertical = 16.dp),
                     decorationBox = { inner ->
                         if (name.isEmpty()) Text("Your name...", color = textSecondary, fontSize = 16.sp)
@@ -290,19 +297,22 @@ fun OnboardStep1(onNext: (String) -> Unit) {
                 )
             }
             Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = { if (name.isNotBlank()) onNext(name.trim()) },
-                enabled = name.isNotBlank(),
+            val nextInteraction = remember { MutableInteractionSource() }
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 36.dp, top = 8.dp)
-                    .height(56.dp),
-                shape = RoundedCornerShape(50),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = btnActiveBg,
-                    disabledContainerColor = btnInactiveBg
-                )
+                    .height(56.dp)
+                    .liquidPress(nextInteraction)
+                    .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.15f))
+                    .clip(RoundedCornerShape(50))
+                    .background(if (name.isNotBlank()) btnActiveBg else btnInactiveBg)
+                    .glassRefraction(50.dp, isDark = isDark)
+                    .clickable(enabled = name.isNotBlank(), interactionSource = nextInteraction, indication = null) {
+                        onNext(name.trim())
+                    },
+                contentAlignment = Alignment.Center
             ) {
                 Text(
                     "Next",
@@ -390,17 +400,16 @@ fun OnboardStepLanguage(
                 ) {
                     items(MUSIC_LANGUAGES) { lang ->
                         val isSelected = selectedLangs.contains(lang.code)
+                        val cardInteraction = remember { MutableInteractionSource() }
                         Box(
                             modifier = Modifier
                                 .height(125.dp)
+                                .liquidPress(cardInteraction)
+                                .shadow(2.dp, RoundedCornerShape(20.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(if (isSelected) cardSelectedBg else cardBg)
-                                .border(
-                                    width = if (isSelected) 2.dp else 1.dp,
-                                    color = if (isSelected) AccentRed else cardBorder,
-                                    shape = RoundedCornerShape(20.dp)
-                                )
-                                .clickable {
+                                .glassRefraction(20.dp, isDark = isDark)
+                                .clickable(interactionSource = cardInteraction, indication = null) {
                                     selectedLangs = if (lang.code == "All") {
                                         if (isSelected) emptySet() else setOf("All")
                                     } else {
@@ -454,19 +463,22 @@ fun OnboardStepLanguage(
             }
 
             // Bottom CTA
-            Button(
-                onClick = { onNext(selectedLangs) },
-                enabled = selectedLangs.isNotEmpty(),
+            val langNextInteraction = remember { MutableInteractionSource() }
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 36.dp, top = 8.dp)
-                    .height(56.dp),
-                shape = RoundedCornerShape(50),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = btnActiveBg,
-                    disabledContainerColor = btnInactiveBg
-                )
+                    .height(56.dp)
+                    .liquidPress(langNextInteraction)
+                    .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.15f))
+                    .clip(RoundedCornerShape(50))
+                    .background(if (selectedLangs.isNotEmpty()) btnActiveBg else btnInactiveBg)
+                    .glassRefraction(50.dp, isDark = isDark)
+                    .clickable(enabled = selectedLangs.isNotEmpty(), interactionSource = langNextInteraction, indication = null) {
+                        onNext(selectedLangs)
+                    },
+                contentAlignment = Alignment.Center
             ) {
                 Text(
                     if (selectedLangs.size > 1) "Next (${selectedLangs.size} languages selected)" else if (selectedLangs.size == 1) "Next · ${selectedLangs.first()}" else "Next",
@@ -588,8 +600,10 @@ fun OnboardStepArtists(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .background(searchBg, RoundedCornerShape(50))
-                    .border(1.dp, searchBorder, RoundedCornerShape(50))
+                    .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                    .clip(RoundedCornerShape(50))
+                    .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.90f))
+                    .glassRefraction(50.dp, isDark = isDark)
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -642,16 +656,19 @@ fun OnboardStepArtists(
             ) {
                 items(MUSIC_LANGUAGES) { lang ->
                     val isSelected = activeLanguage.equals(lang.code, ignoreCase = true)
+                    val chipInteraction = remember { MutableInteractionSource() }
                     Box(
                         modifier = Modifier
+                            .liquidPress(chipInteraction)
+                            .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.30f) else Color.Black.copy(alpha = 0.10f))
                             .clip(RoundedCornerShape(50))
-                            .background(if (isSelected) AccentRed else chipBg)
-                            .border(
-                                width = 1.dp,
-                                color = if (isSelected) AccentRed else chipBorder,
-                                shape = RoundedCornerShape(50)
+                            .background(
+                                if (isSelected) AccentRed
+                                else if (isDark) Color(0xFF1E2024).copy(alpha = 0.70f)
+                                else Color(0xFFE2E2E2).copy(alpha = 0.60f)
                             )
-                            .clickable { activeLanguage = lang.code }
+                            .glassRefraction(50.dp, isDark = isDark)
+                            .clickable(interactionSource = chipInteraction, indication = null) { activeLanguage = lang.code }
                             .padding(horizontal = 14.dp, vertical = 7.dp)
                     ) {
                         Text(
@@ -683,13 +700,16 @@ fun OnboardStepArtists(
                         Box(
                             modifier = Modifier
                                 .height(190.dp)
+                                .shadow(3.dp, RoundedCornerShape(20.dp))
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(cardBg)
+                                .glassRefraction(20.dp, isDark = isDark)
                                 .border(
                                     width = if (isSelected) 2.dp else 1.dp,
                                     color = if (isSelected) AccentRed else cardBorder,
                                     shape = RoundedCornerShape(20.dp)
                                 )
+                                .liquidPress(enabled = true)
                                 .clickable {
                                     val willBeSelected = !isSelected
                                     selected = if (isSelected) selected - artist.name else selected + artist.name
@@ -759,7 +779,10 @@ fun OnboardStepArtists(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 36.dp, top = 8.dp)
-                    .height(56.dp),
+                    .height(56.dp)
+                    .shadow(if (selected.isNotEmpty()) 4.dp else 0.dp, RoundedCornerShape(50))
+                    .glassRefraction(50.dp, isDark = isDark)
+                    .liquidPress(enabled = selected.isNotEmpty()),
                 shape = RoundedCornerShape(50),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = btnActiveBg,
@@ -825,6 +848,8 @@ fun OnboardStepReady(name: String, hasData: Boolean = false, onDone: () -> Unit)
                 modifier = Modifier
                     .size(90.dp)
                     .scale(pulseScale)
+                    .shadow(4.dp, CircleShape)
+                    .glassRefraction(45.dp, isDark = isDark, isCircle = true)
                     .background(logoBg, CircleShape),
                 contentAlignment = Alignment.Center
             ) {

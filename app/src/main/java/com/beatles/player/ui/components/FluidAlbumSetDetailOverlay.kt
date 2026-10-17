@@ -647,28 +647,66 @@ fun FluidAlbumSetDetailOverlay(
                             }
                         }
 
-                        // Page indicator dots
-                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+                }
+
+                // ═══ FLOATING ALBUM SET BOTTOM INDICATOR BAR (styled like bottom navbar) ═══
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 28.dp)
+                        .height(52.dp)
+                        .shadow(8.dp, RoundedCornerShape(26.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.18f))
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(
+                            if (isDark) Color(0xFF1E2024).copy(alpha = 0.82f)
+                            else Color.White.copy(alpha = 0.90f)
+                        )
+                        .glassRefraction(26.dp, isDark = isDark)
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Previous Album button
+                        IconButton(
+                            onClick = {
+                                if (pagerState.currentPage > 0) {
+                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
+                                }
+                            },
+                            enabled = pagerState.currentPage > 0,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ChevronLeft,
+                                contentDescription = "Previous Album",
+                                tint = if (pagerState.currentPage > 0) textPrimary else textSecondary.copy(alpha = 0.3f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // Sliding dots / indicator
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             albums.forEachIndexed { idx, _ ->
                                 val isSelected = idx == pagerState.currentPage
                                 val dotWidth by animateDpAsState(
-                                    targetValue = if (isSelected) 18.dp else 5.dp,
-                                    animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
-                                    label = "dotWidth"
+                                    targetValue = if (isSelected) 24.dp else 7.dp,
+                                    animationSpec = spring(dampingRatio = 0.78f, stiffness = 380f),
+                                    label = "floatingSetDotWidth"
                                 )
-                                val dotColor = if (isSelected) AccentRed else textSecondary.copy(alpha = 0.40f)
+                                val dotColor = if (isSelected) AccentRed else textSecondary.copy(alpha = 0.35f)
 
                                 Box(
                                     modifier = Modifier
-                                        .padding(horizontal = 2.5.dp)
-                                        .height(4.dp)
+                                        .height(6.dp)
                                         .width(dotWidth)
-                                        .clip(RoundedCornerShape(2.dp))
+                                        .clip(RoundedCornerShape(3.dp))
                                         .background(dotColor)
                                         .clickable {
                                             scope.launch {
@@ -677,6 +715,24 @@ fun FluidAlbumSetDetailOverlay(
                                         }
                                 )
                             }
+                        }
+
+                        // Next Album button
+                        IconButton(
+                            onClick = {
+                                if (pagerState.currentPage < albums.size - 1) {
+                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                                }
+                            },
+                            enabled = pagerState.currentPage < albums.size - 1,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = "Next Album",
+                                tint = if (pagerState.currentPage < albums.size - 1) textPrimary else textSecondary.copy(alpha = 0.3f),
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
                 }

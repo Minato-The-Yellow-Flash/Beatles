@@ -527,45 +527,21 @@ fun ExploreScreen(
             }
         }
 
-        // Fixed Header: "Browse" Title with subtle layer blur backdrop (Hidden when category detail overlay is open)
+        // Header: "Browse" Title (Hidden when category detail overlay is open)
         if (selectedGenreForDetail == null) {
-            val isScrolled = headerOffset() < -10f
-            val headerBlurAlpha by animateFloatAsState(
-                targetValue = if (isScrolled) 1f else 0f,
-                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-                label = "exploreHeaderBlurAlpha"
-            )
-
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .zIndex(5f)
+                    .offset { IntOffset(0, (headerOffset() * 0.85f).roundToInt()) }
+                    .graphicsLayer { alpha = headerAlpha() }
+                    .padding(top = 110.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
             ) {
-                if (headerBlurAlpha > 0.001f) {
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .graphicsLayer { alpha = headerBlurAlpha }
-                            .background(
-                                if (isDark) Color(0xFF14151B).copy(alpha = 0.50f)
-                                else Color(0xFFFFFFFF).copy(alpha = 0.65f)
-                            )
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 110.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
-                ) {
-                    Text("Browse", color = textPrimary, fontSize = 31.sp, fontWeight = FontWeight.Black)
-                    Text(
-                        "Discover something new",
-                        color = textSecondary,
-                        fontSize = 13.sp
-                    )
-                }
+                Text("Browse", color = textPrimary, fontSize = 31.sp, fontWeight = FontWeight.Black)
+                Text(
+                    "Discover something new",
+                    color = textSecondary,
+                    fontSize = 13.sp
+                )
             }
         }
 

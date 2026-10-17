@@ -322,17 +322,13 @@ fun HomeScreen(
                     .zIndex(15f)
                     .padding(top = 96.dp)
                     .offset { IntOffset(0, (currentPullOffset * 0.42f).roundToInt()) }
+                    .shadow(4.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.15f))
                     .clip(RoundedCornerShape(50))
                     .background(
                         if (isDark) Color(0xFF1E1E24).copy(alpha = 0.88f * refreshAlpha)
                         else Color.White.copy(alpha = 0.90f * refreshAlpha)
                     )
-                    .border(
-                        0.5.dp,
-                        if (isDark) Color.White.copy(alpha = (if (isThresholdReached) 0.28f else 0.14f) * refreshAlpha)
-                        else Color.Black.copy(alpha = (if (isThresholdReached) 0.22f else 0.10f) * refreshAlpha),
-                        RoundedCornerShape(50)
-                    )
+                    .glassRefraction(50.dp, isDark = isDark)
                     .padding(horizontal = 16.dp, vertical = 7.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -396,16 +392,13 @@ fun HomeScreen(
         ) {
             Box(
                 modifier = Modifier
+                    .shadow(4.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.15f))
                     .clip(RoundedCornerShape(50))
                     .background(
                         if (isDark) Color(0xFF1E1E24).copy(alpha = 0.95f)
                         else Color.White.copy(alpha = 0.96f)
                     )
-                    .border(
-                        0.5.dp,
-                        if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.12f),
-                        RoundedCornerShape(50)
-                    )
+                    .glassRefraction(50.dp, isDark = isDark)
                     .padding(horizontal = 18.dp, vertical = 9.dp)
             ) {
                 Row(
@@ -714,10 +707,18 @@ fun HomeScreen(
                                         modifier = Modifier
                                             .align(Alignment.TopStart)
                                             .padding(8.dp)
-                                            .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(50))
-                                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                                            .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.15f))
+                                            .clip(RoundedCornerShape(50))
+                                            .background(if (isDark) Color(0xFF181A22).copy(alpha = 0.65f) else Color(0xFFFFFFFF).copy(alpha = 0.75f))
+                                            .glassRefraction(50.dp, isDark = isDark)
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
                                     ) {
-                                        Text("${albumSongs.size} tracks", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                        Text(
+                                            "${albumSongs.size} tracks",
+                                            color = if (isDark) Color.White else Color(0xFF141416),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
                                     }
                                     // Play button overlay
                                     val playInteraction = remember { MutableInteractionSource() }
@@ -729,7 +730,7 @@ fun HomeScreen(
                                             .liquidPress(playInteraction)
                                             .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.20f))
                                             .clip(CircleShape)
-                                            .background(if (isDark) Color.White else Color(0xFF141416))
+                                            .background(if (isDark) Color(0xFF1E1E24).copy(alpha = 0.70f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
                                             .glassRefraction(17.dp, isDark = isDark, isCircle = true)
                                             .clickable(
                                                 interactionSource = playInteraction,
@@ -742,7 +743,7 @@ fun HomeScreen(
                                         Icon(
                                             Icons.Default.PlayArrow,
                                             contentDescription = "Play Album",
-                                            tint = if (isDark) Color.Black else Color.White,
+                                            tint = if (isDark) Color.White else Color(0xFF141416),
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
@@ -939,6 +940,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
+                        .shadow(4.dp, RoundedCornerShape(22.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                         .clip(RoundedCornerShape(22.dp))
                         .background(
                             Brush.linearGradient(
@@ -946,11 +948,7 @@ fun HomeScreen(
                                 else listOf(Color(0xFFF3E7EC), Color(0xFFE9ECF5), Color(0xFFF6F7F9))
                             )
                         )
-                        .border(
-                            0.5.dp,
-                            if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f),
-                            RoundedCornerShape(22.dp)
-                        )
+                        .glassRefraction(22.dp, isDark = isDark)
                         .padding(18.dp)
                 ) {
                     Column {
@@ -961,7 +959,10 @@ fun HomeScreen(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .background(AccentRed.copy(alpha = 0.18f), RoundedCornerShape(50))
+                                    .shadow(2.dp, RoundedCornerShape(50), spotColor = AccentRed.copy(alpha = 0.35f))
+                                    .clip(RoundedCornerShape(50))
+                                    .background(AccentRed.copy(alpha = 0.18f))
+                                    .glassRefraction(50.dp, isDark = isDark)
                                     .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1033,12 +1034,14 @@ fun HomeScreen(
                         // Preview tracks in spotlight
                         spotlightSongs.take(3).forEach { song ->
                             var itemBounds by remember { mutableStateOf<Rect?>(null) }
+                            val trackInteraction = remember { MutableInteractionSource() }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
+                                    .liquidPress(trackInteraction)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .clickable { onPlay(song, spotlightSongs, itemBounds) }
+                                    .clickable(interactionSource = trackInteraction, indication = null) { onPlay(song, spotlightSongs, itemBounds) }
                                     .padding(vertical = 6.dp, horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -1243,11 +1246,9 @@ fun HomeScreen(
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(28.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
-
-            item(key = "bottom_spacer") { Spacer(modifier = Modifier.height(30.dp)) }
         }
     }
 }

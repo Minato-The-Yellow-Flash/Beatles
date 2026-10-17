@@ -514,46 +514,13 @@ fun LibraryScreen(
             label = "librarySegmentIndicator"
         )
 
-        val isScrolled = headerOffset() < -5f || listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 10
-        val headerBlurAlpha by animateFloatAsState(
-            targetValue = if (isScrolled) 1f else 0f,
-            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-            label = "libraryHeaderBlurAlpha"
-        )
-
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .zIndex(5f)
+                .offset { IntOffset(0, (headerOffset() * 0.85f).roundToInt()) }
+                .graphicsLayer { alpha = headerAlpha() }
+                .padding(bottom = 12.dp)
         ) {
-            // Subtle layer blur backdrop like the nav bar without edges (layer blur not hard blur)
-            if (headerBlurAlpha > 0.001f) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .graphicsLayer { alpha = headerBlurAlpha }
-                        .then(
-                            if (hazeState != null) {
-                                Modifier.hazeChild(
-                                    state = hazeState,
-                                    shape = RectangleShape,
-                                    style = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
-                                )
-                            } else Modifier
-                        )
-                        .background(
-                            if (isDark) Color(0xFF14151B).copy(alpha = 0.50f)
-                            else Color(0xFFFFFFFF).copy(alpha = 0.65f)
-                        )
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp)
-            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -634,4 +601,3 @@ fun LibraryScreen(
             }
         }
     }
-}

@@ -170,21 +170,21 @@ object TransitionPlanner {
                         if (outStart + mixLen > dur - 1_000L) continue
 
                         val inSinging = (inOffset + mixLen) > (inInfo.vocalStartMs + 500L)
-                        var score = 100f
+                        var score = 160f // Prioritize beat-to-beat mix
 
                         if (outSinging && inSinging) {
                             score -= 2000f // Vocal clash rejection
                         } else if (!outSinging && !inSinging) {
-                            score += 90f // Pure instrumental beat-to-beat groove: GOLD!
+                            score += 100f // Pure instrumental beat-to-beat groove: GOLD!
                         } else if (!outSinging && inSinging) {
-                            score += 50f
+                            score += 60f
                         } else {
                             score += 40f
                         }
 
-                        if (outInfo.isBassHeavy && inInfo.isBassHeavy) score += 40f
-                        if (isHarmonicallyCompatible(outInfo.keyTonic, inInfo.keyTonic)) score += 25f
-                        score += (1.0f - bpmDiffPct * 2f).coerceIn(0f, 1f) * 30f
+                        if (outInfo.isBassHeavy && inInfo.isBassHeavy) score += 50f
+                        if (isHarmonicallyCompatible(outInfo.keyTonic, inInfo.keyTonic)) score += 30f
+                        score += (1.0f - bpmDiffPct * 2f).coerceIn(0f, 1f) * 40f
 
                         val desc = "Beat-matched $beats-beat mix (${outBpm.toInt()} → ${targetBpm.toInt()} → ${bestInBpm.toInt()} BPM)"
                         evaluatedCandidates.add(
@@ -212,10 +212,10 @@ object TransitionPlanner {
                     val dropLen = (outBeat * 4f).toLong().coerceIn(2_800L, 5_000L)
                     if (outStart + dropLen <= dur - 1_000L) {
                         val inSinging = (inOffset + dropLen) > (inInfo.vocalStartMs + 800L)
-                        var dropScore = 95f
+                        var dropScore = 140f // Prioritize beat drop over crossfade
                         if (outSinging && inSinging) dropScore -= 1500f
-                        if (!outSinging) dropScore += 45f
-                        if (bpmDiffPct > 0.15f) dropScore += 40f
+                        if (!outSinging) dropScore += 50f
+                        if (bpmDiffPct > 0.15f) dropScore += 45f
                         val echoDelay = (60_000f / outBpm * 0.5f).toInt().coerceIn(200, 500)
 
                         val desc = "Beat drop transition on the 1 (${bestInBpm.toInt()} BPM)"
@@ -295,6 +295,11 @@ object TransitionPlanner {
 
         val best = evaluatedCandidates.maxByOrNull { it.score }
         if (best != null && best.score > 0f) {
+            val planTier = when (best.type) {
+                TransitionType.BEAT_MIX, TransitionType.DROP_TRANSITION -> AutoMixTier.TIER_1_BEAT_MATCH
+                TransitionType.NO_TRANSITION -> AutoMixTier.TIER_3_GAPLESS_MICROFADE
+                else -> AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE
+            }
             return TransitionPlan(
                 type = best.type,
                 startPositionMs = best.startPositionMs,
@@ -307,16 +312,19 @@ object TransitionPlanner {
                 description = best.description,
                 incomingGainMatch = 1.0f,
                 fromWaveform = false,
-                echoDelayMs = 0
+                echoDelayMs = 0,
+                tier = planTier
             )
         }
 
-        // Safe Fallback: Melodic dissolve or gentle outro blend
+        // Safe Fallback: Beat-mix or melodic dissolve
         val fallbackLen = 6_000L
         val fallbackStart = (dur - fallbackLen - 2_000L).coerceIn(minExitTime, (dur - fallbackLen - 1_000L).coerceAtLeast(minExitTime))
+        val fallbackType = if (bpmDiffPct <= 0.22f && outBpm > 0f && bestInBpm > 0f) TransitionType.BEAT_MIX else TransitionType.LONG_CROSSFADE
+        val fallbackTier = if (fallbackType == TransitionType.BEAT_MIX) AutoMixTier.TIER_1_BEAT_MATCH else AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE
 
         return TransitionPlan(
-            type = if (bpmDiffPct <= 0.18f && outInfo.isBassHeavy) TransitionType.BEAT_MIX else TransitionType.LONG_CROSSFADE,
+            type = fallbackType,
             startPositionMs = floorToGrid(fallbackStart, outPhase, outBar).coerceAtLeast(minExitTime),
             durationMs = fallbackLen,
             incomingStartOffsetMs = inOffsets.firstOrNull() ?: 0L,
@@ -324,10 +332,11 @@ object TransitionPlanner {
             outgoingTempoAdjustmentRatio = 1.0f,
             bassSwapTimestampMs = fallbackStart + fallbackLen / 2,
             confidenceScore = 0.85f,
-            description = "Outro harmonic blend",
+            description = if (fallbackType == TransitionType.BEAT_MIX) "Beat-matched outro mix" else "Outro harmonic blend",
             incomingGainMatch = 1.0f,
             fromWaveform = false,
-            echoDelayMs = 0
+            echoDelayMs = 0,
+            tier = fallbackTier
         )
     }
 

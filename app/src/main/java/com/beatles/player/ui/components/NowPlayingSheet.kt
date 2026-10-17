@@ -11,6 +11,8 @@ import com.beatles.player.ui.theme.VisualQuality
 import android.os.Build
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import com.beatles.player.ui.motion.LiquidMotion
+import com.beatles.player.ui.motion.liquidPress
+import com.beatles.player.ui.glassRefraction
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -1791,8 +1793,10 @@ fun NowPlayingSheet(
                             alpha = miniMenuAnim.coerceIn(0f, 1f)
                             transformOrigin = TransformOrigin(0.96f, 1.0f)
                         }
+                        .shadow(8.dp, RoundedCornerShape(22.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.18f))
                         .clip(RoundedCornerShape(22.dp))
-                        .background(menuBg)
+                        .background(if (isDark) Color(0xFF1E2026).copy(alpha = 0.88f) else Color.White.copy(alpha = 0.92f))
+                        .glassRefraction(22.dp, isDark = isDark)
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                         .padding(vertical = 6.dp)
                 ) {
@@ -1995,12 +1999,16 @@ fun QueueSongItem(
         label = "queueDragOffset"
     )
 
+    val isDark = AppTheme.isDark
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
+            .padding(horizontal = 20.dp, vertical = 3.dp)
             .height(64.dp)
+            .shadow(2.dp, RoundedCornerShape(16.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
             .clip(RoundedCornerShape(16.dp))
+            .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.65f))
+            .glassRefraction(16.dp, isDark = isDark)
     ) {
         val totalWidthPx = constraints.maxWidth.toFloat()
         val thresholdPx = totalWidthPx * 0.50f // Enforce at least 50% swipe threshold

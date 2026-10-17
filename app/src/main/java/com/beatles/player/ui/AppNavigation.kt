@@ -363,7 +363,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
             }
 
 
-            val targetBottomPadding = if (state.currentSong != null) 144.dp else 86.dp
+            val targetBottomPadding = if (state.currentSong != null) 98.dp else 40.dp
             val animatedBottomPadding by animateDpAsState(
                 targetValue = targetBottomPadding,
                 animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
@@ -474,42 +474,16 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
 
 
-                // ═══ 2. STICKY TOP HEADER (Floating Logo + User Avatar) ═══
+                // ═══ 2. TOP HEADER (Floating Logo + User Avatar) ═══
                 if (!state.showProfilePage && state.showSeeAllSection == null && state.currentTab != Tab.SEARCH && state.selectedAlbum == null && playerProgress.value <= 0.01f && !state.isExpanded) {
-                    val isScrolled = headerOffsetPx < -10f
-                    val headerBlurAlpha by animateFloatAsState(
-                        targetValue = if (isScrolled) 1f else 0f,
-                        animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-                        label = "headerBlurAlpha"
-                    )
-
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.TopCenter)
                             .zIndex(10f)
+                            .offset { IntOffset(0, headerOffsetPx.roundToInt()) }
+                            .graphicsLayer { alpha = headerAlphaProvider() }
                     ) {
-                        // Subtle layer blur backdrop like the nav bar without edges (layer blur not hard blur)
-                        if (headerBlurAlpha > 0.001f) {
-                            Box(
-                                modifier = Modifier
-                                    .matchParentSize()
-                                    .graphicsLayer { alpha = headerBlurAlpha }
-                                    .then(
-                                        if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                                            Modifier.hazeChild(
-                                                state = hazeState,
-                                                shape = RectangleShape,
-                                                style = GlassHazeStyle
-                                            )
-                                        } else Modifier
-                                    )
-                                    .background(
-                                        if (isDark) Color(0xFF14151B).copy(alpha = 0.50f)
-                                        else Color(0xFFFFFFFF).copy(alpha = 0.65f)
-                                    )
-                            )
-                        }
 
                         Row(
                             modifier = Modifier

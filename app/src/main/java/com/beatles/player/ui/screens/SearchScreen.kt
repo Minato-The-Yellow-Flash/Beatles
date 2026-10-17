@@ -237,8 +237,10 @@ fun SearchScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 6.dp)
+                                .shadow(2.dp, RoundedCornerShape(18.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
                                 .clip(RoundedCornerShape(18.dp))
-                                .background(if (isDark) Color(0xFF1E2026) else Color.White)
+                                .background(if (isDark) Color(0xFF1E2026).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.90f))
+                                .glassRefraction(18.dp, isDark = isDark)
                                 .clickable { onSelectArtist(matchedArtist.first, artistBounds) }
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -350,15 +352,22 @@ fun SearchScreen(
                         }
                     }
                     items(state.searchSuggestions.take(5), key = { "sugg_$it" }) { queryText ->
+                        val suggInteraction = remember { MutableInteractionSource() }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
+                                .padding(horizontal = 16.dp, vertical = 3.dp)
+                                .liquidPress(suggInteraction)
+                                .shadow(2.dp, RoundedCornerShape(14.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.30f) else Color.Black.copy(alpha = 0.08f))
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isDark) Color(0xFF1E2026).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.70f))
+                                .glassRefraction(14.dp, isDark = isDark)
+                                .clickable(interactionSource = suggInteraction, indication = null) {
                                     onQueryChange(queryText)
                                     onSearch(queryText)
                                     focusManager.clearFocus()
                                 }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, tint = textMuted, modifier = Modifier.size(16.dp))
@@ -385,8 +394,10 @@ fun SearchScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .shadow(2.dp, RoundedCornerShape(16.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(cardBg)
+                                    .background(if (isDark) Color(0xFF1E2026).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.90f))
+                                    .glassRefraction(16.dp, isDark = isDark)
                                     .clickable { onSelectAlbum(album) }
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -497,8 +508,9 @@ fun SearchSongSwipeItem(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .height(68.dp)
+            .shadow(2.dp, RoundedCornerShape(16.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
             .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, if (isDark) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+            .glassRefraction(16.dp, isDark = isDark)
     ) {
         val totalWidthPx = constraints.maxWidth.toFloat()
         val thresholdPx = totalWidthPx * 0.35f

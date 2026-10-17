@@ -134,7 +134,7 @@ data class AutoMixState(
 
     val label: String
         get() = when (tier) {
-            AutoMixTier.TIER_1_BEAT_MATCH -> "Beat-matched mix"
+            AutoMixTier.TIER_1_BEAT_MATCH -> if (activePlan?.type == TransitionType.DROP_TRANSITION) "Beat drop mix" else "Beat-matched mix"
             AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE -> "Equal-power crossfade"
             AutoMixTier.TIER_3_GAPLESS_MICROFADE -> "Gapless mix"
             null -> when (activePlan?.type) {

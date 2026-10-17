@@ -1,9 +1,7 @@
 package com.beatles.player.ui.screens
-import com.beatles.player.ui.theme.AppTheme
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -36,10 +34,10 @@ import androidx.compose.ui.unit.sp
 import com.beatles.player.R
 import com.beatles.player.data.ThemeMode
 import com.beatles.player.data.UserRole
+import com.beatles.player.ui.theme.isDarkTheme
 import com.beatles.player.viewmodel.PlayerUiState
 import com.beatles.player.viewmodel.PlayerViewModel
 
-private val DarkBg = Color(0xFF151515)
 private val ListenerRed = Color(0xFFF82C38)
 private val ArtistPurple = Color(0xFF7B2FBE)
 private val AdminBlue = Color(0xFF2471A3)
@@ -51,9 +49,7 @@ fun ProfileScreen(
     onClose: () -> Unit
 ) {
     var nameText by remember { mutableStateOf(state.userName.ifBlank { "User" }) }
-    var showRoleModal by remember { mutableStateOf<UserRole?>(null) }
-    var passcodeText by remember { mutableStateOf("") }
-    var passcodeError by remember { mutableStateOf(false) }
+    val isDark = isDarkTheme(state.themeMode)
 
     val currentRoleColor = when (state.userRole) {
         UserRole.LISTENER -> ListenerRed
@@ -61,10 +57,15 @@ fun ProfileScreen(
         UserRole.ADMIN -> AdminBlue
     }
 
+    val pageBg = if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)
+    val textPrimary = if (isDark) Color.White else Color(0xFF141416)
+    val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
+    val textMuted = if (isDark) Color.White.copy(alpha = 0.45f) else Color(0xFF9CA3AF)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppTheme.bg)
+            .background(pageBg)
     ) {
         Column(
             modifier = Modifier
@@ -80,7 +81,6 @@ fun ProfileScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val backInteraction = remember { MutableInteractionSource() }
-                val isDark = AppTheme.isDark
                 Box(
                     modifier = Modifier
                         .size(40.dp)
@@ -101,7 +101,7 @@ fun ProfileScreen(
                 }
 
                 Image(
-                    painter = painterResource(id = if (com.beatles.player.ui.theme.AppTheme.isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light),
+                    painter = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light),
                     contentDescription = "Beatles",
                     modifier = Modifier.size(36.dp)
                 )
@@ -137,12 +137,14 @@ fun ProfileScreen(
             ) {
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Hero Profile Card
+                // Hero Profile Card with liquid glass
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(AppTheme.fg(0.05f), RoundedCornerShape(24.dp))
-                        .border(1.dp, AppTheme.fg(0.08f), RoundedCornerShape(24.dp))
+                        .shadow(4.dp, RoundedCornerShape(24.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(if (isDark) Color(0xFF1C1E26).copy(alpha = 0.75f) else Color(0xFFFFFFFF).copy(alpha = 0.75f))
+                        .glassRefraction(24.dp, isDark = isDark)
                         .padding(vertical = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -150,23 +152,27 @@ fun ProfileScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(AppTheme.fg(0.12f), CircleShape)
-                                .border(2.dp, AppTheme.fg(0.2f), CircleShape),
+                                .shadow(4.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.15f))
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFF383842).copy(alpha = 0.40f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
+                                .glassRefraction(44.dp, isDark = isDark, isCircle = true),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Default.Person,
                                 contentDescription = null,
-                                tint = AppTheme.fg(0.8f),
+                                tint = if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF141416),
                                 modifier = Modifier.size(46.dp)
                             )
                         }
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .size(24.dp)
-                                .background(currentRoleColor, CircleShape)
-                                .border(2.dp, AppTheme.bg, CircleShape),
+                                .size(26.dp)
+                                .shadow(2.dp, CircleShape)
+                                .clip(CircleShape)
+                                .background(currentRoleColor)
+                                .glassRefraction(13.dp, isDark = isDark, isCircle = true),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -177,7 +183,7 @@ fun ProfileScreen(
                                 },
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(12.dp)
+                                modifier = Modifier.size(13.dp)
                             )
                         }
                     }
@@ -186,8 +192,11 @@ fun ProfileScreen(
 
                     Box(
                         modifier = Modifier
-                            .background(currentRoleColor.copy(alpha = 0.2f), RoundedCornerShape(50))
-                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .shadow(2.dp, RoundedCornerShape(50), spotColor = currentRoleColor.copy(alpha = 0.4f))
+                            .clip(RoundedCornerShape(50))
+                            .background(currentRoleColor.copy(alpha = 0.22f))
+                            .glassRefraction(50.dp, isDark = isDark)
+                            .padding(horizontal = 14.dp, vertical = 5.dp)
                     ) {
                         Text(
                             state.userRole.name,
@@ -204,7 +213,7 @@ fun ProfileScreen(
                         value = nameText,
                         onValueChange = { nameText = it },
                         textStyle = TextStyle(
-                            color = AppTheme.fg(),
+                            color = textPrimary,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center
@@ -214,20 +223,20 @@ fun ProfileScreen(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                         decorationBox = { innerTextField ->
                             if (nameText.isEmpty()) {
-                                Text("Your name", color = AppTheme.fg(0.3f), textAlign = TextAlign.Center)
+                                Text("Your name", color = textMuted, textAlign = TextAlign.Center)
                             }
                             innerTextField()
                         }
                     )
-                    Text("Tap to edit name", color = AppTheme.fg(0.35f), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                    Text("Tap to edit name", color = textMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // App Theme Selection (Systemwide / Dark / Light)
+                // App Theme Selection (Systemwide / Dark / Light) with liquid glass
                 Text(
                     "APP THEME",
-                    color = AppTheme.fg(0.45f),
+                    color = textMuted,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.5.sp,
@@ -238,7 +247,10 @@ fun ProfileScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
-                        .background(AppTheme.fg(0.05f), RoundedCornerShape(24.dp))
+                        .shadow(3.dp, RoundedCornerShape(24.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(if (isDark) Color(0xFF181A22).copy(alpha = 0.60f) else Color(0xFFFFFFFF).copy(alpha = 0.70f))
+                        .glassRefraction(24.dp, isDark = isDark)
                         .padding(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -249,23 +261,35 @@ fun ProfileScreen(
                     )
                     themes.forEach { (mode, label, icon) ->
                         val isSelected = state.themeMode == mode
+                        val themeInteraction = remember { MutableInteractionSource() }
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
+                                .liquidPress(themeInteraction)
+                                .shadow(if (isSelected) 2.dp else 0.dp, RoundedCornerShape(20.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
                                 .clip(RoundedCornerShape(20.dp))
-                                .background(if (isSelected) AppTheme.fg(0.18f) else Color.Transparent)
-                                .clickable {
+                                .background(
+                                    if (isSelected) (if (isDark) Color.White.copy(alpha = 0.22f) else Color(0xFFE2E2E2))
+                                    else Color.Transparent
+                                )
+                                .then(if (isSelected) Modifier.glassRefraction(20.dp, isDark = isDark) else Modifier)
+                                .clickable(interactionSource = themeInteraction, indication = null) {
                                     viewModel.setThemeMode(mode)
                                 },
                             contentAlignment = Alignment.Center
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(icon, contentDescription = null, tint = if (isSelected) Color.White else AppTheme.fg(0.5f), modifier = Modifier.size(16.dp))
+                                Icon(
+                                    icon,
+                                    contentDescription = null,
+                                    tint = if (isSelected) (if (isDark) Color.White else Color(0xFF141416)) else (if (isDark) Color.White.copy(alpha = 0.5f) else Color(0xFF141416).copy(alpha = 0.5f)),
+                                    modifier = Modifier.size(16.dp)
+                                )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     label,
-                                    color = if (isSelected) Color.White else AppTheme.fg(0.5f),
+                                    color = if (isSelected) (if (isDark) Color.White else Color(0xFF141416)) else (if (isDark) Color.White.copy(alpha = 0.5f) else Color(0xFF141416).copy(alpha = 0.5f)),
                                     fontSize = 13.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                 )
@@ -276,10 +300,10 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Switch Role / Account Section
+                // Switch Role / Account Section (ONE-TAP SWITCH, NO PASSWORD) with liquid glass
                 Text(
                     "SWITCH ACCOUNT ROLE",
-                    color = AppTheme.fg(0.45f),
+                    color = textMuted,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.5.sp,
@@ -289,8 +313,10 @@ fun ProfileScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(AppTheme.fg(0.05f), RoundedCornerShape(20.dp))
-                        .border(1.dp, AppTheme.fg(0.08f), RoundedCornerShape(20.dp))
+                        .shadow(3.dp, RoundedCornerShape(20.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (isDark) Color(0xFF181A22).copy(alpha = 0.60f) else Color(0xFFFFFFFF).copy(alpha = 0.70f))
+                        .glassRefraction(20.dp, isDark = isDark)
                 ) {
                     RoleOptionRow(
                         title = "Listener",
@@ -299,13 +325,14 @@ fun ProfileScreen(
                         icon = Icons.Default.Headphones,
                         color = ListenerRed,
                         isSelected = state.userRole == UserRole.LISTENER,
+                        isDark = isDark,
                         onClick = {
                             viewModel.setUserRole(UserRole.LISTENER)
                             onClose()
                         }
                     )
 
-                    HorizontalDivider(color = AppTheme.fg(0.06f))
+                    HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.06f))
 
                     RoleOptionRow(
                         title = "Artist",
@@ -314,16 +341,14 @@ fun ProfileScreen(
                         icon = Icons.Default.Mic,
                         color = ArtistPurple,
                         isSelected = state.userRole == UserRole.ARTIST,
+                        isDark = isDark,
                         onClick = {
-                            if (state.userRole == UserRole.ARTIST) {
-                                onClose()
-                            } else {
-                                showRoleModal = UserRole.ARTIST
-                            }
+                            viewModel.setUserRole(UserRole.ARTIST)
+                            onClose()
                         }
                     )
 
-                    HorizontalDivider(color = AppTheme.fg(0.06f))
+                    HorizontalDivider(color = if (isDark) Color.White.copy(alpha = 0.06f) else Color.Black.copy(alpha = 0.06f))
 
                     RoleOptionRow(
                         title = "Administrator",
@@ -332,30 +357,28 @@ fun ProfileScreen(
                         icon = Icons.Default.AdminPanelSettings,
                         color = AdminBlue,
                         isSelected = state.userRole == UserRole.ADMIN,
+                        isDark = isDark,
                         onClick = {
-                            if (state.userRole == UserRole.ADMIN) {
-                                onClose()
-                            } else {
-                                showRoleModal = UserRole.ADMIN
-                            }
+                            viewModel.setUserRole(UserRole.ADMIN)
+                            onClose()
                         }
                     )
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // App Updates Section
+                // App Updates Section with liquid glass
                 val context = LocalContext.current
                 val installedVersion = remember {
                     try {
-                        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2"
+                        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.4"
                     } catch (_: Exception) {
-                        "1.2"
+                        "1.4"
                     }
                 }
                 Text(
                     "APP UPDATES",
-                    color = AppTheme.fg(0.45f),
+                    color = textMuted,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp,
@@ -365,8 +388,10 @@ fun ProfileScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(AppTheme.fg(0.05f), RoundedCornerShape(20.dp))
-                        .border(1.dp, AppTheme.fg(0.08f), RoundedCornerShape(20.dp))
+                        .shadow(3.dp, RoundedCornerShape(20.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (isDark) Color(0xFF181A22).copy(alpha = 0.60f) else Color(0xFFFFFFFF).copy(alpha = 0.70f))
+                        .glassRefraction(20.dp, isDark = isDark)
                         .padding(16.dp)
                 ) {
                     Column {
@@ -376,24 +401,33 @@ fun ProfileScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Beatles Version", color = AppTheme.fg(), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Beatles Version", color = textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                                 Text(
                                     if (state.isCheckingUpdate) "Checking GitHub for updates..."
                                     else if (state.availableUpdate != null) "New version v${state.availableUpdate.versionName} available!"
                                     else "v$installedVersion (Installed)",
-                                    color = if (state.availableUpdate != null) ListenerRed else AppTheme.fg(0.55f),
+                                    color = if (state.availableUpdate != null) ListenerRed else textSecondary,
                                     fontSize = 12.sp,
                                     modifier = Modifier.padding(top = 2.dp)
                                 )
                             }
 
+                            val checkBtnInteraction = remember { MutableInteractionSource() }
                             if (state.availableUpdate != null) {
-                                Button(
-                                    onClick = { viewModel.downloadAndInstallUpdate(context) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = ListenerRed),
-                                    shape = RoundedCornerShape(50),
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                                    enabled = state.updateDownloadProgress == null
+                                Box(
+                                    modifier = Modifier
+                                        .liquidPress(checkBtnInteraction)
+                                        .shadow(3.dp, RoundedCornerShape(50), spotColor = ListenerRed.copy(alpha = 0.45f))
+                                        .clip(RoundedCornerShape(50))
+                                        .background(ListenerRed)
+                                        .glassRefraction(50.dp, isDark = isDark)
+                                        .clickable(
+                                            interactionSource = checkBtnInteraction,
+                                            indication = null,
+                                            enabled = state.updateDownloadProgress == null
+                                        ) { viewModel.downloadAndInstallUpdate(context) }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     if (state.updateDownloadProgress != null) {
                                         Text("${(state.updateDownloadProgress * 100).toInt()}%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -402,17 +436,25 @@ fun ProfileScreen(
                                     }
                                 }
                             } else {
-                                Button(
-                                    onClick = { viewModel.checkForUpdates(silent = false) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = AppTheme.fg(0.12f)),
-                                    shape = RoundedCornerShape(50),
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                                    enabled = !state.isCheckingUpdate
+                                Box(
+                                    modifier = Modifier
+                                        .liquidPress(checkBtnInteraction)
+                                        .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                                        .clip(RoundedCornerShape(50))
+                                        .background(if (isDark) Color(0xFF383842).copy(alpha = 0.45f) else Color(0xFFE2E2E2).copy(alpha = 0.65f))
+                                        .glassRefraction(50.dp, isDark = isDark)
+                                        .clickable(
+                                            interactionSource = checkBtnInteraction,
+                                            indication = null,
+                                            enabled = !state.isCheckingUpdate
+                                        ) { viewModel.checkForUpdates(silent = false) }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     if (state.isCheckingUpdate) {
-                                        CircularProgressIndicator(modifier = Modifier.size(14.dp), color = AppTheme.fg(), strokeWidth = 2.dp)
+                                        CircularProgressIndicator(modifier = Modifier.size(14.dp), color = textPrimary, strokeWidth = 2.dp)
                                     } else {
-                                        Text("Check", color = AppTheme.fg(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Check", color = textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                     }
                                 }
                             }
@@ -431,30 +473,35 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                // Sign out button
-                Button(
-                    onClick = {
-                        viewModel.logout()
-                        onClose()
-                    },
+                // Sign out button with liquid glass
+                val signOutInteraction = remember { MutableInteractionSource() }
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp),
-                    shape = RoundedCornerShape(50),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AppTheme.fg(0.08f)
-                    )
+                        .height(50.dp)
+                        .liquidPress(signOutInteraction)
+                        .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                        .clip(RoundedCornerShape(50))
+                        .background(if (isDark) Color(0xFF22242B).copy(alpha = 0.85f) else Color(0xFFE8E9EC))
+                        .glassRefraction(50.dp, isDark = isDark)
+                        .clickable(interactionSource = signOutInteraction, indication = null) {
+                            viewModel.logout()
+                            onClose()
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.ExitToApp, contentDescription = null, tint = ListenerRed, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Sign Out / Reset Mode", color = AppTheme.fg(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.ExitToApp, contentDescription = null, tint = ListenerRed, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Sign Out / Reset Mode", color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
 
                 Text(
                     text = "Crafted by team Beatles (Aashirvad, Tarun, Yash)",
-                    color = AppTheme.fg(0.40f),
+                    color = textMuted,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center,
@@ -462,127 +509,6 @@ fun ProfileScreen(
                         .fillMaxWidth()
                         .padding(bottom = 36.dp)
                 )
-            }
-        }
-
-        // Role Passcode Modal
-        if (showRoleModal != null) {
-            val targetRole = showRoleModal!!
-            val modalColor = if (targetRole == UserRole.ARTIST) ArtistPurple else AdminBlue
-            val requiredPasscode = if (targetRole == UserRole.ARTIST) "artist123" else "admin123"
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.75f))
-                    .clickable { showRoleModal = null },
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(horizontal = 28.dp)
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(AppTheme.sheet)
-                        .border(1.dp, AppTheme.fg(0.1f), RoundedCornerShape(24.dp))
-                        .clickable(enabled = false) {}
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(54.dp)
-                            .background(modalColor.copy(alpha = 0.15f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            if (targetRole == UserRole.ARTIST) Icons.Default.Mic else Icons.Default.Security,
-                            contentDescription = null,
-                            tint = modalColor,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text(
-                        "${targetRole.name} Access",
-                        color = AppTheme.fg(),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        "Enter passcode to switch into ${targetRole.name.lowercase()} mode (hint: ${requiredPasscode})",
-                        color = AppTheme.fg(0.5f),
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
-                    )
-
-                    BasicTextField(
-                        value = passcodeText,
-                        onValueChange = {
-                            passcodeText = it
-                            passcodeError = false
-                        },
-                        textStyle = TextStyle(color = AppTheme.fg(), fontSize = 15.sp),
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(AppTheme.fg(0.08f), RoundedCornerShape(12.dp))
-                            .border(
-                                1.dp,
-                                if (passcodeError) Color.Red else AppTheme.fg(0.15f),
-                                RoundedCornerShape(12.dp)
-                            )
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        decorationBox = { inner ->
-                            if (passcodeText.isEmpty()) {
-                                Text("Passcode (${requiredPasscode})", color = AppTheme.fg(0.3f), fontSize = 14.sp)
-                            }
-                            inner()
-                        }
-                    )
-
-                    if (passcodeError) {
-                        Text("Incorrect passcode. Try '$requiredPasscode'", color = Color.Red, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            onClick = {
-                                showRoleModal = null
-                                passcodeText = ""
-                                passcodeError = false
-                            },
-                            modifier = Modifier.weight(1f).height(44.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = AppTheme.fg(0.1f)),
-                            shape = RoundedCornerShape(50)
-                        ) {
-                            Text("Cancel", color = AppTheme.fg(), fontSize = 13.sp)
-                        }
-
-                        Button(
-                            onClick = {
-                                if (passcodeText.trim().lowercase() == requiredPasscode || passcodeText.isBlank()) {
-                                    viewModel.setUserRole(targetRole)
-                                    showRoleModal = null
-                                    passcodeText = ""
-                                    onClose()
-                                } else {
-                                    passcodeError = true
-                                }
-                            },
-                            modifier = Modifier.weight(1f).height(44.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = modalColor),
-                            shape = RoundedCornerShape(50)
-                        ) {
-                            Text("Login", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
             }
         }
     }
@@ -596,19 +522,28 @@ private fun RoleOptionRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     color: Color,
     isSelected: Boolean,
+    isDark: Boolean,
     onClick: () -> Unit
 ) {
+    val rowInteraction = remember { MutableInteractionSource() }
+    val textPrimary = if (isDark) Color.White else Color(0xFF141416)
+    val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .liquidPress(rowInteraction)
+            .clickable(interactionSource = rowInteraction, indication = null) { onClick() }
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
                 .size(42.dp)
-                .background(color.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+                .shadow(2.dp, RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(12.dp))
+                .background(color.copy(alpha = 0.16f))
+                .glassRefraction(12.dp, isDark = isDark),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
@@ -618,25 +553,28 @@ private fun RoleOptionRow(
 
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, color = AppTheme.fg(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(title, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 if (isSelected) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
-                            .background(color.copy(alpha = 0.2f), RoundedCornerShape(50))
+                            .shadow(2.dp, RoundedCornerShape(50), spotColor = color.copy(alpha = 0.4f))
+                            .clip(RoundedCornerShape(50))
+                            .background(color.copy(alpha = 0.22f))
+                            .glassRefraction(50.dp, isDark = isDark)
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text("ACTIVE", color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
-            Text(subtitle, color = AppTheme.fg(0.45f), fontSize = 11.sp, lineHeight = 14.sp, modifier = Modifier.padding(top = 2.dp))
+            Text(subtitle, color = textSecondary, fontSize = 11.sp, lineHeight = 14.sp, modifier = Modifier.padding(top = 2.dp))
         }
 
         Icon(
             Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = AppTheme.fg(0.25f),
+            tint = if (isDark) Color.White.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.30f),
             modifier = Modifier.size(18.dp)
         )
     }

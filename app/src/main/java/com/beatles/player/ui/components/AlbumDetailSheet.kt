@@ -715,131 +715,178 @@ fun FluidAlbumDetailOverlay(
             }
         }
 
-        // Save Album or Add to Album Set Dialog
+        // Minimal Floating Liquid Glass Save Album Dialog
         if (showSetDialog) {
-            AlertDialog(
-                onDismissRequest = { showSetDialog = false },
-                containerColor = if (isDark) Color(0xFF1E2024) else Color.White,
-                title = {
-                    Text("Album Options", color = textPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                },
-                text = {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        val dialogBtnContainer = if (isDark) Color.White else Color(0xFF141416)
-                        val dialogBtnContent = if (isDark) Color.Black else Color.White
-                        Button(
-                            onClick = {
-                                viewModel.saveAlbumToLibrary(alb)
-                                showSetDialog = false
-                            },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = dialogBtnContainer, contentColor = dialogBtnContent)
-                        ) {
-                            Icon(Icons.Default.BookmarkAdd, contentDescription = null, tint = dialogBtnContent, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Save Album to Library", color = dialogBtnContent, fontWeight = FontWeight.Bold)
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-                        HorizontalDivider(color = textPrimary.copy(alpha = 0.1f))
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text("Add to Album Set", color = textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                        Text("Group multiple albums together into a collection.", color = textSecondary, fontSize = 11.sp)
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        if (state.albumSets.isNotEmpty()) {
-                            state.albumSets.forEach { set ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable {
-                                            viewModel.addAlbumToSet(set.id, alb)
-                                            showSetDialog = false
-                                        }
-                                        .padding(vertical = 8.dp, horizontal = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = textPrimary.copy(alpha = 0.7f), modifier = Modifier.size(20.dp))
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(set.name, color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                        Text("${set.albums.size} albums", color = textSecondary, fontSize = 10.sp)
-                                    }
-                                    Icon(Icons.Default.Add, contentDescription = "Add", tint = textPrimary.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-
+            val isSaved = state.albums.any { it.id == alb.id }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.50f))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showSetDialog = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.88f)
+                        .shadow(8.dp, RoundedCornerShape(26.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.18f))
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.95f))
+                        .glassRefraction(26.dp, isDark = isDark)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+                        .padding(22.dp)
+                ) {
+                    Column {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            BasicTextField(
-                                value = newSetName,
-                                onValueChange = { newSetName = it },
-                                textStyle = TextStyle(color = textPrimary, fontSize = 13.sp),
-                                singleLine = true,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
-                                    .background(textPrimary.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                decorationBox = { inner ->
-                                    if (newSetName.isEmpty()) {
-                                        Text("New set name...", color = textSecondary, fontSize = 13.sp)
-                                    }
-                                    inner()
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(
-                                onClick = {
-                                    if (newSetName.isNotBlank()) {
-                                        viewModel.createAlbumSet(newSetName.trim(), alb)
-                                        showSetDialog = false
-                                    }
+                            Text("Save Album", color = textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            IconButton(onClick = { showSetDialog = false }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = textSecondary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Quick 1-Tap Save to Library Button
+                        val saveInteraction = remember { MutableInteractionSource() }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .liquidPress(saveInteraction)
+                                .shadow(2.dp, RoundedCornerShape(50), spotColor = AccentRed.copy(alpha = 0.35f))
+                                .clip(RoundedCornerShape(50))
+                                .background(if (isSaved) Color(0xFF2E7D32) else AccentRed)
+                                .glassRefraction(50.dp, isDark = isDark)
+                                .clickable(interactionSource = saveInteraction, indication = null) {
+                                    viewModel.saveAlbumToLibrary(alb)
+                                    showSetDialog = false
                                 },
-                                enabled = newSetName.isNotBlank(),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = dialogBtnContainer, disabledContainerColor = textPrimary.copy(alpha = 0.15f))
-                            ) {
-                                Text("Create", color = if (newSetName.isNotBlank()) dialogBtnContent else textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    if (isSaved) Icons.Default.Check else Icons.Default.BookmarkAdd,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    if (isSaved) "Album Saved in Library" else "Save Album to Library",
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+
+                        // Add to set / collections section
+                        if (state.albumSets.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Or add to collection:", color = textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                state.albumSets.take(3).forEach { set ->
+                                    val setRowInteraction = remember { MutableInteractionSource() }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .liquidPress(setRowInteraction)
+                                            .shadow(1.dp, RoundedCornerShape(12.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.06f))
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (isDark) Color(0xFF26282E).copy(alpha = 0.60f) else Color(0xFFF4F5F7).copy(alpha = 0.80f))
+                                            .glassRefraction(12.dp, isDark = isDark)
+                                            .clickable(interactionSource = setRowInteraction, indication = null) {
+                                                viewModel.addAlbumToSet(set.id, alb)
+                                                showSetDialog = false
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = AccentRed, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(set.name, color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                                        Icon(Icons.Default.Add, contentDescription = "Add", tint = textSecondary, modifier = Modifier.size(16.dp))
+                                    }
+                                }
                             }
                         }
                     }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showSetDialog = false }) {
-                        Text("Close", color = textSecondary)
-                    }
                 }
-            )
+            }
         }
 
-        // Info Dialog
+        // Minimal Floating Liquid Glass Info Dialog
         if (showInfoDialog) {
-            AlertDialog(
-                onDismissRequest = { showInfoDialog = false },
-                containerColor = if (isDark) Color(0xFF1E2024) else Color.White,
-                title = { Text(alb.title, color = textPrimary, fontWeight = FontWeight.Bold) },
-                text = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.50f))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { showInfoDialog = false },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .shadow(8.dp, RoundedCornerShape(26.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.18f))
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.95f))
+                        .glassRefraction(26.dp, isDark = isDark)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+                        .padding(22.dp)
+                ) {
                     Column {
-                        Text("Artist: ${alb.artist}", color = textSecondary, fontSize = 14.sp)
-                        Text("Genre: ${alb.genre.ifBlank { "Pop" }}", color = textSecondary, fontSize = 14.sp)
-                        Text("Released: ${alb.releaseYear.ifBlank { "2026" }}", color = textSecondary, fontSize = 14.sp)
-                        Text("Tracks: ${alb.songs.size}", color = textSecondary, fontSize = 14.sp)
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showInfoDialog = false }) {
-                        Text("OK", color = textPrimary)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(alb.title, color = textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { showInfoDialog = false }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = textSecondary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Artist", color = textSecondary, fontSize = 13.sp)
+                                Text(alb.artist, color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Genre", color = textSecondary, fontSize = 13.sp)
+                                Text(alb.genre.ifBlank { "Pop" }, color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Released", color = textSecondary, fontSize = 13.sp)
+                                Text(alb.releaseYear.ifBlank { "2026" }, color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Tracks", color = textSecondary, fontSize = 13.sp)
+                                Text("${alb.songs.size} songs", color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(18.dp))
+                        val okInteraction = remember { MutableInteractionSource() }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .liquidPress(okInteraction)
+                                .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                                .clip(RoundedCornerShape(50))
+                                .background(if (isDark) Color(0xFF383842).copy(alpha = 0.45f) else Color(0xFFE2E2E2).copy(alpha = 0.65f))
+                                .glassRefraction(50.dp, isDark = isDark)
+                                .clickable(interactionSource = okInteraction, indication = null) { showInfoDialog = false },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("OK", color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
-            )
+            }
         }
     }
 }

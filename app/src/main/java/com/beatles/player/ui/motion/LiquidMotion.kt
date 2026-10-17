@@ -136,10 +136,13 @@ fun Modifier.liquidMotionDeform(
  * Modifier applying an interactive spring press scale (~0.96) using the Lens preset.
  */
 fun Modifier.liquidPress(
-    interactionSource: MutableInteractionSource,
-    pressedScale: Float = 0.96f
+    interactionSource: MutableInteractionSource? = null,
+    pressedScale: Float = 0.96f,
+    enabled: Boolean = true
 ): Modifier = composed {
-    val isPressed by interactionSource.collectIsPressedAsState()
+    if (!enabled) return@composed this
+    val source = interactionSource ?: remember { MutableInteractionSource() }
+    val isPressed by source.collectIsPressedAsState()
     val scale by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (isPressed) pressedScale else 1.0f,
         animationSpec = LiquidMotion.Lens,

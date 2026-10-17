@@ -503,15 +503,55 @@ class AutoMixEngine(
     }
 
     /**
-     * Seamless Equal-Power DJ Gain Curves:
-     * Sinusoidal curves with 3 dB headroom soft limiter and onset micro-fade.
+     * Optimized DJ Gain Curves tailored by transition type:
+     * - BEAT_MIX: Holds outgoing rhythm energy through intro build, punching incoming on beat.
+     * - DROP_TRANSITION: Clean drop/cut on Beat 1 phrase boundary (t = 0.50) with incoming full power.
+     * - CROSSFADE: Equal-power sinusoidal curve with soft headroom limiting.
      */
     private fun gains(type: TransitionType, t: Float, gainMatch: Float = 1.0f): Pair<Float, Float> {
         val halfPi = (PI / 2).toFloat()
-        val rawOut = cos(t * halfPi).coerceIn(0f, 1f)
-        val rawIn = (sin(t * halfPi) * gainMatch).coerceIn(0f, 1.25f)
+        val (rawOut, rawIn) = when (type) {
+            TransitionType.BEAT_MIX -> {
+                // Outgoing holds high volume during incoming beat introduction, smoothly dipping past downbeat handoff
+                val outG = if (t < 0.40f) {
+                    1.0f - 0.15f * (t / 0.40f)
+                } else {
+                    0.85f * cos(((t - 0.40f) / 0.55f).coerceIn(0f, 1f) * halfPi)
+                }
+                // Incoming enters with solid rhythm punch, hitting full power by midpoint handoff (t = 0.50)
+                val inG = if (t < 0.50f) {
+                    sin((t / 0.50f) * halfPi) * gainMatch
+                } else {
+                    1.0f * gainMatch
+                }
+                outG to inG
+            }
+            TransitionType.DROP_TRANSITION -> {
+                // Outgoing holds full energy until Beat 1 drop, then cuts sharply
+                val outG = if (t < 0.46f) {
+                    1.0f
+                } else {
+                    cos(((t - 0.46f) / 0.08f).coerceIn(0f, 1f) * halfPi)
+                }
+                // Incoming drops with maximum impact right on downbeat (t = 0.50)
+                val inG = if (t < 0.46f) {
+                    0.0f
+                } else if (t < 0.50f) {
+                    ((t - 0.46f) / 0.04f) * gainMatch
+                } else {
+                    1.0f * gainMatch
+                }
+                outG to inG
+            }
+            else -> {
+                // Standard equal-power sinusoidal crossfade
+                val o = cos(t * halfPi).coerceIn(0f, 1f)
+                val i = (sin(t * halfPi) * gainMatch).coerceIn(0f, 1.25f)
+                o to i
+            }
+        }
 
-        // Equal-power sinusoidal sum with soft limiter to guarantee headroom and prevent clipping
+        // Soft limiter to guarantee headroom and prevent digital clipping
         val sum = rawOut + rawIn
         val scale = if (sum > 1.0f) 1.0f / (1.0f + 0.35f * (sum - 1.0f)) else 1.0f
 
