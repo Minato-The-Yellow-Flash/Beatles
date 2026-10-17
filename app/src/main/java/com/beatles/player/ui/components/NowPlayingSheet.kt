@@ -127,6 +127,7 @@ fun NowPlayingSheet(
     autoMixMode: com.beatles.player.player.automix.AutoMixMode = com.beatles.player.player.automix.AutoMixMode.ON,
     autoMixEnabled: Boolean = true,
     onToggleAutoMix: () -> Unit = {},
+    onLoadMoreUpcoming: () -> Unit = {},
     onGoToAlbum: (Song) -> Unit = {},
     onMoveToPlayNext: (Song) -> Unit = {},
     onRemoveFromQueue: (String) -> Unit = {},
@@ -176,6 +177,7 @@ fun NowPlayingSheet(
     }
 
     val view = LocalView.current
+    val isDark = AppTheme.isDark
 
     // Ink-spill transition state keyed on song.id
     var displayedSongId by remember { mutableStateOf(song.id) }
@@ -471,7 +473,8 @@ fun NowPlayingSheet(
                     .offset { IntOffset(with(density) { currentCoverLeft.roundToPx() }, with(density) { currentCoverTop.roundToPx() }) }
                     .size(baseCoverSize)
                     .graphicsLayer {
-                        alpha = coverAlpha
+                        val effectiveCoverAlpha = if (isLyricsActive) coverAlpha * controlsAlpha else coverAlpha
+                        alpha = effectiveCoverAlpha
                         transformOrigin = TransformOrigin(0f, 0f)
                         if (!isCompactCover && morphProgress >= 0.98f) {
                             val dampScale = 1f - (kotlin.math.abs(animatedDragX) / 3000f).coerceIn(0f, 0.05f)
@@ -512,7 +515,7 @@ fun NowPlayingSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 104.dp, end = 20.dp, top = 54.dp)
-                    .graphicsLayer { alpha = compactHeaderAlpha },
+                    .graphicsLayer { alpha = if (isLyricsActive) compactHeaderAlpha * controlsAlpha else compactHeaderAlpha },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -646,50 +649,28 @@ fun NowPlayingSheet(
                         }
                 ) {
                     if (upcoming.isEmpty()) {
-                        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp)) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xFFE2E2E2).copy(alpha = 0.12f))
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .background(if (autoPlayEnabled) AccentRed.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.1f), CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Autorenew,
-                                            contentDescription = null,
-                                            tint = if (autoPlayEnabled) AccentRed else Color.White.copy(alpha = 0.6f),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text("Autoplay similar tracks", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                                        Text(if (autoPlayEnabled) "Continues playing similar music" else "Only plays this album/queue", color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
-                                    }
-                                }
-                                Switch(
-                                    checked = autoPlayEnabled,
-                                    onCheckedChange = { onToggleAutoPlay() },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Color.White,
-                                        checkedTrackColor = AccentRed,
-                                        uncheckedThumbColor = Color.White.copy(alpha = 0.6f),
-                                        uncheckedTrackColor = Color.White.copy(alpha = 0.15f)
-                                    )
-                                )
+                        Column(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp)) {
+                            NextUpControlPillsRow(
+                                shuffleEnabled = shuffleEnabled,
+                                onToggleShuffle = onToggleShuffle,
+                                repeatMode = repeatMode,
+                                onToggleRepeat = onToggleRepeat,
+                                autoMixEnabled = autoMixEnabled,
+                                onToggleAutoMix = onToggleAutoMix,
+                                autoPlayEnabled = autoPlayEnabled,
+                                onToggleAutoPlay = onToggleAutoPlay,
+                                isDark = isDark
+                            )
+                            LaunchedEffect(Unit) {
+                                onLoadMoreUpcoming()
                             }
                             Spacer(modifier = Modifier.height(48.dp))
                             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                Text("No more songs in queue", color = Color.White.copy(alpha = 0.5f), fontSize = 15.sp)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = AccentRed, strokeWidth = 2.5.dp)
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Text("Finding more songs for your queue...", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+                                }
                             }
                         }
                     } else {
@@ -719,58 +700,24 @@ fun NowPlayingSheet(
                                 }
                             }
                             item {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 20.dp, vertical = 4.dp)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(Color(0xFFE2E2E2).copy(alpha = 0.12f))
-                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(34.dp)
-                                                .background(if (autoPlayEnabled) AccentRed.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.1f), CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Autorenew,
-                                                contentDescription = null,
-                                                tint = if (autoPlayEnabled) AccentRed else Color.White.copy(alpha = 0.6f),
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column {
-                                            Text(
-                                                "Autoplay similar tracks",
-                                                color = Color.White,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                            Text(
-                                                if (autoPlayEnabled) "Continues playing similar music" else "Only plays this album/queue",
-                                                color = Color.White.copy(alpha = 0.5f),
-                                                fontSize = 11.sp
-                                            )
-                                        }
-                                    }
-                                    Switch(
-                                        checked = autoPlayEnabled,
-                                        onCheckedChange = { onToggleAutoPlay() },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = AccentRed,
-                                            uncheckedThumbColor = Color.White.copy(alpha = 0.6f),
-                                            uncheckedTrackColor = Color.White.copy(alpha = 0.15f)
-                                        )
-                                    )
-                                }
+                                NextUpControlPillsRow(
+                                    shuffleEnabled = shuffleEnabled,
+                                    onToggleShuffle = onToggleShuffle,
+                                    repeatMode = repeatMode,
+                                    onToggleRepeat = onToggleRepeat,
+                                    autoMixEnabled = autoMixEnabled,
+                                    onToggleAutoMix = onToggleAutoMix,
+                                    autoPlayEnabled = autoPlayEnabled,
+                                    onToggleAutoPlay = onToggleAutoPlay,
+                                    isDark = isDark
+                                )
                             }
                             itemsIndexed(upcoming, key = { _, s -> s.id }) { idx, s ->
+                                if (idx >= upcoming.size - 4) {
+                                    LaunchedEffect(upcoming.size) {
+                                        onLoadMoreUpcoming()
+                                    }
+                                }
                                 QueueSongItem(
                                     song = s,
                                     index = idx,
@@ -812,10 +759,21 @@ fun NowPlayingSheet(
                 }
             }
 
+            val lyricsTopPad by animateDpAsState(
+                targetValue = if (controlsVisible && controlsAlpha > 0.05f) 110.dp else 16.dp,
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f),
+                label = "lyricsTopPad"
+            )
+            val lyricsBottomPad by animateDpAsState(
+                targetValue = if (controlsVisible && controlsAlpha > 0.05f) 180.dp else 16.dp,
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f),
+                label = "lyricsBottomPad"
+            )
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 130.dp, bottom = 180.dp)
+                    .padding(top = lyricsTopPad, bottom = lyricsBottomPad)
                     .graphicsLayer {
                         scaleY = lyrStretchY
                         translationY = lyrTransY
@@ -871,7 +829,7 @@ fun NowPlayingSheet(
                         }
                     }
 
-                    val anchorSpotDp = 72.dp
+                    val anchorSpotDp = if (controlsVisible && controlsAlpha > 0.05f) 72.dp else 28.dp
                     val anchorSpotPx = with(density) { anchorSpotDp.roundToPx() }
 
                     // Auto-scroll active line smoothly into the fixed anchor spot without thrashing intermediate items
@@ -914,28 +872,36 @@ fun NowPlayingSheet(
                             }
                             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                             .drawWithContent {
+                                val fadeTopRatio = if (controlsVisible && controlsAlpha > 0.05f) 0.09f else 0.02f
+                                val fadeBottomRatio = if (controlsVisible && controlsAlpha > 0.05f) 0.90f else 0.98f
                                 drawContent()
                                 drawRect(
                                     brush = Brush.verticalGradient(
                                         0.0f to Color.Transparent,
-                                        0.04f to Color.Black.copy(alpha = 0.30f),
-                                        0.09f to Color.Black.copy(alpha = 0.75f),
-                                        0.15f to Color.Black,
-                                        0.84f to Color.Black,
-                                        0.90f to Color.Black.copy(alpha = 0.75f),
-                                        0.96f to Color.Black.copy(alpha = 0.30f),
+                                        (fadeTopRatio * 0.4f) to Color.Black.copy(alpha = 0.30f),
+                                        fadeTopRatio to Color.Black,
+                                        fadeBottomRatio to Color.Black,
+                                        (fadeBottomRatio + (1f - fadeBottomRatio) * 0.6f) to Color.Black.copy(alpha = 0.30f),
                                         1.0f to Color.Transparent
                                     ),
                                     blendMode = BlendMode.DstIn
                                 )
                             }
                     ) {
+                        val lyricsListBottomPad by animateDpAsState(
+                            targetValue = if (controlsVisible && controlsAlpha > 0.05f) 160.dp else 24.dp,
+                            label = "lyricsListBottomPad"
+                        )
+                        val lyricsListTopPad by animateDpAsState(
+                            targetValue = if (controlsVisible && controlsAlpha > 0.05f) anchorSpotDp else 20.dp,
+                            label = "lyricsListTopPad"
+                        )
                         LazyColumn(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(start = 28.dp, end = 28.dp),
-                            contentPadding = PaddingValues(top = anchorSpotDp, bottom = 360.dp),
+                            contentPadding = PaddingValues(top = lyricsListTopPad, bottom = lyricsListBottomPad),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             itemsIndexed(processedLyrics, key = { idx, line -> "lyric_${line.timeMs}_$idx" }) { idx, line ->
@@ -1993,6 +1959,94 @@ fun NowPlayingSheet(
         }
 
 
+    }
+}
+
+@Composable
+fun NextUpControlPillsRow(
+    shuffleEnabled: Boolean,
+    onToggleShuffle: () -> Unit,
+    repeatMode: Int,
+    onToggleRepeat: () -> Unit,
+    autoMixEnabled: Boolean,
+    onToggleAutoMix: () -> Unit,
+    autoPlayEnabled: Boolean,
+    onToggleAutoPlay: () -> Unit,
+    isDark: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val view = LocalView.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val pills = listOf(
+            Triple("Shuffle", Icons.Default.Shuffle, shuffleEnabled) to onToggleShuffle,
+            Triple(
+                when (repeatMode) { 2 -> "Repeat 1"; 1 -> "Repeat"; else -> "Repeat" },
+                when (repeatMode) { 2 -> Icons.Default.RepeatOne; else -> Icons.Default.Repeat },
+                repeatMode != 0
+            ) to onToggleRepeat,
+            Triple("AutoMix", Icons.Default.GraphicEq, autoMixEnabled) to onToggleAutoMix,
+            Triple("Autoplay", Icons.Default.Autorenew, autoPlayEnabled) to onToggleAutoPlay
+        )
+
+        pills.forEach { (item, action) ->
+            val (label, icon, isActive) = item
+            val interactionSource = remember { MutableInteractionSource() }
+            val pillShape = RoundedCornerShape(14.dp)
+            val activeColor = AccentRed
+            val inactiveBg = if (isDark) Color(0xFF1E2024).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.65f)
+            val bg = if (isActive) activeColor.copy(alpha = 0.22f) else inactiveBg
+            val tint = if (isActive) activeColor else (if (isDark) Color.White.copy(alpha = 0.70f) else Color(0xFF141416).copy(alpha = 0.70f))
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(38.dp)
+                    .shadow(2.dp, pillShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                    .clip(pillShape)
+                    .background(bg)
+                    .border(
+                        1.dp,
+                        if (isActive) activeColor.copy(alpha = 0.50f) else (if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)),
+                        pillShape
+                    )
+                    .glassRefraction(14.dp, isDark = isDark)
+                    .liquidPress(interactionSource)
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null
+                    ) {
+                        Haptics.tick(view)
+                        action()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(horizontal = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = label,
+                        tint = tint,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        text = label,
+                        color = tint,
+                        fontSize = 11.sp,
+                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
     }
 }
 

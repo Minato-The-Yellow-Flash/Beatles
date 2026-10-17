@@ -218,17 +218,7 @@ fun HomeScreen(
     val currentPullOffset = if (pullOffsetRaw > 0f) pullOffsetRaw else pullAnim.value
     var hasTriggeredThresholdHaptic by remember { mutableStateOf(false) }
 
-    var showRefreshCompletionPopup by remember { mutableStateOf(false) }
-    var previousRefreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(state.isRefreshingHome) {
-        if (previousRefreshing && !state.isRefreshingHome) {
-            showRefreshCompletionPopup = true
-            delay(3500)
-            showRefreshCompletionPopup = false
-        }
-        previousRefreshing = state.isRefreshingHome
-    }
 
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
@@ -375,67 +365,6 @@ fun HomeScreen(
             }
         }
 
-        // Animated Completion Popup of Updated Items
-        AnimatedVisibility(
-            visible = showRefreshCompletionPopup,
-            enter = slideInVertically(
-                initialOffsetY = { -it },
-                animationSpec = spring(dampingRatio = 0.75f, stiffness = 380f)
-            ) + fadeIn(tween(200)) + scaleIn(initialScale = 0.88f),
-            exit = slideOutVertically(
-                targetOffsetY = { -it },
-                animationSpec = tween(220, easing = FastOutSlowInEasing)
-            ) + fadeOut(tween(180)) + scaleOut(targetScale = 0.90f),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .zIndex(25f)
-                .padding(top = 92.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .shadow(4.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.15f))
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        if (isDark) Color(0xFF1E1E24).copy(alpha = 0.95f)
-                        else Color.White.copy(alpha = 0.96f)
-                    )
-                    .glassRefraction(50.dp, isDark = isDark)
-                    .padding(horizontal = 18.dp, vertical = 9.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .background(AccentRed.copy(alpha = 0.15f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = AccentRed,
-                            modifier = Modifier.size(13.dp)
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = "Refreshed",
-                            color = textPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Fresh mixes, albums & trending tracks updated",
-                            color = textPrimary.copy(alpha = 0.65f),
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Normal
-                        )
-                    }
-                }
-            }
-        }
 
         val bgFade = if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)
         LazyColumn(

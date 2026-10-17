@@ -321,7 +321,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 viewModel.setOnboardStep(4)
             }
         )
-        4 -> OnboardStepReady(name = state.userName, onDone = { viewModel.finishOnboarding() }, hasData = state.recommendations.isNotEmpty())
+        4 -> OnboardStepReady(
+            name = state.userName,
+            onPrepareData = { viewModel.prepareDataDuringOnboarding() },
+            onDone = { viewModel.finishOnboarding() },
+            hasData = state.recommendations.isNotEmpty()
+        )
         else -> {
             val isDark = isDarkTheme(state.themeMode)
             val appBg = if (isDark) GrayBlackBg else Color(0xFFF6F7F9)
@@ -553,12 +558,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     state.selectedAlbumSet != null ||
                     state.showProfilePage
 
-                val playerFade = (1f - playerProgress.value * 2.2f).coerceIn(0f, 1f)
+                val playerFade = (1f - playerProgress.value * 1.25f).coerceIn(0f, 1f)
                 val targetBottomAlpha = if (isOverlayActive) 0f else playerFade
 
                 val bottomBarAlpha by animateFloatAsState(
                     targetValue = targetBottomAlpha,
-                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
                     label = "bottomBarAlpha"
                 )
 
@@ -572,7 +577,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                             .imePadding()
                             .graphicsLayer {
                                 alpha = bottomBarAlpha
-                                translationY = (1f - bottomBarAlpha) * 32f
+                                translationY = (1f - bottomBarAlpha) * 12f
                             }
                             .pointerInput(bottomBarAlpha) {
                                 if (bottomBarAlpha > 0.01f) {
@@ -1707,6 +1712,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 onAddToPlaylist = { pId, s -> viewModel.addSongToPlaylist(pId, s) },
                                 queueTitle = state.queueTitle,
                                 isArtistMixLoading = state.isArtistMixLoading,
+                                onLoadMoreUpcoming = { viewModel.loadMoreUpcoming() },
                                 onPlayArtistMix = { viewModel.playArtistMix(it) }
                             )
                         }

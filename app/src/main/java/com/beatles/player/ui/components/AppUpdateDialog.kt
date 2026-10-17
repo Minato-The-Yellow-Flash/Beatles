@@ -6,8 +6,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -51,12 +53,12 @@ fun AppUpdateDialog(
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
     val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
 
-    // Lively entrance spring animation
-    val enterScale = remember { Animatable(0.85f) }
+    // Lively AirPods-style bottom slide-up spring entrance animation
+    val enterSlideY = remember { Animatable(360f) }
     val enterAlpha = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        launch { enterScale.animateTo(1f, spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow)) }
-        launch { enterAlpha.animateTo(1f, tween(240)) }
+        launch { enterSlideY.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow)) }
+        launch { enterAlpha.animateTo(1f, tween(200)) }
     }
 
     // Moving animations to engage user
@@ -121,41 +123,52 @@ fun AppUpdateDialog(
                     Haptics.tick(view)
                     onDismiss()
                 },
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.BottomCenter
         ) {
-            val dialogShape = RoundedCornerShape(32.dp)
+            val dialogShape = RoundedCornerShape(36.dp)
 
             Column(
                 modifier = Modifier
-                    .fillMaxWidth(0.88f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 14.dp)
+                    .navigationBarsPadding()
                     .graphicsLayer {
-                        scaleX = enterScale.value
-                        scaleY = enterScale.value
+                        translationY = enterSlideY.value
                         alpha = enterAlpha.value
                     }
                     .shadow(
-                        elevation = 16.dp,
+                        elevation = 20.dp,
                         shape = dialogShape,
-                        spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.16f)
+                        spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.20f)
                     )
                     .clip(dialogShape)
                     .background(
-                        if (isDark) Color(0xFF14151B).copy(alpha = 0.85f)
-                        else Color(0xFFFFFFFF).copy(alpha = 0.90f)
+                        if (isDark) Color(0xFF14151B).copy(alpha = 0.90f)
+                        else Color(0xFFFFFFFF).copy(alpha = 0.95f)
                     )
                     .border(
                         width = 1.dp,
-                        color = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.12f),
+                        color = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.10f),
                         shape = dialogShape
                     )
-                    .glassRefraction(32.dp, isDark = isDark)
-                    .padding(horizontal = 24.dp, vertical = 26.dp)
+                    .glassRefraction(36.dp, isDark = isDark)
+                    .padding(horizontal = 22.dp, vertical = 18.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { /* prevent backdrop tap dismiss */ },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Top AirPods-style grabber pill
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.15f))
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
                 // Moving glowing pulse update badge
                 Box(
                     modifier = Modifier.size(76.dp),
@@ -227,6 +240,7 @@ fun AppUpdateDialog(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(max = 160.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(
                                 if (isDark) Color.White.copy(alpha = 0.05f)
@@ -237,14 +251,14 @@ fun AppUpdateDialog(
                                 color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f),
                                 shape = RoundedCornerShape(16.dp)
                             )
+                            .verticalScroll(rememberScrollState())
                             .padding(horizontal = 14.dp, vertical = 12.dp)
                     ) {
                         Text(
                             text = update.releaseNotes,
                             color = textSecondary,
                             fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                            maxLines = 6
+                            lineHeight = 17.sp
                         )
                     }
                 }

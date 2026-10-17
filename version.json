@@ -1,8 +1,8 @@
 {
-  "versionName": "1.6",
-  "versionCode": 7,
-  "releaseTitle": "Beatles v1.6",
-  "releaseNotes": "• Floating Album Set Indicator Bar with bottom navbar liquid glass & removed inner pill\n• Fast app-wide album art & artist cover loading with aggressive memory & persistent disk caching\n• Complete scroll disappearance for expanded album and album set hero artwork\n• Liquid glass navbar blur on media player 3-dot popup menu\n• Fixed artist name corner radius cutoff in Explore by Genre\n• Restored fluid upward spring pull animation for Next Up\n• Overhauled splash screen with full-bleed vertical red screen coverage and seamless crossfade\n• Synchronized logo sizing across OS splash and cold-start screen",
-  "apkUrl": "https://github.com/Minato-The-Yellow-Flash/Beatles/releases/download/1.6/Beatles-App.apk",
-  "publishedAt": "2026-10-17T10:15:00Z"
+  "versionName": "1.7",
+  "versionCode": 8,
+  "releaseTitle": "Beatles v1.7",
+  "releaseNotes": "• Floating Album Set Indicator Bar: Recreated with bottom navbar liquid glass blur & refraction (no inner pill)\n• True Full-Screen Lyrics: Expanded dynamic viewport with auto-hiding compact cover and controls\n• Next Up Control Pills: Replaced switch with Shuffle, Repeat, AutoMix & Autoplay interactive glass pills\n• Infinite Next Up Queue: Continuous dynamic background track fetching on scroll\n• Contextual Search Recommendations: Next Up strictly follows searched song, artist, language & genre\n• Bollywood Top Charts Cleansing: Purged foreign/BTS tracks to enforce authentic Bollywood selections\n• Lightning-Fast Art Loading: Coil network connection pooling with hardware bitmap decoding\n• Zero-Lag Homescreen Setup: Heavy caching and recommendations pre-warmed during onboarding\n• Snappy Player Minimize: Accelerated navbar & mini media player return animation\n• AirPods-Style Update Dialog: Redesigned bottom-sheet popup with scrollable changelog\n• Refreshed Banner Removal: Eliminated redundant refresh success cards on homescreen\n• Onboarding Logo Refinement: Reduced initial app opening logo size by 50%",
+  "apkUrl": "https://github.com/Minato-The-Yellow-Flash/Beatles/releases/download/1.7/Beatles-App.apk",
+  "publishedAt": "2026-10-17T11:15:00Z"
 }

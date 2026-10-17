@@ -267,7 +267,7 @@ fun OnboardStep1(onNext: (String) -> Unit) {
                 Image(
                     painter = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light),
                     contentDescription = "Beatles",
-                    modifier = Modifier.size(96.dp)
+                    modifier = Modifier.size(48.dp)
                 )
                 Spacer(modifier = Modifier.height(20.dp))
                 Text("beatles music", fontSize = 32.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
@@ -804,7 +804,7 @@ fun OnboardStepArtists(
  * Step 4: Crafting the perfect playlist / Hop-in progress screen.
  */
 @Composable
-fun OnboardStepReady(name: String, hasData: Boolean = false, onDone: () -> Unit) {
+fun OnboardStepReady(name: String, hasData: Boolean = false, onPrepareData: () -> Unit = {}, onDone: () -> Unit) {
     val isDark = isSystemInDarkTheme()
     val bg = if (isDark) GrayBlackBg else Color(0xFFF6F7F9)
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
@@ -827,8 +827,9 @@ fun OnboardStepReady(name: String, hasData: Boolean = false, onDone: () -> Unit)
         label = "pulseScale"
     )
 
-    // Determinate progress counting 0% to 100% over ~2.2 seconds, guaranteeing transition to homepage
+    // Determinate progress counting 0% to 100% over ~2.2 seconds, pre-warming all personalized data during transition
     LaunchedEffect(Unit) {
+        onPrepareData()
         for (i in 1..100) {
             delay(22)
             progress = i / 100f

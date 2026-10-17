@@ -390,7 +390,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun finishOnboarding() {
         storage.setOnboarded(getApplication())
         _uiState.update { it.copy(onboardStep = 0) }
-        refreshPersonalizedMusic(forceFetchNew = true)
+        if (_uiState.value.recommendations.isEmpty() || _uiState.value.albums.isEmpty()) {
+            refreshPersonalizedMusic(forceFetchNew = true)
+        }
     }
 
     private var homeRefreshCount = 0L
@@ -1031,10 +1033,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
         
         // Immediate Next Up population when autoplay is enabled so Next Up is NEVER empty,
-        // strictly matching the active track's language and genre!
+        // strictly matching the active track's language, artist, and genre!
         if (_uiState.value.autoPlayEnabled && pl.size <= 1) {
-            val quickUpcoming = _uiState.value.recommendations.filter { 
-                it.id != song.id && repo.detectLanguage(it).equals(songLang, ignoreCase = true) 
+            val quickUpcoming = if (isFromSearch) {
+                _uiState.value.searchResults.filter { 
+                    it.id != song.id && (it.artist.equals(song.artist, ignoreCase = true) || repo.detectLanguage(it).equals(songLang, ignoreCase = true))
+                }
+            } else {
+                _uiState.value.recommendations.filter { 
+                    it.id != song.id && repo.detectLanguage(it).equals(songLang, ignoreCase = true) 
+                }
             }
             if (quickUpcoming.isNotEmpty()) {
                 pl.addAll(quickUpcoming.take(8))
@@ -1090,7 +1098,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                             if (_uiState.value.isArtistMixActive && _uiState.value.artistMixTarget != null) {
                                 extendArtistMixIfNeeded()
                             } else {
-                                val related = repo.getRelatedSongs(song)
+                                val related = if (isFromSearch) {
+                                    val searchArtist = song.artist.replace(" - Topic", "").trim()
+                                    val artistTracks = repo.search("$searchArtist songs").filter { !it.isAlbum && it.id != song.id }
+                                    val rel = repo.getRelatedSongs(song)
+                                    (artistTracks + rel).distinctBy { it.id }
+                                } else {
+                                    repo.getRelatedSongs(song)
+                                }
                                 if (related.isNotEmpty()) {
                                     val updatedPl = _uiState.value.playlist.toMutableList()
                                     val existingIds = updatedPl.map { it.id }.toSet()
@@ -1114,6 +1129,59 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     _uiState.update { it.copy(isLoadingStream = false, isPlaying = false, downloadNotice = "Unable to stream \"${song.title}\"") }
                 }
             }
+        }
+    }
+
+    private var isLoadingMoreUpcoming = false
+
+    fun loadMoreUpcoming() {
+        if (isLoadingMoreUpcoming) return
+        val current = _uiState.value
+        val song = current.currentSong ?: return
+        if (!current.autoPlayEnabled) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            isLoadingMoreUpcoming = true
+            try {
+                if (current.isArtistMixActive && current.artistMixTarget != null) {
+                    extendArtistMixInternal(current.artistMixTarget)
+                } else {
+                    val songLang = repo.detectLanguage(song)
+                    val searchArtist = song.artist.replace(" - Topic", "").trim()
+                    val artistTracks = repo.search("$searchArtist songs").filter { !it.isAlbum && it.id != song.id }
+                    val relatedTracks = repo.getRelatedSongs(song)
+                    val candidatePool = (artistTracks + relatedTracks).distinctBy { it.id }
+                    
+                    val existingIds = _uiState.value.playlist.map { it.id }.toSet()
+                    val cohesive = candidatePool.filter {
+                        repo.detectLanguage(it).equals(songLang, ignoreCase = true)
+                    }
+                    val newTracks = (if (cohesive.isNotEmpty()) cohesive else candidatePool)
+                        .filter { it.id !in existingIds && it.id !in sessionPlayedSongIds }
+
+                    if (newTracks.isNotEmpty()) {
+                        withContext(Dispatchers.Main) {
+                            val updatedPl = _uiState.value.playlist.toMutableList().apply {
+                                addAll(newTracks.take(12))
+                            }
+                            _uiState.update { it.copy(playlist = updatedPl) }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+            } finally {
+                isLoadingMoreUpcoming = false
+            }
+        }
+    }
+
+    fun prepareDataDuringOnboarding() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                refreshPersonalizedMusic(forceFetchNew = true)
+                loadRecommendationsInternal()
+                repo.getLiveGlobalTopCharts()
+            } catch (_: Exception) {}
         }
     }
 
@@ -1858,7 +1926,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     ) }
                 }
             } finally {
-                _uiState.update { it.copy(isRefreshingHome = false, downloadNotice = "Refreshed albums, songs & browse feed") }
+                _uiState.update { it.copy(isRefreshingHome = false) }
             }
         }
     }

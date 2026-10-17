@@ -1165,6 +1165,28 @@ object MusicRepository {
                             PUNJABI_ARTISTS.any { pa -> it.artist.contains(pa, ignoreCase = true) }
                         }
                         if (punjabiFiltered.isNotEmpty()) return@withContext punjabiFiltered
+                    } else if (genre.equals("bollywood", ignoreCase = true)) {
+                        val bollywoodFiltered = list.filter { song ->
+                            val lang = detectLanguage(song)
+                            val cat = song.genre.lowercase()
+                            val a = song.artist.lowercase()
+                            val isForeign = lang == "Korean" || lang == "Japanese" || 
+                                a.contains("bts") || a.contains("jung kook") || a.contains("jimin") || 
+                                a.contains("blackpink") || a.contains("stray kids") || a.contains("twice")
+                            !isForeign && (
+                                lang.equals("Hindi", ignoreCase = true) ||
+                                cat.contains("bollywood") ||
+                                cat.contains("indian") ||
+                                HINDI_ARTISTS.any { ha -> a.contains(ha) }
+                            )
+                        }
+                        if (bollywoodFiltered.size >= 5) return@withContext bollywoodFiltered
+                    } else if (genre.equals("pop", ignoreCase = true)) {
+                        val popFiltered = list.filter { song ->
+                            val lang = detectLanguage(song)
+                            lang == "English" && !song.artist.contains("bts", ignoreCase = true)
+                        }
+                        if (popFiltered.isNotEmpty()) return@withContext popFiltered
                     } else if (list.isNotEmpty()) {
                         return@withContext list
                     }
@@ -1182,7 +1204,15 @@ object MusicRepository {
             "lo-fi" -> "lofi chill beats songs"
             else -> "$genre hits"
         }
-        search(fallbackQuery).filter { !it.isAlbum }
+        val rawFallback = search(fallbackQuery).filter { !it.isAlbum }
+        if (genre.equals("bollywood", ignoreCase = true)) {
+            val f = rawFallback.filter { song ->
+                val l = detectLanguage(song)
+                val a = song.artist.lowercase()
+                !a.contains("bts") && (l == "Hindi" || HINDI_ARTISTS.any { a.contains(it) })
+            }
+            if (f.isNotEmpty()) f else rawFallback
+        } else rawFallback
     }
 
     suspend fun getAlbumTracks(url: String): List<Song> = withContext(Dispatchers.IO) {

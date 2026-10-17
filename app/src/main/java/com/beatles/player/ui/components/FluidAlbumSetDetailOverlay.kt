@@ -231,8 +231,13 @@ fun FluidAlbumSetDetailOverlay(
                         translationY = sheetSlideY
                     }
                     .background(bgColor)
-                    .haze(state = overlayHazeState)
             ) {
+                // Content layer captured by haze
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .haze(state = overlayHazeState)
+                ) {
                 // 1. Deep Ambient Blurred Base
                 if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
                     AsyncImage(
@@ -686,6 +691,7 @@ fun FluidAlbumSetDetailOverlay(
 
                     }
                 }
+                }
 
                 // ═══ FLOATING ALBUM SET BOTTOM INDICATOR BAR (exact bottom navbar liquid glass UI) ═══
                 val barShape = RoundedCornerShape(28.dp)
@@ -709,7 +715,7 @@ fun FluidAlbumSetDetailOverlay(
                                 Modifier.hazeChild(
                                     state = overlayHazeState,
                                     shape = barShape,
-                                    style = HazeStyle(blurRadius = 16.dp, noiseFactor = 0.06f)
+                                    style = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
                                 )
                             } else Modifier
                         )
