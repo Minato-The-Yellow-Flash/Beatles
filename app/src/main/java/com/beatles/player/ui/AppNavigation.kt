@@ -480,7 +480,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
 
                 // ═══ 2. TOP HEADER (Floating Logo + User Avatar) ═══
-                if (!state.showProfilePage && state.showSeeAllSection == null && state.currentTab != Tab.SEARCH && state.selectedAlbum == null && playerProgress.value <= 0.01f && !state.isExpanded) {
+                val isAnyBrowseOrOverlayActive = state.showProfilePage ||
+                    state.showSeeAllSection != null ||
+                    state.currentTab == Tab.SEARCH ||
+                    state.selectedAlbum != null ||
+                    state.selectedArtist != null ||
+                    state.selectedGenre != null ||
+                    state.selectedAlbumSet != null ||
+                    playerProgress.value > 0.01f ||
+                    state.isExpanded
+
+                if (!isAnyBrowseOrOverlayActive) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1933,25 +1943,21 @@ private fun LiquidConnectedTimeBubble(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
-    val bubbleWidthDp = 120.dp
-    val bubbleHeightDp = 30.dp
-    val bubbleCorner = 15.dp
+    val bubbleWidthDp = 58.dp
+    val bubbleHeightDp = 26.dp
+    val bubbleCorner = 13.dp
     val bubbleWidthPx = with(density) { bubbleWidthDp.toPx() }
-    val marginPx = with(density) { 10.dp.toPx() }
+    val marginPx = with(density) { 8.dp.toPx() }
 
     val thumbX = (scrubFraction * totalWidthPx).coerceIn(marginPx, (totalWidthPx - marginPx).coerceAtLeast(marginPx))
     val maxLeftPx = (totalWidthPx - bubbleWidthPx - marginPx).coerceAtLeast(marginPx)
     val clampedBubbleLeft = (thumbX - bubbleWidthPx / 2f).coerceIn(marginPx, maxLeftPx)
 
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
-    val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF555962)
 
     val curM = positionMs / 60000
     val curS = (positionMs / 1000) % 60
-    val durM = durationMs / 60000
-    val durS = (durationMs / 1000) % 60
     val playedStr = "$curM:${String.format("%02d", curS)}"
-    val totalStr = "$durM:${String.format("%02d", durS)}"
 
     Box(
         modifier = modifier
@@ -1959,62 +1965,31 @@ private fun LiquidConnectedTimeBubble(
             .zIndex(25f)
             .graphicsLayer {
                 alpha = animProgress
-                scaleX = 0.70f + 0.30f * animProgress
-                scaleY = 0.70f + 0.30f * animProgress
+                scaleX = 0.75f + 0.25f * animProgress
+                scaleY = 0.75f + 0.25f * animProgress
                 transformOrigin = TransformOrigin(
                     if (totalWidthPx > 0f) (thumbX / totalWidthPx).coerceIn(0f, 1f) else 0.5f,
                     1f
                 )
             }
     ) {
-        // 1. Organic liquid connection bridge connecting the seek thumb to the bubble
-        Canvas(
-            modifier = Modifier.fillMaxWidth().height(48.dp)
-        ) {
-            val bridgeTop = with(density) { (-10).dp.toPx() }
-            val bridgeBottom = with(density) { 2.dp.toPx() }
-            val halfNeck = with(density) { 8.dp.toPx() }
-            val halfBase = with(density) { 16.dp.toPx() }
-
-            val path = Path().apply {
-                moveTo(thumbX - halfBase, bridgeBottom)
-                cubicTo(
-                    thumbX - halfBase * 0.5f, (bridgeTop + bridgeBottom) * 0.65f,
-                    thumbX - halfNeck * 1.3f, (bridgeTop + bridgeBottom) * 0.35f,
-                    thumbX - halfNeck, bridgeTop
-                )
-                lineTo(thumbX + halfNeck, bridgeTop)
-                cubicTo(
-                    thumbX + halfNeck * 1.3f, (bridgeTop + bridgeBottom) * 0.35f,
-                    thumbX + halfBase * 0.5f, (bridgeTop + bridgeBottom) * 0.65f,
-                    thumbX + halfBase, bridgeBottom
-                )
-                close()
-            }
-
-            drawPath(path, brush = SolidColor(translucentBg))
-            drawPath(
-                path,
-                color = borderColor,
-                style = Stroke(width = with(density) { 1.dp.toPx() })
-            )
-        }
-
-        // 2. Liquid connected time capsule pill
+        // Compact glowing floating time bubble (no connection bridge, inner shadow/glow)
+        val glowColor = if (isDark) Color.White.copy(alpha = 0.38f) else Color.Black.copy(alpha = 0.18f)
+        val spotGlow = if (isDark) Color.White.copy(alpha = 0.30f) else Color.Black.copy(alpha = 0.12f)
         Box(
             modifier = Modifier
                 .offset {
                     IntOffset(
                         clampedBubbleLeft.roundToInt(),
-                        with(density) { (-40).dp.roundToPx() }
+                        with(density) { (-32).dp.roundToPx() }
                     )
                 }
                 .width(bubbleWidthDp)
                 .height(bubbleHeightDp)
                 .shadow(
-                    elevation = 8.dp,
+                    elevation = 6.dp,
                     shape = RoundedCornerShape(bubbleCorner),
-                    spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f)
+                    spotColor = spotGlow
                 )
                 .clip(RoundedCornerShape(bubbleCorner))
                 .background(translucentBg)
@@ -2023,33 +1998,39 @@ private fun LiquidConnectedTimeBubble(
                     color = borderColor,
                     shape = RoundedCornerShape(bubbleCorner)
                 )
-                .glassRefraction(bubbleCorner, isDark = isDark)
-                .padding(horizontal = 10.dp),
+                .drawWithContent {
+                    drawContent()
+                    // Inner shadow / glow along perimeter
+                    val strokeWidth = 1.2.dp.toPx()
+                    drawRoundRect(
+                        color = glowColor,
+                        topLeft = androidx.compose.ui.geometry.Offset(strokeWidth / 2f, strokeWidth / 2f),
+                        size = androidx.compose.ui.geometry.Size(size.width - strokeWidth, size.height - strokeWidth),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(bubbleCorner.toPx(), bubbleCorner.toPx()),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+                    )
+                    // Inner top glow / gradient
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                (if (isDark) Color.White else Color.Black).copy(alpha = if (isDark) 0.25f else 0.12f),
+                                Color.Transparent
+                            ),
+                            startY = 0f,
+                            endY = size.height * 0.70f
+                        ),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(bubbleCorner.toPx(), bubbleCorner.toPx())
+                    )
+                }
+                .glassRefraction(bubbleCorner, isDark = isDark),
             contentAlignment = Alignment.Center
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = playedStr,
-                    color = textPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = " • ",
-                    color = textSecondary.copy(alpha = 0.8f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = totalStr,
-                    color = textSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+            Text(
+                text = playedStr,
+                color = textPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }

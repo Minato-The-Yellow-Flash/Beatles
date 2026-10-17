@@ -199,36 +199,6 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    fun updateSessionLyrics(song: com.beatles.player.data.Song, lrcText: String, currentLine: String) {
-        val extras = android.os.Bundle().apply {
-            val jsonPayload = try {
-                org.json.JSONObject().apply {
-                    put("songName", song.title)
-                    put("artist", song.artist)
-                    put("lyric", lrcText)
-                    put("rawLyric", lrcText)
-                    put("songId", song.id)
-                }.toString()
-            } catch (_: Exception) { "" }
-            putString("lyricInfo", jsonPayload)
-            putString("lyric", lrcText)
-            putString("rawLyric", lrcText)
-            putString("com.oplus.media.lyric", lrcText)
-            putString("oplus:media:lyric", lrcText)
-            putString("com.coloros.media.lyric", lrcText)
-            putString("android.media.metadata.LYRIC", lrcText)
-            putString("currentLyric", currentLine)
-            putBoolean("oplus_support_lyrics", true)
-            putBoolean("coloros_support_lyrics", true)
-            putBoolean("com.oplus.lockscreen.lyrics_enabled", true)
-            putBoolean("coloros_flag_support_live_lyrics", true)
-            putBoolean("is_support_lyrics", true)
-        }
-        try {
-            mediaSession?.setSessionExtras(extras)
-        } catch (_: Throwable) {}
-    }
-
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
     override fun onDestroy() {

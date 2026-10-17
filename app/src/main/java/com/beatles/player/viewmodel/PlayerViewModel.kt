@@ -269,14 +269,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             }
             val state = _uiState.value
             val currentSong = state.currentSong
-            if (currentSong != null) {
-                com.beatles.player.player.ColorOSLyricsHelper.updateLockscreenLyrics(
-                    getApplication(),
-                    currentSong,
-                    state.lyrics,
-                    pos
-                )
-            }
             // Intelligent AutoMix: Evaluate toward outro across all track durations
             val minPlayTime = if (dur < 30_000L) (dur * 0.30f).toLong() else maxOf(12_000L, (dur * 0.55f).toLong())
             if (state.autoMixEnabled && state.repeatMode != 2 && dur >= 5_000L && currentSong != null && !state.isLoadingStream && (pos >= minPlayTime || dur - pos <= 25_000L)) {
@@ -1069,13 +1061,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         storage.addToRecentlyPlayed(getApplication(), song)
         sessionPlayedSongIds.add(song.id)
         _uiState.update { it.copy(recentlyPlayed = storage.getRecentlyPlayed(getApplication())) }
-        com.beatles.player.player.ColorOSLyricsHelper.updateLockscreenLyrics(
-            getApplication(),
-            song,
-            emptyList(),
-            0L,
-            forceUpdate = true
-        )
         fetchLyrics(song)
         
         activePlayJob?.cancel()
@@ -1639,13 +1624,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val lyrics = repo.getLyrics(song.title, song.artist, song.durationSeconds)
             if (_uiState.value.currentSong?.id == song.id) {
                 _uiState.update { it.copy(lyrics = lyrics) }
-                com.beatles.player.player.ColorOSLyricsHelper.updateLockscreenLyrics(
-                    getApplication(),
-                    song,
-                    lyrics,
-                    _uiState.value.currentPosition,
-                    forceUpdate = true
-                )
             }
         }
     }

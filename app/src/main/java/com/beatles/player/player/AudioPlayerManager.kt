@@ -124,20 +124,12 @@ class AudioPlayerManager(private val context: Context) {
         val artUri = if (song.coverUrl.isNotBlank()) {
             try { android.net.Uri.parse(song.coverUrl) } catch (_: Exception) { null }
         } else null
-        val extras = android.os.Bundle().apply {
-            putBoolean("oplus_support_lyrics", true)
-            putBoolean("coloros_support_lyrics", true)
-            putBoolean("com.oplus.lockscreen.lyrics_enabled", true)
-            putBoolean("coloros_flag_support_live_lyrics", true)
-            putBoolean("is_support_lyrics", true)
-        }
         val metadata = MediaMetadata.Builder()
             .setTitle(song.title)
             .setArtist(song.artist)
             .setAlbumTitle(song.album)
             .setDisplayTitle(song.title)
             .setSubtitle(song.artist)
-            .setExtras(extras)
             .apply { if (artUri != null) setArtworkUri(artUri) }
             .build()
         return MediaItem.Builder().setMediaId(song.id).setUri(streamUrl).setMediaMetadata(metadata).build()

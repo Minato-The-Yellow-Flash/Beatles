@@ -241,7 +241,7 @@ fun NowPlayingSheet(
             }
     ) {
         val backgroundBlurAmount by animateDpAsState(
-            targetValue = ((if (showLyrics) 20.dp else if (showNextUp) 8.dp else 16.dp) * morphProgress).coerceAtLeast(0.dp),
+            targetValue = ((if (showLyrics || showNextUp) 20.dp else 16.dp) * morphProgress).coerceAtLeast(0.dp),
             label = "bgBlur"
         )
         val sheetBackgroundAlpha = 1f
@@ -422,7 +422,7 @@ fun NowPlayingSheet(
         LaunchedEffect(isLyricsActive, lastLyricsInteractionTime) {
             if (isLyricsActive) {
                 controlsVisible = true
-                delay(10000L) // 10s idle reading
+                delay(4000L) // 4s idle reading
                 controlsVisible = false
             } else {
                 controlsVisible = true
@@ -2219,19 +2219,47 @@ fun QueueSongItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (index > 0) {
-                    IconButton(onClick = {
-                        Haptics.tick(view)
-                        onMoveUp()
-                    }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(22.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                Haptics.tick(view)
+                                onMoveUp()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowUp,
+                            contentDescription = "Move up",
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
                 if (index < totalCount - 1) {
-                    IconButton(onClick = {
-                        Haptics.tick(view)
-                        onMoveDown()
-                    }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(22.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                Haptics.tick(view)
+                                onMoveDown()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Move down",
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
