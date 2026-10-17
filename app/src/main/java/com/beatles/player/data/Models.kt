@@ -81,3 +81,24 @@ data class FeedbackTicket(
     val timeAgo: String,
     val type: String // "bug", "praise", "feature"
 )
+
+data class ReleaseStat(
+    val tagName: String,
+    val apkName: String,
+    val downloadCount: Int,
+    val publishedAt: String,
+    val htmlUrl: String = ""
+)
+
+data class UserGeoLocation(
+    val country: String = "Unknown",
+    val countryCode: String = "",
+    val city: String = "Unknown",
+    val region: String = "",
+    val isp: String = "",
+    val ip: String = "",
+    val deviceModel: String = "",
+    val androidVersion: String = "",
+    val appVersion: String = "1.9"
+)
+

@@ -1251,6 +1251,71 @@ fun HomeScreen(
                                 Text("$mfyLang • $mfyGenre", color = AccentRed.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                             }
                         }
+
+                        // "Show More" card in Made For You section
+                        item(key = "mfy_show_more") {
+                            val moreInteraction = remember { MutableInteractionSource() }
+                            val isPressed by moreInteraction.collectIsPressedAsState()
+                            val moreScale by animateFloatAsState(
+                                targetValue = if (isPressed) 0.95f else 1.0f,
+                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+                                label = "mfyShowMoreScale"
+                            )
+                            val pillShape = RoundedCornerShape(22.dp)
+                            Box(
+                                modifier = Modifier
+                                    .width(135.dp)
+                                    .height(144.dp)
+                                    .graphicsLayer {
+                                        scaleX = moreScale
+                                        scaleY = moreScale
+                                    }
+                                    .shadow(4.dp, pillShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                                    .clip(pillShape)
+                                    .background(if (isDark) Color(0xFF1E2026).copy(alpha = 0.65f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
+                                    .border(1.dp, if (isDark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.35f), pillShape)
+                                    .glassRefraction(22.dp, isDark = isDark)
+                                    .clickable(interactionSource = moreInteraction, indication = null) {
+                                        onSeeAll("made_for_you")
+                                    }
+                                    .padding(14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(AccentRed),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = "Show More",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        "Show More",
+                                        color = textPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        "For You",
+                                        color = textMuted,
+                                        fontSize = 11.sp,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(28.dp))
                 }

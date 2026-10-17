@@ -2082,7 +2082,7 @@ fun QueueSongItem(
         label = "queueDragOffset"
     )
 
-    val cardShape = RoundedCornerShape(50)
+    val cardShape = RoundedCornerShape(30)
     val cardBg = Color.White.copy(alpha = 0.12f)
     BoxWithConstraints(
         modifier = Modifier

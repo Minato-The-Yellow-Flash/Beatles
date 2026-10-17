@@ -127,7 +127,13 @@ data class PlayerUiState(
     val updateDownloadProgress: Float? = null,
     val updateDownloadStatus: String? = null,
     val updateErrorMessage: String? = null,
-    val updateNotice: String? = null
+    val updateNotice: String? = null,
+    val totalAppDownloads: Int = 0,
+    val releaseStats: List<ReleaseStat> = emptyList(),
+    val userGeoLocation: UserGeoLocation? = null,
+    val isAnalyticsLoading: Boolean = false,
+    val customAnalyticsWebhookUrl: String = "",
+    val analyticsPingStatus: String? = null
 )
 
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
@@ -343,6 +349,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             loadRecommendations()
             checkForUpdates(silent = true)
         }
+        val savedWebhook = try { storage.getAnalyticsWebhookUrl(application) } catch (_: Exception) { "" }
+        _uiState.update { it.copy(customAnalyticsWebhookUrl = savedWebhook) }
+        viewModelScope.launch {
+            try {
+                AnalyticsManager.initAndTrack(application)
+                refreshAnalytics()
+            } catch (_: Exception) {}
+        }
     }
 
     fun setOnboardStep(step: Int) { 
@@ -522,6 +536,39 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setArtistTab(tab: ArtistTab) { _uiState.update { it.copy(artistTab = tab) } }
+    fun refreshAnalytics() {
+        _uiState.update { it.copy(isAnalyticsLoading = true) }
+        viewModelScope.launch {
+            try {
+                val (total, releases) = AnalyticsManager.fetchGitHubDownloadStats()
+                val geo = AnalyticsManager.fetchUserGeoLocation(getApplication())
+                _uiState.update {
+                    it.copy(
+                        totalAppDownloads = total,
+                        releaseStats = releases,
+                        userGeoLocation = geo,
+                        isAnalyticsLoading = false
+                    )
+                }
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isAnalyticsLoading = false) }
+            }
+        }
+    }
+
+    fun setAnalyticsWebhookUrl(url: String) {
+        storage.setAnalyticsWebhookUrl(getApplication(), url)
+        _uiState.update { it.copy(customAnalyticsWebhookUrl = url, analyticsPingStatus = null) }
+    }
+
+    fun testAnalyticsPing(url: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(analyticsPingStatus = "Sending test ping...") }
+            val (success, msg) = AnalyticsManager.sendTestPing(getApplication(), url)
+            _uiState.update { it.copy(analyticsPingStatus = if (success) "✓ $msg" else "✗ $msg") }
+        }
+    }
+
     fun setAdminTab(tab: AdminTab) { _uiState.update { it.copy(adminTab = tab) } }
 
     fun setSelectedAlbum(album: Album?, bounds: Rect? = null) {
@@ -1060,6 +1107,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         )}
         storage.addToRecentlyPlayed(getApplication(), song)
         sessionPlayedSongIds.add(song.id)
+        viewModelScope.launch {
+            try {
+                AnalyticsManager.logEvent(
+                    getApplication(),
+                    "song_play",
+                    mapOf("title" to song.title, "artist" to song.artist, "genre" to song.genre)
+                )
+            } catch (_: Exception) {}
+        }
         _uiState.update { it.copy(recentlyPlayed = storage.getRecentlyPlayed(getApplication())) }
         fetchLyrics(song)
         

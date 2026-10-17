@@ -380,6 +380,36 @@ object LocalStorage {
     fun getCachedPersonalizedAlbums(ctx: Context): List<Album> = getList(ctx, "personalized_albums", Album::class.java)
 
     fun savePersonalizedAlbums(ctx: Context, albums: List<Album>) = saveList(ctx, "personalized_albums", albums)
+
+    fun getAnalyticsWebhookUrl(ctx: Context): String =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("analytics_webhook_url", "") ?: ""
+
+    fun setAnalyticsWebhookUrl(ctx: Context, url: String) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString("analytics_webhook_url", url.trim())
+                .apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getDistinctUserId(ctx: Context): String {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        var id = prefs.getString("distinct_user_id", null)
+        if (id.isNullOrBlank()) {
+            id = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString("distinct_user_id", id).apply()
+        }
+        return id
+    }
+
+    fun hasLoggedInstall(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("has_logged_install", false)
+
+    fun setLoggedInstall(ctx: Context) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("has_logged_install", true).apply()
+        } catch (_: Exception) {}
+    }
 }
 
 enum class ThemeMode { SYSTEM, DARK, LIGHT }

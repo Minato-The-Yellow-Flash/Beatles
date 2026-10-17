@@ -24,6 +24,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import com.beatles.player.data.AnalyticsManager
 import com.beatles.player.data.AdminTab
 import com.beatles.player.data.UserRole
 import com.beatles.player.viewmodel.PlayerUiState
@@ -39,7 +42,7 @@ fun AdminScreen(
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         when (state.adminTab) {
-            AdminTab.DASHBOARD -> AdminDashboardTab(state = state)
+            AdminTab.DASHBOARD -> AdminDashboardTab(state = state, viewModel = viewModel)
             AdminTab.USERS -> AdminUsersTab(state = state, viewModel = viewModel)
             AdminTab.CONTENT -> AdminContentTab(state = state, viewModel = viewModel)
             AdminTab.SETTINGS -> AdminSettingsTab()
@@ -48,7 +51,15 @@ fun AdminScreen(
 }
 
 @Composable
-fun AdminDashboardTab(state: PlayerUiState) {
+fun AdminDashboardTab(state: PlayerUiState, viewModel: PlayerViewModel) {
+    val clipboardManager = LocalClipboardManager.current
+    var webhookInput by remember(state.customAnalyticsWebhookUrl) { mutableStateOf(state.customAnalyticsWebhookUrl) }
+    var copiedScript by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshAnalytics()
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = 110.dp, bottom = LocalDynamicBottomPadding.current)
@@ -63,41 +74,302 @@ fun AdminDashboardTab(state: PlayerUiState) {
                     .border(1.dp, AppTheme.fg(0.08f), RoundedCornerShape(20.dp))
                     .padding(18.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .background(AdminBlue.copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.Security, contentDescription = null, tint = AdminBlue, modifier = Modifier.size(26.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(CircleShape)
+                                .background(AdminBlue.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Security, contentDescription = null, tint = AdminBlue, modifier = Modifier.size(26.dp))
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text("Beatles Admin Console", color = AdminBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Text("Live Platform Analytics", color = AppTheme.fg(), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            val locText = state.userGeoLocation?.let { "${it.country}, ${it.city}" } ?: "Resolving GeoIP..."
+                            Text("Your Node: $locText", color = AppTheme.fg(0.5f), fontSize = 12.sp)
+                        }
                     }
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column {
-                        Text("Admin Control Console", color = AdminBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        Text("Platform Overview", color = AppTheme.fg(), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text("${state.trackSubmissions.count { it.status == "pending" }} submissions pending · ${state.mockUsers.size} active users", color = AppTheme.fg(0.5f), fontSize = 12.sp)
+
+                    IconButton(
+                        onClick = { viewModel.refreshAnalytics() },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(AppTheme.fg(0.08f))
+                    ) {
+                        if (state.isAnalyticsLoading) {
+                            CircularProgressIndicator(color = AdminBlue, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = AppTheme.fg(), modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
             }
         }
 
-        // Metrics Grid
+        // Live Real-Time Metrics Grid
         item {
             Spacer(modifier = Modifier.height(18.dp))
             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                Text("System Health & Metrics", color = AppTheme.fg(), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Live Download & User Telemetry", color = AppTheme.fg(), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AdminKpiBox("5,210", "Total Users", "+42 today", AdminBlue, Modifier.weight(1f))
-                    AdminKpiBox("12,840", "Total Tracks", "+18 pending", Color(0xFF7B2FBE), Modifier.weight(1f))
+                    AdminKpiBox(
+                        value = "${state.totalAppDownloads}",
+                        label = "Total APK Downloads",
+                        delta = "Live GitHub API",
+                        color = Color(0xFF2E7D32),
+                        modifier = Modifier.weight(1f)
+                    )
+                    AdminKpiBox(
+                        value = state.userGeoLocation?.country ?: "Detecting...",
+                        label = "User Country",
+                        delta = state.userGeoLocation?.city?.ifBlank { "City Resolved" } ?: "GeoIP Live",
+                        color = AdminBlue,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AdminKpiBox("84.2K", "Daily Streams", "+12% vs yday", Color(0xFF16A085), Modifier.weight(1f))
-                    AdminKpiBox("389", "Active Artists", "+7 this week", Color(0xFFE74C3C), Modifier.weight(1f))
+                    AdminKpiBox(
+                        value = state.userGeoLocation?.deviceModel?.take(14) ?: "Android",
+                        label = "Hardware Model",
+                        delta = state.userGeoLocation?.androidVersion ?: "Android",
+                        color = Color(0xFF7B2FBE),
+                        modifier = Modifier.weight(1f)
+                    )
+                    AdminKpiBox(
+                        value = "${state.releaseStats.size} Builds",
+                        label = "GitHub Releases",
+                        delta = "v1.9 Active",
+                        color = Color(0xFFF82C38),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        // Downloads by Release Breakdown
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Text("APK Downloads per Release", color = AppTheme.fg(), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Real-time counter from Minato-The-Yellow-Flash/Beatles", color = AppTheme.fg(0.5f), fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+
+        if (state.releaseStats.isEmpty() && state.isAnalyticsLoading) {
+            item {
+                Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = AdminBlue, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                }
+            }
+        } else if (state.releaseStats.isEmpty()) {
+            item {
+                Text("No releases found on GitHub yet.", color = AppTheme.fg(0.4f), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp))
+            }
+        } else {
+            items(state.releaseStats) { rel ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 5.dp)
+                        .background(DarkCardBg, RoundedCornerShape(14.dp))
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF2E7D32).copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Release ${rel.tagName}", color = AppTheme.fg(), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text("${rel.apkName} · ${rel.publishedAt}", color = AppTheme.fg(0.45f), fontSize = 11.sp)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .background(AdminBlue.copy(alpha = 0.15f), RoundedCornerShape(50))
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text("${rel.downloadCount} downloads", color = AdminBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // Free User Analytics Setup Guide
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .background(AppTheme.fg(0.04f), RoundedCornerShape(20.dp))
+                    .border(1.dp, AppTheme.fg(0.08f), RoundedCornerShape(20.dp))
+                    .padding(18.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF16A085).copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Public, contentDescription = null, tint = Color(0xFF16A085), modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text("Free User & GeoIP Analytics Hub", color = AppTheme.fg(), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text("Collect installs & locations with zero server cost", color = AppTheme.fg(0.5f), fontSize = 12.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    "• 100% Free Google Sheets Logging:\n" +
+                    "Create a free Google Sheet, go to Extensions > Apps Script, paste the 10-line script below, and deploy as Web App (Anyone access). Paste the Web App URL here, and every app install & session will automatically log Date, Country, City, and Device directly to your spreadsheet!",
+                    color = AppTheme.fg(0.75f),
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Text("Webhook / Google Apps Script URL:", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                BasicTextField(
+                    value = webhookInput,
+                    onValueChange = { webhookInput = it },
+                    textStyle = TextStyle(color = AppTheme.fg(), fontSize = 12.sp),
+                    singleLine = true,
+                    cursorBrush = SolidColor(AdminBlue),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(DarkCardBg, RoundedCornerShape(12.dp))
+                        .border(1.dp, AppTheme.fg(0.12f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    decorationBox = { inner ->
+                        if (webhookInput.isEmpty()) {
+                            Text("https://script.google.com/macros/s/.../exec", color = AppTheme.fg(0.3f), fontSize = 12.sp)
+                        }
+                        inner()
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { viewModel.setAnalyticsWebhookUrl(webhookInput.trim()) },
+                        colors = ButtonDefaults.buttonColors(containerColor = AdminBlue),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Save Webhook", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = { viewModel.testAnalyticsPing(webhookInput.trim()) },
+                        colors = ButtonDefaults.buttonColors(containerColor = AppTheme.fg(0.12f)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Send Test Ping", color = AppTheme.fg(), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (!state.analyticsPingStatus.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        state.analyticsPingStatus,
+                        color = if (state.analyticsPingStatus.startsWith("✓")) Color(0xFF4CAF50) else Color(0xFFE53935),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                val scriptCode = """function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = JSON.parse(e.postData.contents);
+  sheet.appendRow([new Date(), data.event, data.distinct_id, data.country, data.city, data.device_model, data.android_version, data.app_version]);
+  return ContentService.createTextOutput("OK");
+}"""
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                        .border(1.dp, AppTheme.fg(0.08f), RoundedCornerShape(10.dp))
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Google Apps Script (10 lines):", color = AdminBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (copiedScript) "Copied!" else "Copy Code",
+                            color = Color(0xFF16A085),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                clipboardManager.setText(AnnotatedString(scriptCode))
+                                copiedScript = true
+                            }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        scriptCode,
+                        color = Color(0xFFE2E2E2),
+                        fontSize = 10.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+                }
+            }
+        }
+
+        // Recent Audit Telemetry
+        val recentEvents = AnalyticsManager.getRecentAuditEvents()
+        if (recentEvents.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Text("Recent In-App Telemetry Events", color = AppTheme.fg(), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Real-time local event audit trail", color = AppTheme.fg(0.5f), fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+            }
+
+            items(recentEvents.take(8)) { ev ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 3.dp)
+                        .background(DarkCardBg, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF16A085)))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(ev, color = AppTheme.fg(0.85f), fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                 }
             }
         }
@@ -139,6 +411,7 @@ fun AdminDashboardTab(state: PlayerUiState) {
                 }
             }
         }
+        item { Spacer(modifier = Modifier.height(30.dp)) }
     }
 }
 
