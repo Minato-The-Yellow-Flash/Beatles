@@ -13,6 +13,24 @@ android {
         targetSdk = 35
         versionCode = 12
         versionName = "1.9"
+        manifestPlaceholders["appName"] = "Beatles"
+        buildConfigField("Boolean", "IS_ADMIN_EDITION", "false")
+    }
+
+    flavorDimensions += "edition"
+    productFlavors {
+        create("standard") {
+            dimension = "edition"
+            applicationId = "com.beatles.player"
+            manifestPlaceholders["appName"] = "Beatles"
+            buildConfigField("Boolean", "IS_ADMIN_EDITION", "false")
+        }
+        create("admin") {
+            dimension = "edition"
+            applicationId = "com.beatles.player.admin"
+            manifestPlaceholders["appName"] = "Beatles Admin"
+            buildConfigField("Boolean", "IS_ADMIN_EDITION", "true")
+        }
     }
     buildTypes { release { isMinifyEnabled = false } }
     buildFeatures {

@@ -52,6 +52,112 @@ fun AdminScreen(
 
 @Composable
 fun AdminDashboardTab(state: PlayerUiState, viewModel: PlayerViewModel) {
+    if (com.beatles.player.BuildConfig.IS_ADMIN_EDITION) {
+        AdminLiveAnalyticsDashboard(state = state, viewModel = viewModel)
+    } else {
+        AdminMockDashboardTab(state = state)
+    }
+}
+
+@Composable
+fun AdminMockDashboardTab(state: PlayerUiState) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = 110.dp, bottom = LocalDynamicBottomPadding.current)
+    ) {
+        // Hero Admin Card
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .background(AppTheme.fg(0.05f), RoundedCornerShape(20.dp))
+                    .border(1.dp, AppTheme.fg(0.08f), RoundedCornerShape(20.dp))
+                    .padding(18.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(AdminBlue.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Security, contentDescription = null, tint = AdminBlue, modifier = Modifier.size(26.dp))
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text("Admin Control Console", color = AdminBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                        Text("Platform Overview", color = AppTheme.fg(), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        val pendingCount = state.trackSubmissions.count { it.status == "pending" }
+                        Text("$pendingCount submissions pending · ${state.mockUsers.size} active users", color = AppTheme.fg(0.5f), fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        // Metrics Grid (Mock data for public Beatles version)
+        item {
+            Spacer(modifier = Modifier.height(18.dp))
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Text("System Health & Metrics", color = AppTheme.fg(), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AdminKpiBox("5,210", "Total Users", "+42 today", AdminBlue, Modifier.weight(1f))
+                    AdminKpiBox("12,840", "Total Tracks", "+18 pending", Color(0xFF7B2FBE), Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AdminKpiBox("84.2K", "Daily Streams", "+12% vs yday", Color(0xFF16A085), Modifier.weight(1f))
+                    AdminKpiBox("389", "Active Artists", "+7 this week", Color(0xFFE74C3C), Modifier.weight(1f))
+                }
+            }
+        }
+
+        // User Feedback Section
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Text("User Feedback & Tickets", color = AppTheme.fg(), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+
+        items(state.feedbackTickets) { f ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .background(DarkCardBg, RoundedCornerShape(14.dp))
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val tagColor = when (f.type) {
+                    "bug" -> Color(0xFFE53935)
+                    "praise" -> Color(0xFF4CAF50)
+                    else -> Color(0xFFFFB300)
+                }
+                Box(
+                    modifier = Modifier
+                        .background(tagColor.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(f.type.uppercase(), color = tagColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(f.msg, color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("${f.user} · ${f.timeAgo}", color = AppTheme.fg(0.4f), fontSize = 11.sp)
+                }
+            }
+        }
+        item { Spacer(modifier = Modifier.height(30.dp)) }
+    }
+}
+
+@Composable
+fun AdminLiveAnalyticsDashboard(state: PlayerUiState, viewModel: PlayerViewModel) {
     val clipboardManager = LocalClipboardManager.current
     var webhookInput by remember(state.customAnalyticsWebhookUrl) { mutableStateOf(state.customAnalyticsWebhookUrl) }
     var copiedScript by remember { mutableStateOf(false) }

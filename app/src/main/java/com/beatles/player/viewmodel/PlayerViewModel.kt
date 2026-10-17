@@ -156,9 +156,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     @Volatile private var activeTargetSongId: String? = null
 
     init {
-        val isOnboarded = try { storage.isOnboarded(application) } catch (_: Exception) { false }
+        val userRole = if (com.beatles.player.BuildConfig.IS_ADMIN_EDITION) {
+            UserRole.ADMIN
+        } else {
+            try { storage.getUserRole(application) } catch (_: Exception) { UserRole.LISTENER }
+        }
+        val isOnboarded = if (com.beatles.player.BuildConfig.IS_ADMIN_EDITION) true else (try { storage.isOnboarded(application) } catch (_: Exception) { false })
         val userName = try { storage.getUserName(application) } catch (_: Exception) { "" }
-        val userRole = try { storage.getUserRole(application) } catch (_: Exception) { UserRole.LISTENER }
         val savedFavorites = try { storage.getFavorites(application) } catch (_: Exception) { emptyList() }
         val savedRecent = try { storage.getRecentlyPlayed(application) } catch (_: Exception) { emptyList() }
         val savedLanguage = try { storage.getSelectedLanguage(application).ifBlank { "All" } } catch (_: Exception) { "All" }
