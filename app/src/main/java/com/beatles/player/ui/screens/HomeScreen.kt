@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -886,7 +887,6 @@ fun HomeScreen(
                                         scaleX = scale
                                         scaleY = scale
                                     }
-                                    .clip(RoundedCornerShape(16.dp))
                                     .clickable(interactionSource = cardInteraction, indication = null) {
                                         onPlay(song, filteredGenreSongs, itemBounds)
                                     }
@@ -923,8 +923,23 @@ fun HomeScreen(
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Text(song.title ?: "", color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                Text(song.artist ?: "", color = textSecondary, fontSize = 11.sp, maxLines = 1)
+                                Text(
+                                    song.title ?: "",
+                                    color = textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                )
+                                Text(
+                                    song.artist ?: "",
+                                    color = textSecondary,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                )
                             }
                         }
                     }

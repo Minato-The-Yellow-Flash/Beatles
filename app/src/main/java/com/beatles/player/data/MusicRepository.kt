@@ -21,6 +21,7 @@ import java.util.Locale
 object MusicRepository {
     private val httpClient = OkHttpClient()
     private val gson = Gson()
+    private val highResCoverCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     init { NewPipe.init(OkHttpDownloader()) }
 
@@ -1133,7 +1134,7 @@ object MusicRepository {
                             val imgArr = obj.getAsJsonArray("im:image")
                             val rawImg = imgArr?.lastOrNull()?.asJsonObject?.get("label")?.asString ?: ""
                             val cover = if (rawImg.isNotBlank()) {
-                                rawImg.replace(Regex("\\d+x\\d+bb"), "1000x1000bb").replace(Regex("\\d+x\\d+"), "1000x1000")
+                                rawImg.replace(Regex("\\d+x\\d+bb"), "600x600bb").replace(Regex("\\d+x\\d+"), "600x600")
                             } else ""
                             val idObj = obj.getAsJsonObject("id")
                             val trackId = idObj?.getAsJsonObject("attributes")?.get("im:id")?.asString
@@ -1397,9 +1398,12 @@ object MusicRepository {
     suspend fun getRelatedSongs(url: String): List<Song> = getRelatedSongs(Song(id = url, title = "", artist = "", album = "", coverUrl = "", durationSeconds = 0))
 
     fun getHighResCover(title: String, artist: String, fallback: String): String {
+        val cleanTitle = title.replace(Regex("(?i)\\[.*?\\]|\\(.*?\\)"), "").replace(Regex("(?i)ft\\..*|feat\\..*|\\|.*|-.*"), "").trim()
+        val cleanArtist = artist.replace(" - Topic", "").trim()
+        val cacheKey = "$cleanTitle|$cleanArtist".lowercase()
+        highResCoverCache[cacheKey]?.let { return it }
+
         return try {
-            val cleanTitle = title.replace(Regex("(?i)\\[.*?\\]|\\(.*?\\)"), "").replace(Regex("(?i)ft\\..*|feat\\..*|\\|.*|-.*"), "").trim()
-            val cleanArtist = artist.replace(" - Topic", "").trim()
             val q = URLEncoder.encode("$cleanTitle $cleanArtist", "UTF-8")
             val req = Request.Builder().url("https://itunes.apple.com/search?term=$q&media=music&entity=song&limit=1").build()
             val resp = httpClient.newCall(req).execute()
@@ -1409,8 +1413,11 @@ object MusicRepository {
                 val results = json.getAsJsonArray("results")
                 if (results != null && results.size() > 0) {
                     val itunesArt = results[0].asJsonObject.get("artworkUrl100")?.asString
-                        ?.replace("100x100bb", "1000x1000bb")
-                    if (!itunesArt.isNullOrEmpty()) return itunesArt
+                        ?.replace("100x100bb", "600x600bb")
+                    if (!itunesArt.isNullOrEmpty()) {
+                        highResCoverCache[cacheKey] = itunesArt
+                        return itunesArt
+                    }
                 }
             }
 
@@ -1425,7 +1432,10 @@ object MusicRepository {
                     if (dataD != null && dataD.size() > 0) {
                         val albumObj = dataD[0].asJsonObject.getAsJsonObject("album")
                         val coverXl = albumObj?.get("cover_xl")?.asString ?: albumObj?.get("cover_big")?.asString
-                        if (!coverXl.isNullOrEmpty()) return coverXl
+                        if (!coverXl.isNullOrEmpty()) {
+                            highResCoverCache[cacheKey] = coverXl
+                            return coverXl
+                        }
                     }
                 }
             } catch (_: Exception) {}

@@ -224,7 +224,7 @@ fun FluidAlbumDetailOverlay(
         val artTranslateY = (-scrollOffset * 0.75f).coerceAtLeast(-targetTopPx - 200f) * p
         val artBlur = ((scrollOffset / 14f) * p).coerceIn(0f, 24f).dp
         val artScale = (1f - (scrollOffset / 1400f) * p).coerceIn(0.72f, 1f)
-        val artAlpha = (1f - (scrollOffset / 340f) * p).coerceIn(0f, 1f)
+        val artAlpha = (1f - (scrollOffset / 260f) * p).coerceIn(0f, 1f)
         val originCardWidth = origin.width.coerceAtLeast(10f)
         val originCardHeight = origin.height.coerceAtLeast(10f)
         val originCornerPx = if (originCardWidth <= with(density) { 72.dp.toPx() }) originCardWidth / 2f else with(density) { 18.dp.toPx() }
@@ -691,11 +691,11 @@ fun FluidAlbumDetailOverlay(
                     .graphicsLayer {
                         scaleX = if (clampedP >= 0.95f) artScale else 1f
                         scaleY = if (clampedP >= 0.95f) artScale else 1f
-                        alpha = if (clampedP >= 0.95f) artAlpha.coerceIn(0.08f, 1f) else 1f
+                        alpha = if (clampedP >= 0.95f) artAlpha.coerceIn(0f, 1f) else 1f
                     }
-                    .then(if (artBlur > 0.dp && clampedP >= 0.95f) Modifier.blur(artBlur) else Modifier)
+                    .then(if (artBlur > 0.dp && clampedP >= 0.95f && artAlpha > 0.01f) Modifier.blur(artBlur) else Modifier)
                     .clip(RoundedCornerShape(with(density) { curArtCorner.toDp() }))
-                    .shadow(elevation = (12.dp * clampedP).coerceAtLeast(0.dp), shape = RoundedCornerShape(with(density) { curArtCorner.toDp() }))
+                    .shadow(elevation = (12.dp * clampedP * artAlpha).coerceAtLeast(0.dp), shape = RoundedCornerShape(with(density) { curArtCorner.toDp() }))
             ) {
                 // Live gradient cover as robust foundation
                 AppleMusicGradientCover(

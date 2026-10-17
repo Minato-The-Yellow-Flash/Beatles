@@ -1,8 +1,8 @@
 {
-  "versionName": "1.4",
-  "versionCode": 5,
-  "releaseTitle": "Beatles v1.4",
-  "releaseNotes": "• Real live Apple Music & iTunes global top charts with instant refresh\n• Intelligent cohesive taste memory (genre & artist radio consistency)\n• Navbar-styled floating album set indicator with native haptics\n• Polished light mode profile role badges\n• Redesigned liquid glass update dialog with live animations",
-  "apkUrl": "https://github.com/Minato-The-Yellow-Flash/Beatles/releases/download/1.4/Beatles-App.apk",
-  "publishedAt": "2026-10-17T09:30:00Z"
+  "versionName": "1.6",
+  "versionCode": 7,
+  "releaseTitle": "Beatles v1.6",
+  "releaseNotes": "• Floating Album Set Indicator Bar with bottom navbar liquid glass & removed inner pill\n• Fast app-wide album art & artist cover loading with aggressive memory & persistent disk caching\n• Complete scroll disappearance for expanded album and album set hero artwork\n• Liquid glass navbar blur on media player 3-dot popup menu\n• Fixed artist name corner radius cutoff in Explore by Genre\n• Restored fluid upward spring pull animation for Next Up\n• Overhauled splash screen with full-bleed vertical red screen coverage and seamless crossfade\n• Synchronized logo sizing across OS splash and cold-start screen",
+  "apkUrl": "https://github.com/Minato-The-Yellow-Flash/Beatles/releases/download/1.6/Beatles-App.apk",
+  "publishedAt": "2026-10-17T10:15:00Z"
 }

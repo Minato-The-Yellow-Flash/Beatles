@@ -271,30 +271,28 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     val launchAlpha = remember { Animatable(1.0f) }
 
     LaunchedEffect(Unit) {
-        delay(220)
+        delay(200)
         launch {
             whiteWavesAlpha.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(durationMillis = 280, easing = LinearEasing)
+                animationSpec = tween(durationMillis = 260, easing = LinearEasing)
             )
         }
         launch {
-            // Expands horizontally first:
+            // Expands horizontally first across the screen:
             redLineScaleX.animateTo(
-                targetValue = 42f,
-                animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
+                targetValue = 50f,
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
             )
-            // Then vertically:
+            // Then vertically to cover the ENTIRE screen (600f covers 100% of height!):
             redLineScaleY.animateTo(
-                targetValue = 55f,
+                targetValue = 600f,
                 animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)
             )
-        }
-        delay(480)
-        launch {
+            // Once the screen is 100% covered in red, smoothly crossfade to reveal the homepage:
             launchAlpha.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(durationMillis = 400, easing = LinearEasing)
+                animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
             )
             splashVisible = false
         }
@@ -1741,7 +1739,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 contentDescription = null,
                 colorFilter = if (!isDark) androidx.compose.ui.graphics.ColorFilter.tint(Color(0xFF141416)) else null,
                 modifier = Modifier
-                    .size(100.dp)
+                    .size(108.dp)
                     .graphicsLayer {
                         alpha = whiteWavesAlpha.value
                     }
@@ -1751,7 +1749,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 painter = painterResource(id = R.drawable.beatles_logo_bar),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(100.dp)
+                    .size(108.dp)
                     .graphicsLayer {
                         scaleX = redLineScaleX.value
                         scaleY = redLineScaleY.value

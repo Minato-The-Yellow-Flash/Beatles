@@ -597,12 +597,16 @@ fun NowPlayingSheet(
             )
         }
 
-        // Next Up Queue with stationary scroll container
-        if (isNextUpActive) {
+        // Next Up Queue with smooth upwards pull spring animation
+        if (nextUpProgress > 0.001f) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(bottom = 190.dp, top = 136.dp)
+                    .graphicsLayer {
+                        translationY = (1f - nextUpProgress) * 450f
+                        alpha = nextUpProgress.coerceIn(0f, 1f)
+                    }
                     .pointerInput(Unit) {
                         var totalDx = 0f
                         detectHorizontalDragGestures(
@@ -1782,6 +1786,9 @@ fun NowPlayingSheet(
                 val menuBg = if (isDark) Color(0xFF1E2026).copy(alpha = 0.95f) else Color(0xFFFFFFFF).copy(alpha = 0.96f)
                 val menuBorder = if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
 
+                val menuShape = RoundedCornerShape(22.dp)
+                val translucentMenuBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.45f) else Color(0xFFFFFFFF).copy(alpha = 0.52f)
+
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -1793,9 +1800,18 @@ fun NowPlayingSheet(
                             alpha = miniMenuAnim.coerceIn(0f, 1f)
                             transformOrigin = TransformOrigin(0.96f, 1.0f)
                         }
-                        .shadow(8.dp, RoundedCornerShape(22.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.18f))
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(if (isDark) Color(0xFF1E2026).copy(alpha = 0.88f) else Color.White.copy(alpha = 0.92f))
+                        .shadow(8.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.18f))
+                        .clip(menuShape)
+                        .then(
+                            if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                                Modifier.hazeChild(
+                                    state = sheetHaze,
+                                    shape = menuShape,
+                                    style = dev.chrisbanes.haze.HazeStyle(blurRadius = 16.dp, noiseFactor = 0.06f)
+                                )
+                            } else Modifier
+                        )
+                        .background(translucentMenuBg)
                         .glassRefraction(22.dp, isDark = isDark)
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                         .padding(vertical = 6.dp)

@@ -23,6 +23,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import com.beatles.player.ui.glassRefraction
 import com.beatles.player.ui.motion.liquidPress
+import com.beatles.player.ui.theme.QualityManager
+import com.beatles.player.ui.theme.VisualQuality
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -142,6 +148,7 @@ fun FluidAlbumSetDetailOverlay(
         val midIndex = (albums.size / 2).coerceAtLeast(0)
         val pagerState = rememberPagerState(initialPage = midIndex) { albums.size }
         val view = LocalView.current
+        val overlayHazeState = remember { HazeState() }
 
         var hasInitializedPager by remember { mutableStateOf(false) }
         LaunchedEffect(pagerState.currentPage) {
@@ -224,6 +231,7 @@ fun FluidAlbumSetDetailOverlay(
                         translationY = sheetSlideY
                     }
                     .background(bgColor)
+                    .haze(state = overlayHazeState)
             ) {
                 // 1. Deep Ambient Blurred Base
                 if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
@@ -320,6 +328,17 @@ fun FluidAlbumSetDetailOverlay(
                     }
                     val pageListState = rememberLazyListState()
 
+                    // Scroll-driven parallax, scale-down, blur, and 100% disappearance matching expanded album view
+                    val pageScrollOffset = if (pageListState.firstVisibleItemIndex == 0) {
+                        pageListState.firstVisibleItemScrollOffset.toFloat()
+                    } else {
+                        pageListState.firstVisibleItemScrollOffset.toFloat() + 800f
+                    }
+                    val pageArtTranslateY = (-pageScrollOffset * 0.75f).coerceAtLeast(-250f)
+                    val pageArtBlur = (pageScrollOffset / 14f).coerceIn(0f, 24f).dp
+                    val pageArtScale = (1f - (pageScrollOffset / 1400f)).coerceIn(0.72f, 1f)
+                    val pageArtAlpha = (1f - (pageScrollOffset / 260f)).coerceIn(0f, 1f)
+
                     LazyColumn(
                         state = pageListState,
                         modifier = Modifier.fillMaxSize(),
@@ -338,15 +357,22 @@ fun FluidAlbumSetDetailOverlay(
                                 Box(
                                     modifier = Modifier
                                         .size(200.dp)
+                                        .graphicsLayer {
+                                            translationY = pageArtTranslateY
+                                            scaleX = pageArtScale
+                                            scaleY = pageArtScale
+                                            alpha = pageArtAlpha
+                                        }
+                                        .then(if (pageArtBlur > 0.dp && pageArtAlpha > 0.01f) Modifier.blur(pageArtBlur) else Modifier)
                                         .shadow(
-                                            elevation = 12.dp,
+                                            elevation = (12.dp * pageArtAlpha).coerceAtLeast(0.dp),
                                             shape = RoundedCornerShape(22.dp),
                                             spotColor = if (isDark) Color.Black.copy(alpha = 0.65f) else Color.Black.copy(alpha = 0.25f)
                                         )
                                         .clip(RoundedCornerShape(22.dp))
                                         .border(
                                             0.5.dp,
-                                            if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.10f),
+                                            if (isDark) Color.White.copy(alpha = 0.20f * pageArtAlpha) else Color.Black.copy(alpha = 0.10f * pageArtAlpha),
                                             RoundedCornerShape(22.dp)
                                         )
                                 ) {
@@ -661,8 +687,9 @@ fun FluidAlbumSetDetailOverlay(
                     }
                 }
 
-                // ═══ FLOATING ALBUM SET BOTTOM INDICATOR BAR (styled like bottom navbar) ═══
+                // ═══ FLOATING ALBUM SET BOTTOM INDICATOR BAR (exact bottom navbar liquid glass UI) ═══
                 val barShape = RoundedCornerShape(28.dp)
+                val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.40f) else Color(0xFFFFFFFF).copy(alpha = 0.48f)
                 val prevInteraction = remember { MutableInteractionSource() }
                 val nextInteraction = remember { MutableInteractionSource() }
 
@@ -677,22 +704,23 @@ fun FluidAlbumSetDetailOverlay(
                             spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.15f)
                         )
                         .clip(barShape)
-                        .background(
-                            if (isDark) Color(0xFF14151B).copy(alpha = 0.55f)
-                            else Color(0xFFFFFFFF).copy(alpha = 0.65f)
+                        .then(
+                            if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                                Modifier.hazeChild(
+                                    state = overlayHazeState,
+                                    shape = barShape,
+                                    style = HazeStyle(blurRadius = 16.dp, noiseFactor = 0.06f)
+                                )
+                            } else Modifier
                         )
-                        .border(
-                            width = 1.dp,
-                            color = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.12f),
-                            shape = barShape
-                        )
+                        .background(translucentBarBg)
                         .glassRefraction(28.dp, isDark = isDark)
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         // Previous Album button
                         val canGoPrev = pagerState.currentPage > 0
@@ -719,50 +747,38 @@ fun FluidAlbumSetDetailOverlay(
                             )
                         }
 
-                        // Sliding dots / stretch indicator in inner subtle capsule
-                        Box(
-                            modifier = Modifier
-                                .height(32.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    if (isDark) Color.White.copy(alpha = 0.08f)
-                                    else Color.Black.copy(alpha = 0.05f)
-                                )
-                                .padding(horizontal = 10.dp),
-                            contentAlignment = Alignment.Center
+                        // Sliding dots / stretch indicator (direct in outer capsule - no inner mini pill)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                albums.forEachIndexed { idx, _ ->
-                                    val isSelected = idx == pagerState.currentPage
-                                    val dotWidth by animateDpAsState(
-                                        targetValue = if (isSelected) 24.dp else 7.dp,
-                                        animationSpec = spring(dampingRatio = 0.65f, stiffness = 380f),
-                                        label = "floatingSetDotWidth"
-                                    )
-                                    val dotAlpha by animateFloatAsState(
-                                        targetValue = if (isSelected) 1f else 0.35f,
-                                        animationSpec = tween(200),
-                                        label = "floatingSetDotAlpha"
-                                    )
-                                    val dotColor = if (isSelected) AccentRed else textSecondary.copy(alpha = dotAlpha)
+                            albums.forEachIndexed { idx, _ ->
+                                val isSelected = idx == pagerState.currentPage
+                                val dotWidth by animateDpAsState(
+                                    targetValue = if (isSelected) 26.dp else 8.dp,
+                                    animationSpec = spring(dampingRatio = 0.65f, stiffness = 380f),
+                                    label = "floatingSetDotWidth"
+                                )
+                                val dotAlpha by animateFloatAsState(
+                                    targetValue = if (isSelected) 1f else 0.40f,
+                                    animationSpec = tween(200),
+                                    label = "floatingSetDotAlpha"
+                                )
+                                val dotColor = if (isSelected) AccentRed else textSecondary.copy(alpha = dotAlpha)
 
-                                    Box(
-                                        modifier = Modifier
-                                            .height(7.dp)
-                                            .width(dotWidth)
-                                            .clip(RoundedCornerShape(3.5.dp))
-                                            .background(dotColor)
-                                            .clickable {
-                                                Haptics.tick(view)
-                                                scope.launch {
-                                                    pagerState.animateScrollToPage(idx)
-                                                }
+                                Box(
+                                    modifier = Modifier
+                                        .height(8.dp)
+                                        .width(dotWidth)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(dotColor)
+                                        .clickable {
+                                            Haptics.tick(view)
+                                            scope.launch {
+                                                pagerState.animateScrollToPage(idx)
                                             }
-                                    )
-                                }
+                                        }
+                                )
                             }
                         }
 
@@ -773,14 +789,14 @@ fun FluidAlbumSetDetailOverlay(
                                 .size(38.dp)
                                 .clip(CircleShape)
                                 .liquidPress(nextInteraction)
-                                .clickable(
-                                    interactionSource = nextInteraction,
-                                    indication = null,
-                                    enabled = canGoNext
-                                ) {
-                                    Haptics.tick(view)
-                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
-                                },
+                            .clickable(
+                                interactionSource = nextInteraction,
+                                indication = null,
+                                enabled = canGoNext
+                            ) {
+                                Haptics.tick(view)
+                                scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                            },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
