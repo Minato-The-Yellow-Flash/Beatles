@@ -1377,28 +1377,28 @@ fun AlbumSetHomeCard(
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
     val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
     val textMuted = if (isDark) Color.White.copy(alpha = 0.45f) else Color(0xFF9CA3AF)
-    val cardBg = if (isDark) Color(0xFF1E1E24).copy(alpha = 0.70f) else Color.White
+    val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.65f) else Color(0xFFF2F3F7).copy(alpha = 0.72f)
+    val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f)
+    val cardShape = RoundedCornerShape(26.dp)
+
     val setAlbums = set.albums ?: emptyList()
     var cardBounds by remember { mutableStateOf<Rect?>(null) }
     val cardInteraction = remember { MutableInteractionSource() }
 
     Box(
         modifier = Modifier
-            .width(236.dp)
+            .width(248.dp)
             .onGloballyPositioned { coords -> cardBounds = coords.boundsInRoot() }
             .liquidPress(cardInteraction)
             .shadow(
-                elevation = 4.dp,
-                shape = RoundedCornerShape(22.dp),
-                spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.12f)
+                elevation = 6.dp,
+                shape = cardShape,
+                spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.10f)
             )
-            .clip(RoundedCornerShape(22.dp))
-            .background(cardBg)
-            .border(
-                0.5.dp,
-                if (isDark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.08f),
-                RoundedCornerShape(22.dp)
-            )
+            .clip(cardShape)
+            .background(translucentBarBg)
+            .border(1.dp, translucentBarBorder, cardShape)
+            .glassRefraction(26.dp, isDark = isDark)
             .clickable(interactionSource = cardInteraction, indication = null) {
                 onSelectAlbumSet(set, cardBounds)
             }
@@ -1409,21 +1409,23 @@ fun AlbumSetHomeCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(130.dp),
+                    .height(146.dp),
                 contentAlignment = Alignment.Center
             ) {
-                val covers = setAlbums.mapNotNull { alb ->
-                    val c = alb.coverUrl.ifBlank {
-                        alb.songs.firstOrNull { it.coverUrl.isNotBlank() }?.coverUrl ?: ""
-                    }
-                    alb to c
-                }.take(3)
+                val covers = remember(set.id, setAlbums) {
+                    setAlbums.mapNotNull { alb ->
+                        val c = alb.coverUrl.ifBlank {
+                            alb.songs.firstOrNull { it.coverUrl.isNotBlank() }?.coverUrl ?: ""
+                        }
+                        alb to c
+                    }.take(3)
+                }
 
                 if (covers.isEmpty()) {
                     Box(
                         modifier = Modifier
-                            .size(96.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .size(108.dp)
+                            .clip(RoundedCornerShape(16.dp))
                             .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f)),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1433,16 +1435,16 @@ fun AlbumSetHomeCard(
                     val (alb, cover) = covers[0]
                     Box(
                         modifier = Modifier
-                            .size(100.dp)
-                            .shadow(6.dp, RoundedCornerShape(14.dp))
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(0.5.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(14.dp))
+                            .size(116.dp)
+                            .shadow(8.dp, RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(16.dp))
                     ) {
                         AppleMusicGradientCover(
                             title = alb.title,
                             artist = alb.artist,
                             modifier = Modifier.fillMaxSize(),
-                            cornerRadius = 14.dp,
+                            cornerRadius = 16.dp,
                             showLabel = false
                         )
                         if (cover.isNotBlank() && cover.startsWith("http")) {
@@ -1453,7 +1455,7 @@ fun AlbumSetHomeCard(
                     // 2 cards fanned
                     covers.forEachIndexed { idx, (alb, cover) ->
                         val angle = if (idx == 0) -9f else 9f
-                        val offsetX = if (idx == 0) (-22).dp else 22.dp
+                        val offsetX = if (idx == 0) (-24).dp else 24.dp
                         val z = if (idx == 0) 1f else 2f
                         Box(
                             modifier = Modifier
@@ -1463,16 +1465,16 @@ fun AlbumSetHomeCard(
                                     rotationZ = angle
                                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.9f)
                                 }
-                                .size(96.dp)
-                                .shadow(5.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.40f))
-                                .clip(RoundedCornerShape(14.dp))
-                                .border(0.5.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(14.dp))
+                                .size(108.dp)
+                                .shadow(6.dp, RoundedCornerShape(16.dp), spotColor = Color.Black.copy(alpha = 0.40f))
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(0.5.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(16.dp))
                         ) {
                             AppleMusicGradientCover(
                                 title = alb.title,
                                 artist = alb.artist,
                                 modifier = Modifier.fillMaxSize(),
-                                cornerRadius = 14.dp,
+                                cornerRadius = 16.dp,
                                 showLabel = false
                             )
                             if (cover.isNotBlank() && cover.startsWith("http")) {
@@ -1489,22 +1491,22 @@ fun AlbumSetHomeCard(
                     // Left Card (Index 0)
                     Box(
                         modifier = Modifier
-                            .offset(x = (-34).dp, y = 8.dp)
+                            .offset(x = (-38).dp, y = 8.dp)
                             .zIndex(1f)
                             .graphicsLayer {
                                 rotationZ = -13f
                                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.9f)
                             }
-                            .size(94.dp)
-                            .shadow(4.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.40f))
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(0.5.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+                            .size(104.dp)
+                            .shadow(5.dp, RoundedCornerShape(16.dp), spotColor = Color.Black.copy(alpha = 0.40f))
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
                     ) {
                         AppleMusicGradientCover(
                             title = card0.first.title,
                             artist = card0.first.artist,
                             modifier = Modifier.fillMaxSize(),
-                            cornerRadius = 14.dp,
+                            cornerRadius = 16.dp,
                             showLabel = false
                         )
                         if (card0.second.isNotBlank() && card0.second.startsWith("http")) {
@@ -1515,22 +1517,22 @@ fun AlbumSetHomeCard(
                     // Right Card (Index 2)
                     Box(
                         modifier = Modifier
-                            .offset(x = 34.dp, y = 8.dp)
+                            .offset(x = 38.dp, y = 8.dp)
                             .zIndex(2f)
                             .graphicsLayer {
                                 rotationZ = 13f
                                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.9f)
                             }
-                            .size(94.dp)
-                            .shadow(4.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.40f))
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(0.5.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(14.dp))
+                            .size(104.dp)
+                            .shadow(5.dp, RoundedCornerShape(16.dp), spotColor = Color.Black.copy(alpha = 0.40f))
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
                     ) {
                         AppleMusicGradientCover(
                             title = card2.first.title,
                             artist = card2.first.artist,
                             modifier = Modifier.fillMaxSize(),
-                            cornerRadius = 14.dp,
+                            cornerRadius = 16.dp,
                             showLabel = false
                         )
                         if (card2.second.isNotBlank() && card2.second.startsWith("http")) {
@@ -1548,16 +1550,16 @@ fun AlbumSetHomeCard(
                                 scaleX = 1.04f
                                 scaleY = 1.04f
                             }
-                            .size(96.dp)
-                            .shadow(10.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.55f))
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(0.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                            .size(112.dp)
+                            .shadow(12.dp, RoundedCornerShape(16.dp), spotColor = Color.Black.copy(alpha = 0.55f))
+                            .clip(RoundedCornerShape(16.dp))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
                     ) {
                         AppleMusicGradientCover(
                             title = card1.first.title,
                             artist = card1.first.artist,
                             modifier = Modifier.fillMaxSize(),
-                            cornerRadius = 14.dp,
+                            cornerRadius = 16.dp,
                             showLabel = false
                         )
                         if (card1.second.isNotBlank() && card1.second.startsWith("http")) {
@@ -1574,56 +1576,25 @@ fun AlbumSetHomeCard(
 
             if (setAlbums.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                val playSetInteraction = remember { MutableInteractionSource() }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp)
+                        .liquidPress(playSetInteraction)
+                        .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                        .clip(RoundedCornerShape(50))
+                        .background(AccentRed)
+                        .glassRefraction(19.dp, isDark = isDark)
+                        .clickable(interactionSource = playSetInteraction, indication = null) {
+                            onPlayAlbumSet(set)
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
-                    val playSetInteraction = remember { MutableInteractionSource() }
-                    Box(
-                        modifier = Modifier
-                            .liquidPress(playSetInteraction)
-                            .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
-                            .clip(RoundedCornerShape(50))
-                            .background(AccentRed)
-                            .glassRefraction(50.dp, isDark = isDark)
-                            .clickable(interactionSource = playSetInteraction, indication = null) {
-                                onPlayAlbumSet(set)
-                            }
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Play Set", color = Color.White, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    val expandInteraction = remember { MutableInteractionSource() }
-                    Box(
-                        modifier = Modifier
-                            .liquidPress(expandInteraction)
-                            .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
-                            .clip(RoundedCornerShape(50))
-                            .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
-                            .glassRefraction(50.dp, isDark = isDark)
-                            .clickable(interactionSource = expandInteraction, indication = null) {
-                                onSelectAlbumSet(set, cardBounds)
-                            }
-                            .padding(horizontal = 12.dp, vertical = 7.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Expand", color = if (isDark) Color.White else Color(0xFF141416), fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = null,
-                                tint = if (isDark) Color.White else Color(0xFF141416),
-                                modifier = Modifier.size(13.dp)
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Play Set", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

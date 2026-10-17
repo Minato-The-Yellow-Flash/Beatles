@@ -81,20 +81,24 @@ object ColorOSLyricsHelper {
                 putBoolean("com.oplus.lockscreen.lyrics_enabled", true)
                 putBoolean("coloros_flag_support_live_lyrics", true)
                 putBoolean("is_support_lyrics", true)
+                putString("com.oplus.music.extra.TITLE", song.title)
+                putString("com.oplus.music.extra.ARTIST", song.artist)
+                putString("com.oplus.music.extra.ALBUM", song.album)
+                putLong("com.oplus.music.extra.DURATION", song.durationSeconds * 1000L)
+                putLong("com.oplus.music.extra.POSITION", currentPositionMs)
+                putBoolean("com.oplus.music.extra.IS_PLAYING", true)
+                putBoolean("com.oplus.music.extra.HAS_LYRICS", lyrics.isNotEmpty())
+                putString("com.oplus.music.extra.LYRICS_TEXT", lrcText)
+                putString("com.oplus.music.extra.CURRENT_LYRIC", currentLine)
             }
 
-            // OPlus specific broadcast
-            val oplusIntent = Intent("com.oplus.music.metachanged").apply {
-                putExtras(extras)
-                setPackage(context.packageName)
-            }
-            context.sendBroadcast(oplusIntent)
+            // OPlus/ColorOS/OxygenOS SystemUI lockscreen broadcasts (MUST NOT restrict to app package)
+            context.sendBroadcast(Intent("com.oplus.music.metachanged").apply { putExtras(extras) })
+            context.sendBroadcast(Intent("com.oplus.music.playstatechanged").apply { putExtras(extras) })
 
-            // General Android media change broadcast with lyric payload
-            val generalIntent = Intent("com.android.music.metachanged").apply {
-                putExtras(extras)
-            }
-            context.sendBroadcast(generalIntent)
+            // General Android media change broadcasts
+            context.sendBroadcast(Intent("com.android.music.metachanged").apply { putExtras(extras) })
+            context.sendBroadcast(Intent("com.android.music.playstatechanged").apply { putExtras(extras) })
         } catch (_: Exception) {}
     }
 }

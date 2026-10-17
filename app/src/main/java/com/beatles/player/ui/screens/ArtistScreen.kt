@@ -168,8 +168,16 @@ fun ArtistFeedTab(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (AppTheme.isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f))
+                    .border(
+                        0.5.dp,
+                        if (AppTheme.isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f),
+                        RoundedCornerShape(14.dp)
+                    )
                     .clickable { onPlay(song, allSongs, rowBounds) }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 AsyncImage(

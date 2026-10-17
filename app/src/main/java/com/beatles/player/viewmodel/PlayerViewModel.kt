@@ -214,6 +214,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             recentlyPlayed = savedRecent,
             recommendations = initialRecs
         )}
+        AudioPlayerManager.onExternalSkipNext = { playNext() }
+        AudioPlayerManager.onExternalSkipPrevious = { playPrevious() }
+
         player.onPlaybackStateChanged = { isPlaying ->
             val actuallyPlaying = isPlaying || (autoMixEngine.currentDeck?.isPlaying == true)
             _uiState.update { it.copy(isPlaying = actuallyPlaying) }
@@ -266,7 +269,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             }
             val state = _uiState.value
             val currentSong = state.currentSong
-            if (currentSong != null && state.lyrics.isNotEmpty()) {
+            if (currentSong != null) {
                 com.beatles.player.player.ColorOSLyricsHelper.updateLockscreenLyrics(
                     getApplication(),
                     currentSong,
@@ -1033,19 +1036,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
         
         // Immediate Next Up population when autoplay is enabled so Next Up is NEVER empty,
-        // strictly matching the active track's language, artist, and genre!
+        // strictly matching the active track's artist and language (no unrelated random recommendations!)
         if (_uiState.value.autoPlayEnabled && pl.size <= 1) {
-            val quickUpcoming = if (isFromSearch) {
-                _uiState.value.searchResults.filter { 
-                    it.id != song.id && (it.artist.equals(song.artist, ignoreCase = true) || repo.detectLanguage(it).equals(songLang, ignoreCase = true))
-                }
-            } else {
-                _uiState.value.recommendations.filter { 
-                    it.id != song.id && repo.detectLanguage(it).equals(songLang, ignoreCase = true) 
-                }
-            }
-            if (quickUpcoming.isNotEmpty()) {
-                pl.addAll(quickUpcoming.take(8))
+            val cleanArtist = song.artist.replace(" - Topic", "").trim()
+            val localPool = (if (isFromSearch) _uiState.value.searchResults else emptyList()) +
+                    _uiState.value.albums.flatMap { it.songs } +
+                    _uiState.value.favoriteSongs +
+                    _uiState.value.recentlyPlayed
+            val sameArtistMatches = localPool.filter {
+                it.id != song.id && !it.isAlbum && ArtistMixEngine.isArtistMatch(it, cleanArtist) &&
+                repo.detectLanguage(it).equals(songLang, ignoreCase = true)
+            }.distinctBy { it.id }
+
+            if (sameArtistMatches.isNotEmpty()) {
+                pl.addAll(sameArtistMatches.take(6))
             }
         }
 
@@ -1065,6 +1069,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         storage.addToRecentlyPlayed(getApplication(), song)
         sessionPlayedSongIds.add(song.id)
         _uiState.update { it.copy(recentlyPlayed = storage.getRecentlyPlayed(getApplication())) }
+        com.beatles.player.player.ColorOSLyricsHelper.updateLockscreenLyrics(
+            getApplication(),
+            song,
+            emptyList(),
+            0L,
+            forceUpdate = true
+        )
         fetchLyrics(song)
         
         activePlayJob?.cancel()
@@ -1115,8 +1126,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                                     val newTracks = (if (cohesive.isNotEmpty()) cohesive else related)
                                         .filter { it.id !in existingIds && it.id !in sessionPlayedSongIds }
                                     if (newTracks.isNotEmpty()) {
-                                        updatedPl.addAll(newTracks)
-                                        _uiState.update { it.copy(playlist = updatedPl) }
+                                        val activeCurrIdx = updatedPl.indexOfFirst { it.id == song.id }
+                                        val insertIdx = if (activeCurrIdx >= 0) activeCurrIdx + 1 else updatedPl.size
+                                        updatedPl.addAll(insertIdx, newTracks)
+                                        _uiState.update { it.copy(playlist = updatedPl.distinctBy { t -> t.id }) }
                                     }
                                 }
                             }
@@ -1181,6 +1194,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 refreshPersonalizedMusic(forceFetchNew = true)
                 loadRecommendationsInternal()
                 repo.getLiveGlobalTopCharts()
+                // Pre-warm Coil cache for albums, album sets & recommendations to completely eliminate scrolling lag
+                val context = getApplication<android.app.Application>()
+                val imageLoader = coil.Coil.imageLoader(context)
+                val allAlbumCovers = (_uiState.value.albums.map { it.coverUrl } +
+                        _uiState.value.recommendations.map { it.coverUrl } +
+                        repo.getFeaturedAlbums().flatMap { listOf(it.coverUrl) + it.songs.take(2).map { s -> s.coverUrl } } +
+                        _uiState.value.albumSets.flatMap { it.albums.map { a -> a.coverUrl } }
+                ).filter { it.isNotBlank() && it.startsWith("http") }.distinct()
+                for (url in allAlbumCovers.take(30)) {
+                    val req = coil.request.ImageRequest.Builder(context)
+                        .data(url)
+                        .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                        .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                        .build()
+                    imageLoader.enqueue(req)
+                }
             } catch (_: Exception) {}
         }
     }

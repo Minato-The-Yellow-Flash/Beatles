@@ -42,6 +42,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import com.beatles.player.ui.components.Haptics
@@ -167,6 +169,8 @@ fun NowPlayingSheet(
     var showMiniMenu by remember { mutableStateOf(false) }
     var showSavePlaylistView by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
+    var sheetRootBounds by remember { mutableStateOf<Rect?>(null) }
+    var threeDotButtonBounds by remember { mutableStateOf<Rect?>(null) }
 
     LaunchedEffect(isHeartAnimating) { if (isHeartAnimating) { delay(150); isHeartAnimating = false } }
     LaunchedEffect(showBigHeartPopup) {
@@ -219,6 +223,9 @@ fun NowPlayingSheet(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .onGloballyPositioned { coords ->
+                sheetRootBounds = coords.boundsInRoot()
+            }
             .background(DarkBg)
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -233,7 +240,10 @@ fun NowPlayingSheet(
                 )
             }
     ) {
-        val backgroundBlurAmount by animateDpAsState(targetValue = ((if (showLyrics || showNextUp) 20.dp else 16.dp) * morphProgress).coerceAtLeast(0.dp), label = "bgBlur")
+        val backgroundBlurAmount by animateDpAsState(
+            targetValue = ((if (showLyrics) 20.dp else if (showNextUp) 8.dp else 16.dp) * morphProgress).coerceAtLeast(0.dp),
+            label = "bgBlur"
+        )
         val sheetBackgroundAlpha = 1f
 
         val infiniteDrift = rememberInfiniteTransition(label = "driftingAmbient")
@@ -373,7 +383,7 @@ fun NowPlayingSheet(
         }
         
         // Blurred background overlay when lyrics or next up is active
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (showLyrics || showNextUp) 0.68f else 0.40f)))
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (showLyrics) 0.68f else if (showNextUp) 0.38f else 0.40f)))
         }
 
         val isLyricsActive = showLyrics && !showNextUp
@@ -1358,6 +1368,9 @@ fun NowPlayingSheet(
 
                     Box(
                         modifier = Modifier
+                            .onGloballyPositioned { coords ->
+                                threeDotButtonBounds = coords.boundsInRoot()
+                            }
                             .size(38.dp)
                             .clip(CircleShape)
                             .background(Color.White.copy(alpha = 0.20f))
@@ -1749,36 +1762,56 @@ fun NowPlayingSheet(
                     }
             ) {
                 val isDark = AppTheme.isDark
-                val menuBg = if (isDark) Color(0xFF1E2026).copy(alpha = 0.95f) else Color(0xFFFFFFFF).copy(alpha = 0.96f)
-                val menuBorder = if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+                val currentCornerDp = lerp(19.dp, 24.dp, miniMenuAnim)
+                val menuShape = RoundedCornerShape(currentCornerDp)
+                val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.70f) else Color(0xFFF2F3F7).copy(alpha = 0.78f)
+                val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.08f)
 
-                val menuShape = RoundedCornerShape(22.dp)
-                val translucentMenuBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.45f) else Color(0xFFFFFFFF).copy(alpha = 0.52f)
+                val density = LocalDensity.current
+                val endPaddingDp = remember(sheetRootBounds, threeDotButtonBounds) {
+                    val sb = sheetRootBounds
+                    val tb = threeDotButtonBounds
+                    if (sb != null && tb != null) {
+                        with(density) { (sb.right - tb.right).toDp().coerceAtLeast(16.dp) }
+                    } else {
+                        20.dp
+                    }
+                }
+                val bottomPaddingDp = remember(sheetRootBounds, threeDotButtonBounds) {
+                    val sb = sheetRootBounds
+                    val tb = threeDotButtonBounds
+                    if (sb != null && tb != null) {
+                        with(density) { (sb.bottom - tb.top + 8.dp.toPx()).toDp().coerceAtLeast(180.dp) }
+                    } else {
+                        246.dp
+                    }
+                }
 
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 20.dp, bottom = 246.dp)
+                        .padding(end = endPaddingDp, bottom = bottomPaddingDp)
                         .width(230.dp)
                         .graphicsLayer {
                             scaleX = miniMenuAnim
                             scaleY = miniMenuAnim
                             alpha = miniMenuAnim.coerceIn(0f, 1f)
-                            transformOrigin = TransformOrigin(0.96f, 1.0f)
+                            transformOrigin = TransformOrigin(0.92f, 1.0f)
                         }
-                        .shadow(8.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.18f))
+                        .shadow(12.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.18f))
                         .clip(menuShape)
                         .then(
                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                 Modifier.hazeChild(
                                     state = sheetHaze,
                                     shape = menuShape,
-                                    style = dev.chrisbanes.haze.HazeStyle(blurRadius = 16.dp, noiseFactor = 0.06f)
+                                    style = dev.chrisbanes.haze.HazeStyle(blurRadius = 24.dp, noiseFactor = 0.05f)
                                 )
                             } else Modifier
                         )
-                        .background(translucentMenuBg)
-                        .glassRefraction(22.dp, isDark = isDark)
+                        .background(translucentBarBg)
+                        .border(1.dp, translucentBarBorder, menuShape)
+                        .glassRefraction(currentCornerDp, isDark = isDark)
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                         .padding(vertical = 6.dp)
                 ) {
@@ -1980,13 +2013,13 @@ fun NextUpControlPillsRow(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val pills = listOf(
             Triple("Shuffle", Icons.Default.Shuffle, shuffleEnabled) to onToggleShuffle,
             Triple(
-                when (repeatMode) { 2 -> "Repeat 1"; 1 -> "Repeat"; else -> "Repeat" },
+                when (repeatMode) { 2 -> "Repeat 1"; else -> "Repeat" },
                 when (repeatMode) { 2 -> Icons.Default.RepeatOne; else -> Icons.Default.Repeat },
                 repeatMode != 0
             ) to onToggleRepeat,
@@ -1997,25 +2030,24 @@ fun NextUpControlPillsRow(
         pills.forEach { (item, action) ->
             val (label, icon, isActive) = item
             val interactionSource = remember { MutableInteractionSource() }
-            val pillShape = RoundedCornerShape(14.dp)
-            val activeColor = AccentRed
-            val inactiveBg = if (isDark) Color(0xFF1E2024).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.65f)
-            val bg = if (isActive) activeColor.copy(alpha = 0.22f) else inactiveBg
-            val tint = if (isActive) activeColor else (if (isDark) Color.White.copy(alpha = 0.70f) else Color(0xFF141416).copy(alpha = 0.70f))
+            val pillShape = CircleShape
+            val activeBg = Color.White.copy(alpha = 0.35f)
+            val inactiveBg = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
+            val bg = if (isActive) activeBg else inactiveBg
+            val tint = if (isActive) Color.White else (if (isDark) Color.White.copy(alpha = 0.65f) else Color.Black.copy(alpha = 0.65f))
 
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(38.dp)
-                    .shadow(2.dp, pillShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
                     .clip(pillShape)
                     .background(bg)
                     .border(
                         1.dp,
-                        if (isActive) activeColor.copy(alpha = 0.50f) else (if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)),
+                        if (isActive) Color.White.copy(alpha = 0.45f) else (if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)),
                         pillShape
                     )
-                    .glassRefraction(14.dp, isDark = isDark)
+                    .glassRefraction(19.dp, isDark = isDark)
                     .liquidPress(interactionSource)
                     .clickable(
                         interactionSource = interactionSource,
@@ -2026,25 +2058,12 @@ fun NextUpControlPillsRow(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.padding(horizontal = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = label,
-                        tint = tint,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Text(
-                        text = label,
-                        color = tint,
-                        fontSize = 11.sp,
-                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                        maxLines = 1
-                    )
-                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = tint,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

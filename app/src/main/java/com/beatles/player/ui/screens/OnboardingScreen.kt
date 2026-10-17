@@ -267,7 +267,7 @@ fun OnboardStep1(onNext: (String) -> Unit) {
                 Image(
                     painter = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light),
                     contentDescription = "Beatles",
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.height(20.dp))
                 Text("beatles music", fontSize = 32.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)

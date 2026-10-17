@@ -27,6 +27,11 @@ class AudioPlayerManager(private val context: Context) {
     var onPlayerError: ((Throwable) -> Unit)? = null
     private var pendingPlayAction: (() -> Unit)? = null
 
+    companion object {
+        var onExternalSkipNext: (() -> Unit)? = null
+        var onExternalSkipPrevious: (() -> Unit)? = null
+    }
+
     init {
         val sessionToken = SessionToken(context, ComponentName(context, PlaybackService::class.java))
         controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()

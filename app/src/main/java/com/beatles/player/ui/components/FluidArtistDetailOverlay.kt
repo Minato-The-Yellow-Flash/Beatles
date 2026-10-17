@@ -12,6 +12,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -519,14 +520,20 @@ fun FluidArtistDetailOverlay(
                             Spacer(modifier = Modifier.height(6.dp))
                         }
 
-                        // Tracklist (Matching AlbumDetailSheet rounded card design)
+                        // Tracklist (Translucent frosted glass design matching AlbumDetailSheet)
                         if (artistTracks.isNotEmpty()) {
                             item {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 16.dp)
-                                        .background(cardBg, RoundedCornerShape(20.dp))
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f))
+                                        .border(
+                                            0.5.dp,
+                                            if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f),
+                                            RoundedCornerShape(20.dp)
+                                        )
                                 ) {
                                     artistTracks.take(30).forEachIndexed { index, song ->
                                         Row(

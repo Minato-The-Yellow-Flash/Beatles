@@ -7,10 +7,47 @@ import android.media.AudioManager
 import android.os.Build
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+
+class BeatlesForwardingPlayer(player: Player) : ForwardingPlayer(player) {
+    override fun getAvailableCommands(): Player.Commands {
+        return super.getAvailableCommands().buildUpon()
+            .add(Player.COMMAND_SEEK_TO_NEXT)
+            .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+            .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+            .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+            .build()
+    }
+
+    override fun isCommandAvailable(command: Int): Boolean {
+        return command == Player.COMMAND_SEEK_TO_NEXT ||
+               command == Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM ||
+               command == Player.COMMAND_SEEK_TO_PREVIOUS ||
+               command == Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM ||
+               super.isCommandAvailable(command)
+    }
+
+    override fun seekToNext() {
+        AudioPlayerManager.onExternalSkipNext?.invoke() ?: super.seekToNext()
+    }
+
+    override fun seekToNextMediaItem() {
+        AudioPlayerManager.onExternalSkipNext?.invoke() ?: super.seekToNextMediaItem()
+    }
+
+    override fun seekToPrevious() {
+        AudioPlayerManager.onExternalSkipPrevious?.invoke() ?: super.seekToPrevious()
+    }
+
+    override fun seekToPreviousMediaItem() {
+        AudioPlayerManager.onExternalSkipPrevious?.invoke() ?: super.seekToPreviousMediaItem()
+    }
+}
 
 class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
@@ -18,6 +55,7 @@ class PlaybackService : MediaSessionService() {
         private set
     var secondaryPlayer: ExoPlayer? = null
         private set
+    private var forwardingPlayer: BeatlesForwardingPlayer? = null
 
     private var audioFocusRequest: AudioFocusRequest? = null
     private var hasAudioFocus = false
@@ -64,7 +102,9 @@ class PlaybackService : MediaSessionService() {
         defaultPlayer = player
         secondaryPlayer = createPlayer().apply { volume = 0f }
         
-        mediaSession = MediaSession.Builder(this, player).build()
+        val fPlayer = BeatlesForwardingPlayer(player)
+        forwardingPlayer = fPlayer
+        mediaSession = MediaSession.Builder(this, fPlayer).build()
         ensureAudioFocus()
     }
 
@@ -131,8 +171,13 @@ class PlaybackService : MediaSessionService() {
     fun setSessionPlayer(player: androidx.media3.common.Player?) {
         try {
             val target = player ?: defaultPlayer
-            if (target != null && target !is androidx.media3.session.MediaController && mediaSession?.player !== target) {
-                mediaSession?.setPlayer(target)
+            if (target != null && target !is androidx.media3.session.MediaController) {
+                val currentWrapped = (mediaSession?.player as? BeatlesForwardingPlayer)?.wrappedPlayer
+                if (currentWrapped !== target) {
+                    val fPlayer = BeatlesForwardingPlayer(target)
+                    forwardingPlayer = fPlayer
+                    mediaSession?.setPlayer(fPlayer)
+                }
             }
         } catch (e: Throwable) {
             android.util.Log.e("PlaybackService", "Error in setSessionPlayer: ${e.message}")
@@ -141,9 +186,12 @@ class PlaybackService : MediaSessionService() {
 
     fun restoreDefaultPlayer() {
         try {
-            defaultPlayer?.let {
-                if (mediaSession?.player !== it) {
-                    mediaSession?.setPlayer(it)
+            defaultPlayer?.let { def ->
+                val currentWrapped = (mediaSession?.player as? BeatlesForwardingPlayer)?.wrappedPlayer
+                if (currentWrapped !== def) {
+                    val fPlayer = BeatlesForwardingPlayer(def)
+                    forwardingPlayer = fPlayer
+                    mediaSession?.setPlayer(fPlayer)
                 }
             }
         } catch (e: Throwable) {

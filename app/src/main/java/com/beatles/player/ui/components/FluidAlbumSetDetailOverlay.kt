@@ -170,6 +170,18 @@ fun FluidAlbumSetDetailOverlay(
         val clampedP = p.coerceIn(0f, 1f)
         val sheetAlpha = clampedP.coerceIn(0f, 1f)
         val sheetSlideY = (1f - clampedP) * with(density) { 36.dp.toPx() } + dragY
+        val origin = currentOriginBounds
+        val config = androidx.compose.ui.platform.LocalConfiguration.current
+        val screenWpx = with(density) { config.screenWidthDp.dp.toPx() }
+        val screenHpx = with(density) { config.screenHeightDp.dp.toPx() }
+        val morphProgress = clampedP
+        val sheetScaleX = if (origin != null) (origin.width / screenWpx) + (1f - (origin.width / screenWpx)) * morphProgress else 1f
+        val sheetScaleY = if (origin != null) (origin.height / screenHpx) + (1f - (origin.height / screenHpx)) * morphProgress else 1f
+        val originCenterX = origin?.center?.x ?: (screenWpx / 2f)
+        val originCenterY = origin?.center?.y ?: (screenHpx / 2f)
+        val morphTransX = (originCenterX - screenWpx / 2f) * (1f - morphProgress)
+        val morphTransY = (originCenterY - screenHpx / 2f) * (1f - morphProgress) + sheetSlideY
+        val morphCorner = if (origin != null) (26.dp * (1f - morphProgress)) else (28.dp * (1f - clampedP))
 
         // Video motion animation for ambient banner
         val infiniteTransition = rememberInfiniteTransition(label = "setBannerMotion")
@@ -222,14 +234,18 @@ fun FluidAlbumSetDetailOverlay(
                     .background(Color.Black)
             )
 
-            // Full-screen Sheet with Ambient Blur
+            // Full-screen Sheet with Ambient Blur & Morph Transition
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
                         alpha = sheetAlpha
-                        translationY = sheetSlideY
+                        translationX = morphTransX
+                        translationY = morphTransY
+                        this.scaleX = sheetScaleX
+                        this.scaleY = sheetScaleY
                     }
+                    .clip(RoundedCornerShape(morphCorner))
                     .background(bgColor)
             ) {
                 // Content layer captured by haze
@@ -693,46 +709,39 @@ fun FluidAlbumSetDetailOverlay(
                 }
                 }
 
-                // ═══ FLOATING ALBUM SET BOTTOM INDICATOR BAR (exact bottom navbar liquid glass UI) ═══
-                val barShape = RoundedCornerShape(28.dp)
-                val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.40f) else Color(0xFFFFFFFF).copy(alpha = 0.48f)
+                // ═══ FLOATING ALBUM SET BOTTOM INDICATOR BAR (Mid-size, rock-solid frosted liquid glass) ═══
+                val barShape = RoundedCornerShape(21.dp)
+                val stableBarBg = if (isDark) Color(0xFF161820).copy(alpha = 0.82f) else Color(0xFFF2F3F7).copy(alpha = 0.88f)
+                val barBorder = if (isDark) Color.White.copy(alpha = 0.14f) else Color.Black.copy(alpha = 0.08f)
                 val prevInteraction = remember { MutableInteractionSource() }
                 val nextInteraction = remember { MutableInteractionSource() }
 
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 24.dp)
-                        .height(56.dp)
+                        .padding(bottom = 20.dp)
+                        .height(42.dp)
                         .shadow(
-                            elevation = 12.dp,
+                            elevation = 8.dp,
                             shape = barShape,
-                            spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.15f)
+                            spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.12f)
                         )
                         .clip(barShape)
-                        .then(
-                            if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                                Modifier.hazeChild(
-                                    state = overlayHazeState,
-                                    shape = barShape,
-                                    style = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
-                                )
-                            } else Modifier
-                        )
-                        .background(translucentBarBg)
-                        .glassRefraction(28.dp, isDark = isDark)
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .background(stableBarBg)
+                        .border(1.dp, barBorder, barShape)
+                        .glassRefraction(21.dp, isDark = isDark)
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         // Previous Album button
                         val canGoPrev = pagerState.currentPage > 0
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(32.dp)
                                 .clip(CircleShape)
                                 .liquidPress(prevInteraction)
                                 .clickable(
@@ -749,19 +758,19 @@ fun FluidAlbumSetDetailOverlay(
                                 Icons.Default.ChevronLeft,
                                 contentDescription = "Previous Album",
                                 tint = if (canGoPrev) textPrimary else textSecondary.copy(alpha = 0.25f),
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         // Sliding dots / stretch indicator (direct in outer capsule - no inner mini pill)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             albums.forEachIndexed { idx, _ ->
                                 val isSelected = idx == pagerState.currentPage
                                 val dotWidth by animateDpAsState(
-                                    targetValue = if (isSelected) 26.dp else 8.dp,
+                                    targetValue = if (isSelected) 20.dp else 6.dp,
                                     animationSpec = spring(dampingRatio = 0.65f, stiffness = 380f),
                                     label = "floatingSetDotWidth"
                                 )
@@ -774,9 +783,9 @@ fun FluidAlbumSetDetailOverlay(
 
                                 Box(
                                     modifier = Modifier
-                                        .height(8.dp)
+                                        .height(6.dp)
                                         .width(dotWidth)
-                                        .clip(RoundedCornerShape(4.dp))
+                                        .clip(RoundedCornerShape(3.dp))
                                         .background(dotColor)
                                         .clickable {
                                             Haptics.tick(view)
@@ -792,24 +801,24 @@ fun FluidAlbumSetDetailOverlay(
                         val canGoNext = pagerState.currentPage < albums.size - 1
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
+                                .size(32.dp)
                                 .clip(CircleShape)
                                 .liquidPress(nextInteraction)
-                            .clickable(
-                                interactionSource = nextInteraction,
-                                indication = null,
-                                enabled = canGoNext
-                            ) {
-                                Haptics.tick(view)
-                                scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
-                            },
+                                .clickable(
+                                    interactionSource = nextInteraction,
+                                    indication = null,
+                                    enabled = canGoNext
+                                ) {
+                                    Haptics.tick(view)
+                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Default.ChevronRight,
                                 contentDescription = "Next Album",
                                 tint = if (canGoNext) textPrimary else textSecondary.copy(alpha = 0.25f),
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
