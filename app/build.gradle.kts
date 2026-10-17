@@ -11,8 +11,8 @@ android {
         applicationId = "com.beatles.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.69"
+        versionCode = 10
+        versionName = "1.699"
     }
     buildTypes { release { isMinifyEnabled = false } }
     buildFeatures {

@@ -5,6 +5,7 @@ import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -47,6 +48,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
@@ -623,6 +625,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 val pillArt = if (compact) 38.dp else 32.dp
 
                                 var isScrubbingActive by remember { mutableStateOf(false) }
+                                var scrubFraction by remember { mutableFloatStateOf(0f) }
+                                var scrubPositionMs by remember { mutableLongStateOf(0L) }
                                 var dragOffsetX by remember { mutableFloatStateOf(0f) }
                                 var hasPassedThreshold by remember { mutableStateOf(false) }
 
@@ -838,7 +842,32 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         isDark = isDark,
                                         onSeek = { viewModel.seekTo(it) },
                                         onScrubbingChanged = { isScrubbingActive = it },
+                                        onScrubFractionChanged = { frac, ms ->
+                                            scrubFraction = frac
+                                            scrubPositionMs = ms
+                                        },
                                         modifier = Modifier.align(Alignment.BottomStart)
+                                    )
+                                }
+
+                                // Liquid connected time display (rendered OUTSIDE the clipped pill so it is never cut by borders)
+                                val dur = stateHolder.value.duration
+                                val scrubAnimProgress by animateFloatAsState(
+                                    targetValue = if (isScrubbingActive) 1f else 0f,
+                                    animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+                                    label = "miniSeekBubbleAnim"
+                                )
+
+                                if (scrubAnimProgress > 0.001f && dur > 0L) {
+                                    LiquidConnectedTimeBubble(
+                                        scrubFraction = scrubFraction,
+                                        positionMs = scrubPositionMs,
+                                        durationMs = dur,
+                                        isDark = isDark,
+                                        totalWidthPx = totalWidthPx,
+                                        animProgress = scrubAnimProgress,
+                                        translucentBg = translucentBarBg,
+                                        borderColor = translucentBarBorder
                                     )
                                 }
                             }
@@ -1774,6 +1803,7 @@ private fun MiniPlayerSeekLine(
     isDark: Boolean,
     onSeek: (Long) -> Unit,
     onScrubbingChanged: (Boolean) -> Unit,
+    onScrubFractionChanged: ((Float, Long) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val dur = duration()
@@ -1782,20 +1812,14 @@ private fun MiniPlayerSeekLine(
     val progress = (pos.toFloat() / dur).coerceIn(0f, 1f)
     val mixing = isMixing()
     val view = androidx.compose.ui.platform.LocalView.current
-    val density = LocalDensity.current
 
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubFraction by remember { mutableFloatStateOf(0f) }
 
     val animatedHeight by animateDpAsState(
-        targetValue = if (isScrubbing) 10.dp else if (mixing) 3.dp else 2.dp,
+        targetValue = if (isScrubbing) 5.dp else if (mixing) 3.dp else 2.dp,
         animationSpec = LiquidMotion.LensDp,
         label = "seekHeight"
-    )
-    val tooltipAlpha by animateFloatAsState(
-        targetValue = if (isScrubbing) 1f else 0f,
-        animationSpec = androidx.compose.animation.core.tween(150),
-        label = "tooltipAlpha"
     )
 
     val currentFraction = if (isScrubbing) scrubFraction else progress
@@ -1803,7 +1827,7 @@ private fun MiniPlayerSeekLine(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(if (isScrubbing) 28.dp else 12.dp)
+            .height(if (isScrubbing) 24.dp else 12.dp)
             .semantics {
                 contentDescription = "Playback seek bar"
                 stateDescription = "${pos / 1000}s of ${dur / 1000}s"
@@ -1817,7 +1841,8 @@ private fun MiniPlayerSeekLine(
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     var isDown = true
-                    val timer = withTimeoutOrNull(250L) {
+                    var movedDistance = 0f
+                    val timer = withTimeoutOrNull(180L) {
                         do {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -1825,25 +1850,40 @@ private fun MiniPlayerSeekLine(
                                 isDown = false
                                 break
                             }
-                            val moved = (change.position - down.position).getDistance()
-                            if (moved > viewConfiguration.touchSlop) {
+                            movedDistance = (change.position - down.position).getDistance()
+                            if (movedDistance > viewConfiguration.touchSlop) {
                                 break
                             }
                         } while (true)
                     }
 
-                    if (timer == null && isDown) {
+                    val shouldStartScrub = (timer == null && isDown) || (isDown && movedDistance > viewConfiguration.touchSlop)
+
+                    if (shouldStartScrub) {
                         isScrubbing = true
                         onScrubbingChanged(true)
-                        scrubFraction = (down.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        val initialFrac = (down.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                        scrubFraction = initialFrac
+                        val initialMs = (initialFrac * dur).toLong().coerceIn(0L, dur)
+                        onScrubFractionChanged?.invoke(initialFrac, initialMs)
                         com.beatles.player.ui.components.Haptics.tick(view)
+
+                        var lastSec = initialMs / 1000L
 
                         do {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (change.pressed) {
                                 change.consume()
-                                scrubFraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                val newFrac = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                scrubFraction = newFrac
+                                val curMs = (newFrac * dur).toLong().coerceIn(0L, dur)
+                                val curSec = curMs / 1000L
+                                if (curSec != lastSec) {
+                                    lastSec = curSec
+                                    com.beatles.player.ui.components.Haptics.tick(view)
+                                }
+                                onScrubFractionChanged?.invoke(newFrac, curMs)
                             } else {
                                 break
                             }
@@ -1858,58 +1898,158 @@ private fun MiniPlayerSeekLine(
                 }
             }
     ) {
-        val widthPx = constraints.maxWidth.toFloat()
+        // Seek Track Line
+        val trackBg = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.12f)
+        val trackFill = if (isDark) Color.White else Color(0xFF141416)
 
-        // Floating tooltip showing current scrub time vs total track length
-        if (isScrubbing && tooltipAlpha > 0.01f) {
-            val scrubMs = (scrubFraction * dur).toLong().coerceIn(0L, dur)
-            val thumbXPx = (scrubFraction * widthPx)
-            val ttWidthDp = 92.dp
-            val ttWidthPx = with(density) { ttWidthDp.toPx() }
-            val clampedX = (thumbXPx - ttWidthPx / 2f).coerceIn(8f, (widthPx - ttWidthPx - 8f).coerceAtLeast(8f))
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .offset {
-                        IntOffset(clampedX.roundToInt(), with(density) { (-28).dp.roundToPx() })
-                    }
-                    .graphicsLayer {
-                        alpha = tooltipAlpha
-                        scaleX = 0.88f + 0.12f * tooltipAlpha
-                        scaleY = 0.88f + 0.12f * tooltipAlpha
-                    }
-                    .shadow(4.dp, RoundedCornerShape(10.dp))
-                    .background(Color(0xFF1E1E20).copy(alpha = 0.94f), RoundedCornerShape(10.dp))
-                    .border(0.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
-            ) {
-                val currentText = "${scrubMs / 60000}:${String.format("%02d", (scrubMs / 1000) % 60)}"
-                val totalText = "${dur / 60000}:${String.format("%02d", (dur / 1000) % 60)}"
-                Text(
-                    text = "$currentText / $totalText",
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-
-        // Seek Track
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(animatedHeight)
                 .align(Alignment.BottomCenter)
                 .clip(RoundedCornerShape(animatedHeight / 2))
-                .background(if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.10f))
+                .background(trackBg)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(currentFraction)
-                    .background(Color.White)
+                    .background(trackFill)
             )
+        }
+    }
+}
+
+@Composable
+private fun LiquidConnectedTimeBubble(
+    scrubFraction: Float,
+    positionMs: Long,
+    durationMs: Long,
+    isDark: Boolean,
+    totalWidthPx: Float,
+    animProgress: Float,
+    translucentBg: Color,
+    borderColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    val bubbleWidthDp = 120.dp
+    val bubbleHeightDp = 30.dp
+    val bubbleCorner = 15.dp
+    val bubbleWidthPx = with(density) { bubbleWidthDp.toPx() }
+    val marginPx = with(density) { 10.dp.toPx() }
+
+    val thumbX = (scrubFraction * totalWidthPx).coerceIn(marginPx, (totalWidthPx - marginPx).coerceAtLeast(marginPx))
+    val maxLeftPx = (totalWidthPx - bubbleWidthPx - marginPx).coerceAtLeast(marginPx)
+    val clampedBubbleLeft = (thumbX - bubbleWidthPx / 2f).coerceIn(marginPx, maxLeftPx)
+
+    val textPrimary = if (isDark) Color.White else Color(0xFF141416)
+    val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF555962)
+
+    val curM = positionMs / 60000
+    val curS = (positionMs / 1000) % 60
+    val durM = durationMs / 60000
+    val durS = (durationMs / 1000) % 60
+    val playedStr = "$curM:${String.format("%02d", curS)}"
+    val totalStr = "$durM:${String.format("%02d", durS)}"
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .zIndex(25f)
+            .graphicsLayer {
+                alpha = animProgress
+                scaleX = 0.70f + 0.30f * animProgress
+                scaleY = 0.70f + 0.30f * animProgress
+                transformOrigin = TransformOrigin(
+                    if (totalWidthPx > 0f) (thumbX / totalWidthPx).coerceIn(0f, 1f) else 0.5f,
+                    1f
+                )
+            }
+    ) {
+        // 1. Organic liquid connection bridge connecting the seek thumb to the bubble
+        Canvas(
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        ) {
+            val bridgeTop = with(density) { (-10).dp.toPx() }
+            val bridgeBottom = with(density) { 2.dp.toPx() }
+            val halfNeck = with(density) { 8.dp.toPx() }
+            val halfBase = with(density) { 16.dp.toPx() }
+
+            val path = Path().apply {
+                moveTo(thumbX - halfBase, bridgeBottom)
+                cubicTo(
+                    thumbX - halfBase * 0.5f, (bridgeTop + bridgeBottom) * 0.65f,
+                    thumbX - halfNeck * 1.3f, (bridgeTop + bridgeBottom) * 0.35f,
+                    thumbX - halfNeck, bridgeTop
+                )
+                lineTo(thumbX + halfNeck, bridgeTop)
+                cubicTo(
+                    thumbX + halfNeck * 1.3f, (bridgeTop + bridgeBottom) * 0.35f,
+                    thumbX + halfBase * 0.5f, (bridgeTop + bridgeBottom) * 0.65f,
+                    thumbX + halfBase, bridgeBottom
+                )
+                close()
+            }
+
+            drawPath(path, brush = SolidColor(translucentBg))
+            drawPath(
+                path,
+                color = borderColor,
+                style = Stroke(width = with(density) { 1.dp.toPx() })
+            )
+        }
+
+        // 2. Liquid connected time capsule pill
+        Box(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        clampedBubbleLeft.roundToInt(),
+                        with(density) { (-40).dp.roundToPx() }
+                    )
+                }
+                .width(bubbleWidthDp)
+                .height(bubbleHeightDp)
+                .shadow(
+                    elevation = 8.dp,
+                    shape = RoundedCornerShape(bubbleCorner),
+                    spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f)
+                )
+                .clip(RoundedCornerShape(bubbleCorner))
+                .background(translucentBg)
+                .border(
+                    width = 1.dp,
+                    color = borderColor,
+                    shape = RoundedCornerShape(bubbleCorner)
+                )
+                .glassRefraction(bubbleCorner, isDark = isDark)
+                .padding(horizontal = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = playedStr,
+                    color = textPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = " • ",
+                    color = textSecondary.copy(alpha = 0.8f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = totalStr,
+                    color = textSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 }

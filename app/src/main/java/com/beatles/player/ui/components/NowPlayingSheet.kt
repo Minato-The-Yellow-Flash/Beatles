@@ -1701,16 +1701,42 @@ fun NowPlayingSheet(
             }
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Lyrics + Next Up pills (Strictly mutually exclusive, 85% white without border when active)
+            // Lyrics + Next Up pills (Navbar liquid glass style, optimized for both dark and light mode)
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val lyricsBg = if (isLyricsActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
-                val lyricsText = if (isLyricsActive) Color(0xFF151515) else Color.White
+                val lyricsBg = if (isLyricsActive) {
+                    if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF141416).copy(alpha = 0.88f)
+                } else {
+                    if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+                }
+                val lyricsText = if (isLyricsActive) {
+                    if (isDark) Color(0xFF151515) else Color.White
+                } else {
+                    if (isDark) Color.White else Color(0xFF141416)
+                }
+                val lyricsBorder = if (isLyricsActive) {
+                    if (isDark) Color.White.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.20f)
+                } else {
+                    if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.12f)
+                }
 
-                val nextUpBg = if (isNextUpActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
-                val nextUpText = if (isNextUpActive) Color(0xFF151515) else Color.White
+                val nextUpBg = if (isNextUpActive) {
+                    if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF141416).copy(alpha = 0.88f)
+                } else {
+                    if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+                }
+                val nextUpText = if (isNextUpActive) {
+                    if (isDark) Color(0xFF151515) else Color.White
+                } else {
+                    if (isDark) Color.White else Color(0xFF141416)
+                }
+                val nextUpBorder = if (isNextUpActive) {
+                    if (isDark) Color.White.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.20f)
+                } else {
+                    if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.12f)
+                }
 
                 Box(
                     modifier = Modifier
@@ -1718,6 +1744,8 @@ fun NowPlayingSheet(
                         .height(44.dp)
                         .clip(RoundedCornerShape(50))
                         .background(lyricsBg)
+                        .border(1.dp, lyricsBorder, RoundedCornerShape(50))
+                        .glassRefraction(22.dp, isDark = isDark)
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleLyrics()
                         },
@@ -1731,6 +1759,8 @@ fun NowPlayingSheet(
                         .height(44.dp)
                         .clip(RoundedCornerShape(50))
                         .background(nextUpBg)
+                        .border(1.dp, nextUpBorder, RoundedCornerShape(50))
+                        .glassRefraction(22.dp, isDark = isDark)
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleNextUp()
                         },
@@ -2031,10 +2061,18 @@ fun NextUpControlPillsRow(
             val (label, icon, isActive) = item
             val interactionSource = remember { MutableInteractionSource() }
             val pillShape = CircleShape
-            val activeBg = Color.White.copy(alpha = 0.35f)
-            val inactiveBg = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f)
+            val activeBg = if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF141416).copy(alpha = 0.88f)
+            val inactiveBg = if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+            val activeBorder = if (isDark) Color.White.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.20f)
+            val inactiveBorder = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.12f)
+
             val bg = if (isActive) activeBg else inactiveBg
-            val tint = if (isActive) Color.White else (if (isDark) Color.White.copy(alpha = 0.65f) else Color.Black.copy(alpha = 0.65f))
+            val border = if (isActive) activeBorder else inactiveBorder
+            val tint = if (isActive) {
+                if (isDark) Color(0xFF141416) else Color.White
+            } else {
+                if (isDark) Color.White.copy(alpha = 0.80f) else Color(0xFF141416).copy(alpha = 0.80f)
+            }
 
             Box(
                 modifier = Modifier
@@ -2042,12 +2080,8 @@ fun NextUpControlPillsRow(
                     .height(38.dp)
                     .clip(pillShape)
                     .background(bg)
-                    .border(
-                        1.dp,
-                        if (isActive) Color.White.copy(alpha = 0.45f) else (if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)),
-                        pillShape
-                    )
-                    .glassRefraction(19.dp, isDark = isDark)
+                    .border(1.dp, border, pillShape)
+                    .glassRefraction(19.dp, isDark = isDark, isCircle = true)
                     .liquidPress(interactionSource)
                     .clickable(
                         interactionSource = interactionSource,
@@ -2089,15 +2123,22 @@ fun QueueSongItem(
     )
 
     val isDark = AppTheme.isDark
+    val cardShape = RoundedCornerShape(18.dp)
+    val cardBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.60f) else Color(0xFFFFFFFF).copy(alpha = 0.76f)
+    val cardBorder = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.12f)
+    val textPrimary = if (isDark) Color.White else Color(0xFF141416)
+    val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF555962)
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 3.dp)
             .height(64.dp)
-            .shadow(2.dp, RoundedCornerShape(16.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
-            .clip(RoundedCornerShape(16.dp))
-            .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.55f) else Color.White.copy(alpha = 0.65f))
-            .glassRefraction(16.dp, isDark = isDark)
+            .shadow(2.dp, cardShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.10f))
+            .clip(cardShape)
+            .background(cardBg)
+            .border(1.dp, cardBorder, cardShape)
+            .glassRefraction(18.dp, isDark = isDark)
     ) {
         val totalWidthPx = constraints.maxWidth.toFloat()
         val thresholdPx = totalWidthPx * 0.50f // Enforce at least 50% swipe threshold
@@ -2153,9 +2194,12 @@ fun QueueSongItem(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(animatedOffsetX.roundToInt(), 0) }
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF1E2024).copy(alpha = (kotlin.math.abs(animatedOffsetX) / 40f).coerceIn(0f, 1f) * 0.95f))
-                .background(Color(0xFFE2E2E2).copy(alpha = 0.12f))
+                .clip(cardShape)
+                .background(
+                    (if (isDark) Color(0xFF14151B) else Color.White)
+                        .copy(alpha = (kotlin.math.abs(animatedOffsetX) / 40f).coerceIn(0f, 1f) * 0.95f)
+                )
+                .background(cardBg)
                 .pointerInput(totalWidthPx) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
@@ -2213,9 +2257,9 @@ fun QueueSongItem(
                         .weight(1f)
                         .blur(dragBlur)
                 ) {
-                    Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text(song.title, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(song.artist, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, maxLines = 1)
+                    Text(song.artist, color = textSecondary, fontSize = 12.sp, maxLines = 1)
                 }
             }
             // Up / Down Reorder buttons with haptic feedback
@@ -2230,7 +2274,7 @@ fun QueueSongItem(
                         Haptics.tick(view)
                         onMoveUp()
                     }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(22.dp))
+                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up", tint = textSecondary, modifier = Modifier.size(22.dp))
                     }
                 }
                 if (index < totalCount - 1) {
@@ -2238,7 +2282,7 @@ fun QueueSongItem(
                         Haptics.tick(view)
                         onMoveDown()
                     }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(22.dp))
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down", tint = textSecondary, modifier = Modifier.size(22.dp))
                     }
                 }
             }

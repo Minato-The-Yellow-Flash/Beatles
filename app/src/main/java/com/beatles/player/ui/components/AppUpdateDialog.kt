@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import com.beatles.player.data.UpdateInfo
 import com.beatles.player.ui.glassRefraction
 import com.beatles.player.ui.motion.liquidPress
@@ -52,6 +54,17 @@ fun AppUpdateDialog(
     val view = LocalView.current
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
     val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
+
+    // Ensure edge-to-edge on dialog window so navigation bar insets are accurately dispatched
+    DisposableEffect(view) {
+        val dialogWindow = (view.parent as? DialogWindowProvider)?.window
+        if (dialogWindow != null) {
+            WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
+            dialogWindow.navigationBarColor = android.graphics.Color.TRANSPARENT
+            dialogWindow.statusBarColor = android.graphics.Color.TRANSPARENT
+        }
+        onDispose {}
+    }
 
     // Lively AirPods-style bottom slide-up spring entrance animation
     val enterSlideY = remember { Animatable(360f) }
@@ -125,13 +138,16 @@ fun AppUpdateDialog(
                 },
             contentAlignment = Alignment.BottomCenter
         ) {
-            val dialogShape = RoundedCornerShape(36.dp)
+            val dialogShape = RoundedCornerShape(32.dp)
+            val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.76f) else Color(0xFFF2F3F7).copy(alpha = 0.88f)
+            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.15f)
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 14.dp)
+                    .padding(horizontal = 16.dp)
                     .navigationBarsPadding()
+                    .padding(bottom = 20.dp, top = 16.dp)
                     .graphicsLayer {
                         translationY = enterSlideY.value
                         alpha = enterAlpha.value
@@ -139,19 +155,16 @@ fun AppUpdateDialog(
                     .shadow(
                         elevation = 20.dp,
                         shape = dialogShape,
-                        spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.20f)
+                        spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.18f)
                     )
                     .clip(dialogShape)
-                    .background(
-                        if (isDark) Color(0xFF14151B).copy(alpha = 0.90f)
-                        else Color(0xFFFFFFFF).copy(alpha = 0.95f)
-                    )
+                    .background(translucentBarBg)
                     .border(
                         width = 1.dp,
-                        color = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.10f),
+                        color = translucentBarBorder,
                         shape = dialogShape
                     )
-                    .glassRefraction(36.dp, isDark = isDark)
+                    .glassRefraction(32.dp, isDark = isDark)
                     .padding(horizontal = 22.dp, vertical = 18.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -236,23 +249,23 @@ fun AppUpdateDialog(
                 }
 
                 if (update.releaseNotes.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 160.dp)
+                            .heightIn(max = 120.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(
-                                if (isDark) Color.White.copy(alpha = 0.05f)
+                                if (isDark) Color.White.copy(alpha = 0.06f)
                                 else Color.Black.copy(alpha = 0.04f)
                             )
                             .border(
                                 width = 1.dp,
-                                color = if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.06f),
+                                color = if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.08f),
                                 shape = RoundedCornerShape(16.dp)
                             )
                             .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
                         Text(
                             text = update.releaseNotes,
@@ -263,7 +276,7 @@ fun AppUpdateDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(22.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (progress != null) {
                     Column(
@@ -311,7 +324,7 @@ fun AppUpdateDialog(
                                 )
                                 .border(
                                     width = 1.dp,
-                                    color = if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f),
+                                    color = translucentBarBorder,
                                     shape = RoundedCornerShape(24.dp)
                                 )
                                 .glassRefraction(24.dp, isDark = isDark)
