@@ -2,6 +2,7 @@ package com.beatles.player.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -169,10 +170,13 @@ fun ProfileScreen(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .size(26.dp)
-                                .shadow(2.dp, CircleShape)
                                 .clip(CircleShape)
                                 .background(currentRoleColor)
-                                .glassRefraction(13.dp, isDark = isDark, isCircle = true),
+                                .border(
+                                    width = 2.dp,
+                                    color = if (isDark) Color(0xFF1C1E26) else Color.White,
+                                    shape = CircleShape
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -540,10 +544,13 @@ private fun RoleOptionRow(
         Box(
             modifier = Modifier
                 .size(42.dp)
-                .shadow(2.dp, RoundedCornerShape(12.dp))
                 .clip(RoundedCornerShape(12.dp))
-                .background(color.copy(alpha = 0.16f))
-                .glassRefraction(12.dp, isDark = isDark),
+                .background(color.copy(alpha = if (isDark) 0.18f else 0.12f))
+                .border(
+                    width = 1.dp,
+                    color = color.copy(alpha = if (isSelected) 0.50f else 0.25f),
+                    shape = RoundedCornerShape(12.dp)
+                ),
             contentAlignment = Alignment.Center
         ) {
             Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))

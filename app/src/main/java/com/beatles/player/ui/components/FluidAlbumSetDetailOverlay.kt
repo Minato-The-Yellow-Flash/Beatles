@@ -40,6 +40,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -140,6 +141,16 @@ fun FluidAlbumSetDetailOverlay(
         // Start at the middle album so the mid album sits proudly in the center
         val midIndex = (albums.size / 2).coerceAtLeast(0)
         val pagerState = rememberPagerState(initialPage = midIndex) { albums.size }
+        val view = LocalView.current
+
+        var hasInitializedPager by remember { mutableStateOf(false) }
+        LaunchedEffect(pagerState.currentPage) {
+            if (hasInitializedPager) {
+                Haptics.tick(view)
+            } else {
+                hasInitializedPager = true
+            }
+        }
 
         val activeAlbum = albums.getOrNull(pagerState.currentPage) ?: albums.first()
         val resolvedCover = remember(activeAlbum) {
@@ -651,19 +662,32 @@ fun FluidAlbumSetDetailOverlay(
                 }
 
                 // ═══ FLOATING ALBUM SET BOTTOM INDICATOR BAR (styled like bottom navbar) ═══
+                val barShape = RoundedCornerShape(28.dp)
+                val prevInteraction = remember { MutableInteractionSource() }
+                val nextInteraction = remember { MutableInteractionSource() }
+
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 28.dp)
-                        .height(52.dp)
-                        .shadow(8.dp, RoundedCornerShape(26.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.18f))
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(
-                            if (isDark) Color(0xFF1E2024).copy(alpha = 0.82f)
-                            else Color.White.copy(alpha = 0.90f)
+                        .padding(bottom = 24.dp)
+                        .height(56.dp)
+                        .shadow(
+                            elevation = 12.dp,
+                            shape = barShape,
+                            spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.15f)
                         )
-                        .glassRefraction(26.dp, isDark = isDark)
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                        .clip(barShape)
+                        .background(
+                            if (isDark) Color(0xFF14151B).copy(alpha = 0.55f)
+                            else Color(0xFFFFFFFF).copy(alpha = 0.65f)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.12f),
+                            shape = barShape
+                        )
+                        .glassRefraction(28.dp, isDark = isDark)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
@@ -671,67 +695,99 @@ fun FluidAlbumSetDetailOverlay(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         // Previous Album button
-                        IconButton(
-                            onClick = {
-                                if (pagerState.currentPage > 0) {
+                        val canGoPrev = pagerState.currentPage > 0
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .liquidPress(prevInteraction)
+                                .clickable(
+                                    interactionSource = prevInteraction,
+                                    indication = null,
+                                    enabled = canGoPrev
+                                ) {
+                                    Haptics.tick(view)
                                     scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
-                                }
-                            },
-                            enabled = pagerState.currentPage > 0,
-                            modifier = Modifier.size(32.dp)
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Default.ChevronLeft,
                                 contentDescription = "Previous Album",
-                                tint = if (pagerState.currentPage > 0) textPrimary else textSecondary.copy(alpha = 0.3f),
-                                modifier = Modifier.size(20.dp)
+                                tint = if (canGoPrev) textPrimary else textSecondary.copy(alpha = 0.25f),
+                                modifier = Modifier.size(22.dp)
                             )
                         }
 
-                        // Sliding dots / indicator
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        // Sliding dots / stretch indicator in inner subtle capsule
+                        Box(
+                            modifier = Modifier
+                                .height(32.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(
+                                    if (isDark) Color.White.copy(alpha = 0.08f)
+                                    else Color.Black.copy(alpha = 0.05f)
+                                )
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            albums.forEachIndexed { idx, _ ->
-                                val isSelected = idx == pagerState.currentPage
-                                val dotWidth by animateDpAsState(
-                                    targetValue = if (isSelected) 24.dp else 7.dp,
-                                    animationSpec = spring(dampingRatio = 0.78f, stiffness = 380f),
-                                    label = "floatingSetDotWidth"
-                                )
-                                val dotColor = if (isSelected) AccentRed else textSecondary.copy(alpha = 0.35f)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                albums.forEachIndexed { idx, _ ->
+                                    val isSelected = idx == pagerState.currentPage
+                                    val dotWidth by animateDpAsState(
+                                        targetValue = if (isSelected) 24.dp else 7.dp,
+                                        animationSpec = spring(dampingRatio = 0.65f, stiffness = 380f),
+                                        label = "floatingSetDotWidth"
+                                    )
+                                    val dotAlpha by animateFloatAsState(
+                                        targetValue = if (isSelected) 1f else 0.35f,
+                                        animationSpec = tween(200),
+                                        label = "floatingSetDotAlpha"
+                                    )
+                                    val dotColor = if (isSelected) AccentRed else textSecondary.copy(alpha = dotAlpha)
 
-                                Box(
-                                    modifier = Modifier
-                                        .height(6.dp)
-                                        .width(dotWidth)
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(dotColor)
-                                        .clickable {
-                                            scope.launch {
-                                                pagerState.animateScrollToPage(idx)
+                                    Box(
+                                        modifier = Modifier
+                                            .height(7.dp)
+                                            .width(dotWidth)
+                                            .clip(RoundedCornerShape(3.5.dp))
+                                            .background(dotColor)
+                                            .clickable {
+                                                Haptics.tick(view)
+                                                scope.launch {
+                                                    pagerState.animateScrollToPage(idx)
+                                                }
                                             }
-                                        }
-                                )
+                                    )
+                                }
                             }
                         }
 
                         // Next Album button
-                        IconButton(
-                            onClick = {
-                                if (pagerState.currentPage < albums.size - 1) {
+                        val canGoNext = pagerState.currentPage < albums.size - 1
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .liquidPress(nextInteraction)
+                                .clickable(
+                                    interactionSource = nextInteraction,
+                                    indication = null,
+                                    enabled = canGoNext
+                                ) {
+                                    Haptics.tick(view)
                                     scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
-                                }
-                            },
-                            enabled = pagerState.currentPage < albums.size - 1,
-                            modifier = Modifier.size(32.dp)
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 Icons.Default.ChevronRight,
                                 contentDescription = "Next Album",
-                                tint = if (pagerState.currentPage < albums.size - 1) textPrimary else textSecondary.copy(alpha = 0.3f),
-                                modifier = Modifier.size(20.dp)
+                                tint = if (canGoNext) textPrimary else textSecondary.copy(alpha = 0.25f),
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }

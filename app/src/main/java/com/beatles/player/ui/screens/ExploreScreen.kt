@@ -42,6 +42,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -222,6 +223,7 @@ fun ExploreScreen(
 
     var selectedGenreForDetail by remember { mutableStateOf<String?>(null) }
     var selectedGenreOriginBounds by remember { mutableStateOf<Rect?>(null) }
+    val view = LocalView.current
 
     var selectedChartGenre by remember { mutableStateOf("Global") }
     var isTopChartsExpanded by remember { mutableStateOf(false) }
@@ -231,24 +233,12 @@ fun ExploreScreen(
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(selectedChartGenre) {
-        if (selectedChartGenre == "Global") {
-            dynamicChartSongs = emptyList()
-        } else {
-            isChartRefreshing = true
-            try {
-                val q = when (selectedChartGenre) {
-                    "Punjabi" -> "top punjabi songs 2024"
-                    "Bollywood" -> "top bollywood songs 2024"
-                    "Pop" -> "top pop hits 2024"
-                    "Hip-Hop" -> "top hip hop songs 2024"
-                    "Lo-Fi" -> "lofi chill beats songs"
-                    else -> "$selectedChartGenre hits"
-                }
-                val fetched = MusicRepository.search(q)
-                if (fetched.isNotEmpty()) dynamicChartSongs = fetched
-            } catch (_: Exception) {}
-            isChartRefreshing = false
-        }
+        isChartRefreshing = true
+        try {
+            val fetched = MusicRepository.getLiveGlobalTopCharts(selectedChartGenre)
+            if (fetched.isNotEmpty()) dynamicChartSongs = fetched
+        } catch (_: Exception) {}
+        isChartRefreshing = false
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -375,10 +365,10 @@ fun ExploreScreen(
             }
 
             // Top Charts Section with Multiple Charts, Refresh, and See More
-            val currentChartList = if (selectedChartGenre == "Global" || dynamicChartSongs.isEmpty()) {
-                state.recommendations.filter { !it.isAlbum }
-            } else {
+            val currentChartList = if (dynamicChartSongs.isNotEmpty()) {
                 dynamicChartSongs
+            } else {
+                state.recommendations.filter { !it.isAlbum }
             }
 
             if (currentChartList.isNotEmpty() || isChartRefreshing) {
@@ -401,19 +391,11 @@ fun ExploreScreen(
                             Spacer(modifier = Modifier.width(6.dp))
                             IconButton(
                                 onClick = {
+                                    com.beatles.player.ui.components.Haptics.tick(view)
                                     scope.launch {
                                         isChartRefreshing = true
                                         try {
-                                            val q = when (selectedChartGenre) {
-                                                "Global" -> "global top 50 hits 2024"
-                                                "Punjabi" -> "top punjabi songs 2024"
-                                                "Bollywood" -> "top bollywood songs 2024"
-                                                "Pop" -> "top pop hits 2024"
-                                                "Hip-Hop" -> "top hip hop songs 2024"
-                                                "Lo-Fi" -> "lofi chill beats songs"
-                                                else -> "$selectedChartGenre hits"
-                                            }
-                                            val fresh = MusicRepository.search(q)
+                                            val fresh = MusicRepository.getLiveGlobalTopCharts(selectedChartGenre)
                                             if (fresh.isNotEmpty()) dynamicChartSongs = fresh
                                         } catch (_: Exception) {}
                                         isChartRefreshing = false

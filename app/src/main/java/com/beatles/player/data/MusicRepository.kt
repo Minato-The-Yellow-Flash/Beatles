@@ -305,7 +305,8 @@ object MusicRepository {
         val isDirectYt = (url.startsWith("http") && (url.contains("youtube.com") || url.contains("youtu.be"))) ||
                 (url.length in 10..12 && !url.contains(" ") && !url.startsWith("ts_") && !url.startsWith("ka_") &&
                  !url.startsWith("dd_") && !url.startsWith("tb_") && !url.startsWith("sm_") && !url.startsWith("as_") &&
-                 !url.startsWith("cp_") && !url.startsWith("feat_") && !url.startsWith("alb_") && !url.startsWith("trk_"))
+                 !url.startsWith("cp_") && !url.startsWith("feat_") && !url.startsWith("alb_") && !url.startsWith("trk_") &&
+                 !url.startsWith("chart_") && !url.startsWith("itunes_"))
 
         var targetUrl = url
 
@@ -1098,6 +1099,89 @@ object MusicRepository {
             val highRes = getHighResCover(song.title, song.artist, song.coverUrl)
             song.copy(coverUrl = highRes)
         }
+    }
+
+    suspend fun getLiveGlobalTopCharts(genre: String = "Global"): List<Song> = withContext(Dispatchers.IO) {
+        val feedUrl = when (genre.lowercase()) {
+            "global" -> "https://itunes.apple.com/us/rss/topsongs/limit=50/json"
+            "pop" -> "https://itunes.apple.com/us/rss/topsongs/limit=50/genre=14/json"
+            "hip-hop" -> "https://itunes.apple.com/us/rss/topsongs/limit=50/genre=18/json"
+            "bollywood" -> "https://itunes.apple.com/in/rss/topsongs/limit=50/json"
+            "punjabi" -> "https://itunes.apple.com/in/rss/topsongs/limit=50/json"
+            "lo-fi" -> "https://itunes.apple.com/us/rss/topsongs/limit=50/genre=11/json"
+            else -> "https://itunes.apple.com/us/rss/topsongs/limit=50/json"
+        }
+
+        try {
+            val req = Request.Builder()
+                .url(feedUrl)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14)")
+                .build()
+            val resp = httpClient.newCall(req).execute()
+            val body = resp.body?.string()
+            if (!body.isNullOrBlank()) {
+                val json = gson.fromJson(body, JsonObject::class.java)
+                val feed = json.getAsJsonObject("feed")
+                val entries = feed?.getAsJsonArray("entry")
+                if (entries != null && entries.size() > 0) {
+                    val list = mutableListOf<Song>()
+                    for (elem in entries) {
+                        try {
+                            val obj = elem.asJsonObject
+                            val title = obj.getAsJsonObject("im:name")?.get("label")?.asString ?: ""
+                            val artist = obj.getAsJsonObject("im:artist")?.get("label")?.asString ?: ""
+                            val imgArr = obj.getAsJsonArray("im:image")
+                            val rawImg = imgArr?.lastOrNull()?.asJsonObject?.get("label")?.asString ?: ""
+                            val cover = if (rawImg.isNotBlank()) {
+                                rawImg.replace(Regex("\\d+x\\d+bb"), "1000x1000bb").replace(Regex("\\d+x\\d+"), "1000x1000")
+                            } else ""
+                            val idObj = obj.getAsJsonObject("id")
+                            val trackId = idObj?.getAsJsonObject("attributes")?.get("im:id")?.asString
+                                ?: idObj?.get("label")?.asString
+                                ?: "${title}_${artist}".hashCode().toString()
+                            val catObj = obj.getAsJsonObject("category")
+                            val catName = catObj?.getAsJsonObject("attributes")?.get("label")?.asString ?: genre
+
+                            if (title.isNotBlank() && artist.isNotBlank()) {
+                                list.add(
+                                    Song(
+                                        id = "chart_$trackId",
+                                        title = cleanSongTitle(title),
+                                        artist = artist,
+                                        album = "Global Top Charts",
+                                        coverUrl = cover,
+                                        durationSeconds = 210,
+                                        genre = catName,
+                                        isAlbum = false
+                                    )
+                                )
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    if (genre.equals("punjabi", ignoreCase = true)) {
+                        val punjabiFiltered = list.filter { 
+                            detectLanguage(it).equals("Punjabi", ignoreCase = true) || 
+                            PUNJABI_ARTISTS.any { pa -> it.artist.contains(pa, ignoreCase = true) }
+                        }
+                        if (punjabiFiltered.isNotEmpty()) return@withContext punjabiFiltered
+                    } else if (list.isNotEmpty()) {
+                        return@withContext list
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        // Fallback search with high-accuracy query
+        val fallbackQuery = when (genre.lowercase()) {
+            "global" -> "top global hits 2024"
+            "punjabi" -> "top punjabi songs 2024"
+            "bollywood" -> "top bollywood songs 2024"
+            "pop" -> "top pop hits 2024"
+            "hip-hop" -> "top hip hop songs 2024"
+            "lo-fi" -> "lofi chill beats songs"
+            else -> "$genre hits"
+        }
+        search(fallbackQuery).filter { !it.isAlbum }
     }
 
     suspend fun getAlbumTracks(url: String): List<Song> = withContext(Dispatchers.IO) {

@@ -463,16 +463,26 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             if (!silent) _uiState.update { it.copy(isCheckingUpdate = true, updateErrorMessage = null, updateNotice = null) }
             val currentVersion = try {
-                val app = getApplication<Application>()
-                app.packageManager.getPackageInfo(app.packageName, 0).versionName ?: "1.2"
+                com.beatles.player.BuildConfig.VERSION_NAME
             } catch (_: Exception) {
-                "1.2"
+                try {
+                    val app = getApplication<Application>()
+                    app.packageManager.getPackageInfo(app.packageName, 0).versionName ?: "1.4"
+                } catch (_: Exception) {
+                    "1.4"
+                }
             }
             val update = com.beatles.player.data.AppUpdateManager.checkForUpdates(currentVersion)
+            val dismissedVersion = storage.getDismissedUpdateVersion(getApplication())
+            val lastInstalledVersion = storage.getLastInstalledUpdateVersion(getApplication())
+
+            // If checked silently on app launch, do NOT pop up modal if user already dismissed or installed this version!
+            val shouldShowDialog = update != null && (!silent || (update.versionName != dismissedVersion && update.versionName != lastInstalledVersion))
+
             _uiState.update {
                 it.copy(
                     isCheckingUpdate = false,
-                    availableUpdate = update,
+                    availableUpdate = if (shouldShowDialog) update else null,
                     updateNotice = if (update == null && !silent) "Beatles is up to date (v$currentVersion)" else null
                 )
             }
@@ -480,6 +490,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun dismissUpdate() {
+        val currentUpdate = _uiState.value.availableUpdate
+        if (currentUpdate != null) {
+            storage.setDismissedUpdateVersion(getApplication(), currentUpdate.versionName)
+        }
         _uiState.update { it.copy(availableUpdate = null, updateDownloadProgress = null, updateDownloadStatus = null, updateErrorMessage = null) }
     }
 
@@ -489,6 +503,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun downloadAndInstallUpdate(context: android.content.Context) {
         val update = _uiState.value.availableUpdate ?: return
+        storage.setLastInstalledUpdateVersion(getApplication(), update.versionName)
         viewModelScope.launch {
             _uiState.update { it.copy(updateDownloadProgress = 0f, updateDownloadStatus = "Connecting...", updateErrorMessage = null) }
             com.beatles.player.data.AppUpdateManager.downloadAndInstallApk(
@@ -998,16 +1013,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             cachedAutoMixCandidate = null
         }
 
-        val pl = if (isFromSearch) mutableListOf(song) else (playlist?.toMutableList() ?: mutableListOf(song))
+        val songLang = repo.detectLanguage(song)
+        val songGenre = repo.detectGenre(song)
+        storage.recordPlaybackContext(getApplication(), song.artist, songGenre, songLang)
+
+        val isExplicitAlbumOrPlaylist = playlist != null && playlist.size > 1 && 
+            (playlist.all { it.album.isNotBlank() && it.album == song.album } || _uiState.value.isArtistMixActive)
+
+        val rawPl = if (isFromSearch) mutableListOf(song) else (playlist?.toMutableList() ?: mutableListOf(song))
+        val pl = if (isExplicitAlbumOrPlaylist) {
+            rawPl
+        } else {
+            // Strictly preserve genre & language consistency: never mix disparate languages in autoplay queue
+            val cohesive = rawPl.filter { it.id == song.id || repo.detectLanguage(it).equals(songLang, ignoreCase = true) }.toMutableList()
+            if (cohesive.none { it.id == song.id }) cohesive.add(0, song)
+            cohesive
+        }
         
-        // Immediate Next Up population when autoplay is enabled so Next Up is NEVER empty
+        // Immediate Next Up population when autoplay is enabled so Next Up is NEVER empty,
+        // strictly matching the active track's language and genre!
         if (_uiState.value.autoPlayEnabled && pl.size <= 1) {
-            val songLang = repo.detectLanguage(song)
-            val quickUpcoming = _uiState.value.recommendations.filter { it.id != song.id && repo.detectLanguage(it).equals(songLang, ignoreCase = true) }
+            val quickUpcoming = _uiState.value.recommendations.filter { 
+                it.id != song.id && repo.detectLanguage(it).equals(songLang, ignoreCase = true) 
+            }
             if (quickUpcoming.isNotEmpty()) {
                 pl.addAll(quickUpcoming.take(8))
-            } else {
-                pl.addAll(_uiState.value.recommendations.filter { it.id != song.id }.take(8))
             }
         }
 
@@ -1025,7 +1055,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             isFavorite = storage.isFavorite(getApplication(), song.id), lyrics = emptyList(), showLyrics = false
         )}
         storage.addToRecentlyPlayed(getApplication(), song)
-        storage.updateArtistAffinity(getApplication(), song.artist, 3.0f)
         sessionPlayedSongIds.add(song.id)
         _uiState.update { it.copy(recentlyPlayed = storage.getRecentlyPlayed(getApplication())) }
         fetchLyrics(song)
@@ -1051,12 +1080,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 triggerCandidatePrecomputation(song)
                 enhanceCoverArt(song)
                 
-                // Only fetch and append related songs if autoplay is enabled AND we are at the end of the current playlist (e.g. album tracks completed)
+                // Only fetch and append related songs if autoplay is enabled AND we are near the end of the current playlist
                 if (_uiState.value.autoPlayEnabled) {
                     val currentPl = _uiState.value.playlist
                     val currIdx = currentPl.indexOfFirst { it.id == song.id }
-                    val isAtEndOfQueue = currIdx < 0 || currIdx >= currentPl.size - 1
-                    if (isAtEndOfQueue) {
+                    val isNearEndOfQueue = currIdx < 0 || currIdx >= currentPl.size - 2
+                    if (isNearEndOfQueue) {
                         launch {
                             if (_uiState.value.isArtistMixActive && _uiState.value.artistMixTarget != null) {
                                 extendArtistMixIfNeeded()
@@ -1065,7 +1094,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                                 if (related.isNotEmpty()) {
                                     val updatedPl = _uiState.value.playlist.toMutableList()
                                     val existingIds = updatedPl.map { it.id }.toSet()
-                                    val newTracks = related.filter { it.id !in existingIds && it.id !in sessionPlayedSongIds }
+                                    val cohesive = related.filter {
+                                        repo.detectLanguage(it).equals(songLang, ignoreCase = true)
+                                    }
+                                    val newTracks = (if (cohesive.isNotEmpty()) cohesive else related)
+                                        .filter { it.id !in existingIds && it.id !in sessionPlayedSongIds }
                                     if (newTracks.isNotEmpty()) {
                                         updatedPl.addAll(newTracks)
                                         _uiState.update { it.copy(playlist = updatedPl) }
@@ -1849,7 +1882,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val lang = _uiState.value.selectedLanguage
         val currentRecIds = _uiState.value.recommendations.map { it.id }.toSet()
 
-        val userArtists = (selectedArtists + recent.map { it.artist } + favorites.map { it.artist })
+        val affinityArtists = storage.getArtistAffinityMap(getApplication()).entries
+            .sortedByDescending { it.value }
+            .map { it.key }
+            .take(6)
+        val userArtists = (affinityArtists + selectedArtists + recent.map { it.artist } + favorites.map { it.artist })
             .filter { it.isNotBlank() }
             .distinct()
 
@@ -1875,12 +1912,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val combinedSongs = mutableListOf<Song>()
         val artistCount = mutableMapOf<String, Int>()
 
-        // 1. Seed search for broader variety based on user selection or language
+        // 1. Seed search based on taste memory (top genre & top language) or broader variety
         try {
+            val topGenre = storage.getGenreAffinityMap(getApplication()).maxByOrNull { it.value }?.key
+            val topLang = storage.getLanguageAffinityMap(getApplication()).maxByOrNull { it.value }?.key
             val seedArtist = distinctArtists.randomOrNull()
+
             val seedQuery = if (seedArtist != null) {
                 val modifier = queryModifiers.random()
                 "$seedArtist $modifier"
+            } else if (!topGenre.isNullOrBlank() && !topLang.isNullOrBlank()) {
+                "top $topLang $topGenre hits 2024"
             } else if (lang.equals("All", ignoreCase = true) || lang.isBlank()) {
                 "top global hits 2024"
             } else {

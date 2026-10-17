@@ -287,6 +287,96 @@ object LocalStorage {
         } catch (_: Exception) {}
     }
 
+    // ═══ GENRE & LANGUAGE AFFINITY TASTE MEMORY ═══
+
+    fun getGenreAffinityMap(ctx: Context): Map<String, Float> {
+        val json = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("genre_affinities", null) ?: return emptyMap()
+        return try {
+            val type = object : com.google.gson.reflect.TypeToken<Map<String, Float>>() {}.type
+            gson.fromJson(json, type) ?: emptyMap()
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    fun updateGenreAffinity(ctx: Context, genre: String, delta: Float) {
+        val cleanGenre = genre.trim()
+        if (cleanGenre.isBlank()) return
+        try {
+            val current = getGenreAffinityMap(ctx).toMutableMap()
+            val existing = current[cleanGenre] ?: 0f
+            current[cleanGenre] = (existing + delta).coerceIn(0f, 200f)
+            val json = gson.toJson(current)
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("genre_affinities", json).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getLanguageAffinityMap(ctx: Context): Map<String, Float> {
+        val json = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("language_affinities", null) ?: return emptyMap()
+        return try {
+            val type = object : com.google.gson.reflect.TypeToken<Map<String, Float>>() {}.type
+            gson.fromJson(json, type) ?: emptyMap()
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    fun updateLanguageAffinity(ctx: Context, language: String, delta: Float) {
+        val cleanLanguage = language.trim()
+        if (cleanLanguage.isBlank()) return
+        try {
+            val current = getLanguageAffinityMap(ctx).toMutableMap()
+            val existing = current[cleanLanguage] ?: 0f
+            current[cleanLanguage] = (existing + delta).coerceIn(0f, 200f)
+            val json = gson.toJson(current)
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("language_affinities", json).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun recordPlaybackContext(ctx: Context, artist: String, genre: String, language: String) {
+        try {
+            updateArtistAffinity(ctx, artist, 4.0f)
+            updateGenreAffinity(ctx, genre, 4.0f)
+            updateLanguageAffinity(ctx, language, 4.0f)
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString("last_played_artist", artist)
+                .putString("last_played_genre", genre)
+                .putString("last_played_language", language)
+                .apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getLastPlayedContext(ctx: Context): Triple<String, String, String> {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return Triple(
+            prefs.getString("last_played_artist", "") ?: "",
+            prefs.getString("last_played_genre", "") ?: "",
+            prefs.getString("last_played_language", "") ?: ""
+        )
+    }
+
+    // ═══ APP UPDATE DISMISSAL & INSTALLATION STATE ═══
+
+    fun getDismissedUpdateVersion(ctx: Context): String {
+        return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("dismissed_update_version", "") ?: ""
+    }
+
+    fun setDismissedUpdateVersion(ctx: Context, version: String) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString("dismissed_update_version", version.trim())
+                .apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getLastInstalledUpdateVersion(ctx: Context): String {
+        return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("last_installed_update_version", "") ?: ""
+    }
+
+    fun setLastInstalledUpdateVersion(ctx: Context, version: String) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString("last_installed_update_version", version.trim())
+                .apply()
+        } catch (_: Exception) {}
+    }
+
     fun getCachedPersonalizedAlbums(ctx: Context): List<Album> = getList(ctx, "personalized_albums", Album::class.java)
 
     fun savePersonalizedAlbums(ctx: Context, albums: List<Album>) = saveList(ctx, "personalized_albums", albums)
