@@ -190,7 +190,7 @@ class AutoMixEngine(
         if (incoming != null && incoming?.id != nextSong.id) resetPlanning(keepSongId = true)
 
         val remaining = durationMs - posMs
-        val prepTriggerWindow = if (durationMs < 60_000L) (durationMs * 0.6f).toLong() else 45_000L
+        val prepTriggerWindow = if (durationMs < 80_000L) (durationMs * 0.7f).toLong() else 65_000L
         if (activePlan == null && preloadJob == null && remaining <= prepTriggerWindow && remaining >= 1_200L) {
             preloadJob = scope.launch { analyzeAndPrepare(currentSong, durationMs, posMs, nextSong, lyrics, playlist) }
         }
@@ -561,7 +561,7 @@ class AutoMixEngine(
         return (rawOut * scale).coerceIn(0f, 1f) to (rawIn * scale * microFade).coerceIn(0f, 1f)
     }
 
-    private fun resetPlanning(keepSongId: Boolean = false) {
+    fun resetPlanning(keepSongId: Boolean = false) {
         disarmWatchdog()
         preloadJob?.cancel(); preloadJob = null
         precisionStartJob?.cancel(); precisionStartJob = null
@@ -577,8 +577,8 @@ class AutoMixEngine(
         if (!isBusy) _autoMixState.value = AutoMixState()
     }
 
-    /** User override (seek, skip, pick a song, pause, AutoMix off): cancel transition, restore active volume. */
-    fun abortTransition() {
+    /** User override (seek, skip, pick a song, pause, AutoMix off): cancel transition, restore active volume or stop all playback cleanly. */
+    fun abortTransition(stopPlayback: Boolean = false) {
         val wasBusy = isBusy
         disarmWatchdog()
         transitionJob?.cancel(); transitionJob = null
@@ -588,18 +588,28 @@ class AutoMixEngine(
         resetPlanning()
         val curr = currentDeck
         val inc = incomingDeck
-        curr?.volume = 1f
-        curr?.playbackParameters = PlaybackParameters(1f)
+        if (stopPlayback) {
+            curr?.stop()
+            curr?.clearMediaItems()
+            curr?.volume = 0f
+        } else {
+            curr?.volume = 1f
+            curr?.playbackParameters = PlaybackParameters(1f)
+        }
         inc?.volume = 0f
         inc?.playbackParameters = PlaybackParameters(1f)
         inc?.stop()
         inc?.clearMediaItems()
-        if (activeDeckIndex == 0) {
-            primaryPlayerManager.activePlayerOverride = null
-            com.beatles.player.player.PlaybackService.instance?.restoreDefaultPlayer()
+        if (stopPlayback) {
+            resetToDefaultDeck()
         } else {
-            primaryPlayerManager.activePlayerOverride = deckB
-            com.beatles.player.player.PlaybackService.instance?.setSessionPlayer(deckB)
+            if (activeDeckIndex == 0) {
+                primaryPlayerManager.activePlayerOverride = null
+                com.beatles.player.player.PlaybackService.instance?.restoreDefaultPlayer()
+            } else {
+                primaryPlayerManager.activePlayerOverride = deckB
+                com.beatles.player.player.PlaybackService.instance?.setSessionPlayer(deckB)
+            }
         }
         _autoMixState.value = AutoMixState()
     }

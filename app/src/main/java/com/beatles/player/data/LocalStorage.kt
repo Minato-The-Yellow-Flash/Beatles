@@ -126,6 +126,15 @@ object LocalStorage {
         } catch (_: Exception) {}
     }
 
+    fun isSleepExtendPopupEnabled(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("sleep_extend_popup_enabled", true)
+
+    fun setSleepExtendPopupEnabled(ctx: Context, enabled: Boolean) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("sleep_extend_popup_enabled", enabled).apply()
+        } catch (_: Exception) {}
+    }
+
     fun getUserRole(ctx: Context): UserRole {
         val r = try {
             val roleStr = getUserDao(ctx).getPreference("user_role", null)

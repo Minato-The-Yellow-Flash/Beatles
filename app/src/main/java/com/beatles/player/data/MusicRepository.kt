@@ -1520,15 +1520,14 @@ object MusicRepository {
                 if (matches.isEmpty()) continue
 
                 val rawText = timestampRegex.replace(line, "").trim()
-                // If timestamp line has no text, mark it as instrumental break marker
-                val text = if (rawText.isEmpty()) "♪" else rawText
+                if (rawText.isEmpty()) continue
 
                 for (match in matches) {
                     val min = match.groupValues[1].toLongOrNull() ?: 0L
                     val secPart = match.groupValues[2].replace(':', '.')
                     val secDouble = secPart.toDoubleOrNull() ?: 0.0
                     val ms = kotlin.math.max(0L, min * 60000L + (secDouble * 1000).toLong() + offsetMs)
-                    result.add(LyricLine(ms, text))
+                    result.add(LyricLine(ms, rawText))
                 }
             }
 

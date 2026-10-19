@@ -153,7 +153,7 @@ fun SearchScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .edgeFade(if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)),
-            contentPadding = PaddingValues(top = 18.dp, bottom = LocalDynamicBottomPadding.current)
+            contentPadding = PaddingValues(top = 22.dp, bottom = LocalDynamicBottomPadding.current)
         ) {
             if (state.searchQuery.isNotBlank()) {
                 // 4 Autocorrect & Suggestion pills displayed prominently above results

@@ -95,20 +95,31 @@ object NormalAutoMixPlanner {
             .coerceIn(0.75f, 1.30f)
 
         // 6. Select Natural Outro Boundary (Apple Music style: extended smooth transition beyond 10s window)
+        // 6. Select Natural Outro Boundary (Apple Music style: 30s - 60s mixing window matching upcoming 60s)
         val dur = outgoingDurationMs
         val targetDurationMs = 12_000L // 12 seconds smooth transition length
         val effectiveLastSound = tail?.lastSoundMs ?: (dur - outInfo.trailingSilenceMs)
 
-        // Apple Music switches smoothly when vocals conclude (in midway / 16-28s before end)
-        // or in the natural outro window (final 12-14s) when lyrics are absent
+        // Apple Music switches smoothly in the final 30s - 60s window or when vocals conclude
         val hasConfirmedLyricsOutro = outgoingLyrics.isNotEmpty() && outInfo.vocalEndMs > 0 && outInfo.vocalEndMs < dur - 10_000L
+        val hasAcousticTail = tail != null
+
+        val outroWindowStart = if (hasAcousticTail && dur >= 75_000L) {
+            max(0L, dur - 60_000L)
+        } else if (hasConfirmedLyricsOutro) {
+            max(0L, dur - 30_000L)
+        } else {
+            max(0L, dur - 13_500L)
+        }
+
         val minOutroStart = if (hasConfirmedLyricsOutro) {
-            max(outInfo.vocalEndMs, max(0L, dur - 28_000L))
+            max(outInfo.vocalEndMs, outroWindowStart)
+        } else if (hasAcousticTail && dur >= 75_000L) {
+            max(outroWindowStart, dur - 45_000L)
         } else {
             max(0L, dur - 12_000L)
         }
 
-        val outroWindowStart = if (hasConfirmedLyricsOutro) max(0L, dur - 28_000L) else max(0L, dur - 13_500L)
         val safeStartMs = (dur - targetDurationMs - 1_200L).coerceAtLeast(0L)
 
         // Phrase boundary aligned with outro
@@ -127,9 +138,10 @@ object NormalAutoMixPlanner {
 
         val actualDurationMs = min(targetDurationMs, max(5_000L, effectiveLastSound - finalStartMs))
 
-        // 7. Incoming Start Offset (skip leading silence)
+        // 7. Incoming Start Offset (find best alignment in upcoming 60 sec, skipping leading silence)
         val leadingSilence = head?.firstSoundMs ?: inInfo.leadingSilenceMs
-        val incomingOffset = max(leadingSilence, match.alignedStartOffsetMs)
+        val incomingMaxSearch = min(60_000L, inInfo.durationMs.takeIf { it > 0L } ?: 60_000L)
+        val incomingOffset = max(leadingSilence, min(incomingMaxSearch, match.alignedStartOffsetMs))
 
         val bassSwapMs = finalStartMs + (actualDurationMs / 2)
 

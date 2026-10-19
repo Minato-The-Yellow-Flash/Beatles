@@ -1662,7 +1662,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         val morphMotionFactor = (4f * p * (1f - p)).coerceIn(0f, 1f)
                         val sheetStretchY = 1f + 0.025f * morphMotionFactor
                         val sheetSqueezeX = 1f - 0.015f * morphMotionFactor
-                        val sheetSlideY = (1f - p) * miniTopPx
+                        val sheetSlideY = 0f
 
                         Box(
                             modifier = Modifier
@@ -1762,7 +1762,19 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 queueTitle = state.queueTitle,
                                 isArtistMixLoading = state.isArtistMixLoading,
                                 onLoadMoreUpcoming = { viewModel.loadMoreUpcoming() },
-                                onPlayArtistMix = { viewModel.playArtistMix(it) }
+                                onPlayArtistMix = { viewModel.playArtistMix(it) },
+                                sleepTimerState = state.sleepTimerState,
+                                onStartSleepTimerMinutes = { viewModel.startSleepTimerMinutes(it) },
+                                onStartSleepTimerSongs = { viewModel.startSleepTimerSongs(it) },
+                                onStartSleepTimerAlbum = { viewModel.startSleepTimerAlbum() },
+                                onStartSleepTimerEndOfTrack = { viewModel.startSleepTimerEndOfTrack() },
+                                onExtendSleepTimerMinutes = { viewModel.extendSleepTimerMinutes(it) },
+                                onExtendSleepTimerSongs = { viewModel.extendSleepTimerSongs(it) },
+                                onExtendSleepTimerAlbum = { viewModel.extendSleepTimerAlbum() },
+                                onCancelSleepTimer = { viewModel.cancelSleepTimer() },
+                                onDismissSleepWarning = { viewModel.dismissSleepWarningPopup() },
+                                onSetSleepExtendPopupEnabled = { viewModel.setSleepExtendPopupEnabled(it) },
+                                autoMixTargetSongId = state.autoMixTargetSongId
                             )
                         }
                     }

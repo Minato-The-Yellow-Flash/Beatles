@@ -147,7 +147,19 @@ fun NowPlayingSheet(
     sourceOriginBounds: Rect? = null,
     queueTitle: String? = null,
     isArtistMixLoading: Boolean = false,
-    onPlayArtistMix: (String) -> Unit = {}
+    onPlayArtistMix: (String) -> Unit = {},
+    sleepTimerState: com.beatles.player.viewmodel.SleepTimerState = com.beatles.player.viewmodel.SleepTimerState(),
+    onStartSleepTimerMinutes: (Int) -> Unit = {},
+    onStartSleepTimerSongs: (Int) -> Unit = {},
+    onStartSleepTimerAlbum: () -> Unit = {},
+    onStartSleepTimerEndOfTrack: () -> Unit = {},
+    onExtendSleepTimerMinutes: (Int) -> Unit = {},
+    onExtendSleepTimerSongs: (Int) -> Unit = {},
+    onExtendSleepTimerAlbum: () -> Unit = {},
+    onCancelSleepTimer: () -> Unit = {},
+    onDismissSleepWarning: () -> Unit = {},
+    onSetSleepExtendPopupEnabled: (Boolean) -> Unit = {},
+    autoMixTargetSongId: String? = null
 ) {
     var isHeartAnimating by remember { mutableStateOf(false) }
     val heartScale by animateFloatAsState(targetValue = if (isHeartAnimating) 1.5f else 1f, animationSpec = spring(dampingRatio = 0.4f, stiffness = 400f), label = "heartScale")
@@ -168,6 +180,7 @@ fun NowPlayingSheet(
     val sheetHaze = remember { HazeState() }
     var showMiniMenu by remember { mutableStateOf(false) }
     var showSavePlaylistView by remember { mutableStateOf(false) }
+    var showSleepTimerDialog by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
     var sheetRootBounds by remember { mutableStateOf<Rect?>(null) }
     var threeDotButtonBounds by remember { mutableStateOf<Rect?>(null) }
@@ -390,6 +403,19 @@ fun NowPlayingSheet(
         val isNextUpActive = showNextUp
         val isCompactTarget = isLyricsActive || isNextUpActive
 
+        var lastActiveSubpage by remember { mutableStateOf("NONE") }
+        var isSwitchingSubpages by remember { mutableStateOf(false) }
+
+        LaunchedEffect(isLyricsActive, isNextUpActive) {
+            val current = if (isLyricsActive) "LYRICS" else if (isNextUpActive) "NEXT_UP" else "NONE"
+            if ((lastActiveSubpage == "LYRICS" && current == "NEXT_UP") || (lastActiveSubpage == "NEXT_UP" && current == "LYRICS")) {
+                isSwitchingSubpages = true
+            } else if (current == "NONE" || lastActiveSubpage == "NONE") {
+                isSwitchingSubpages = false
+            }
+            lastActiveSubpage = current
+        }
+
         val lyricsProgress by animateFloatAsState(
             targetValue = if (isLyricsActive) 1f else 0f,
             animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 360f),
@@ -405,9 +431,10 @@ fun NowPlayingSheet(
         val subpageTarget = if (isNextUpActive) 1f else 0f
         val subpageSlideFraction by animateFloatAsState(
             targetValue = subpageTarget,
-            animationSpec = spring(dampingRatio = 0.85f, stiffness = 380f),
+            animationSpec = spring(dampingRatio = 0.88f, stiffness = 380f),
             label = "subpageSlideFraction"
         )
+        val sideStretchFactor = (1f - kotlin.math.abs(subpageSlideFraction - 0.5f) * 2f).coerceIn(0f, 1f)
 
         var dragOffsetX by remember { mutableFloatStateOf(0f) }
         val animatedDragX by animateFloatAsState(
@@ -637,467 +664,60 @@ fun NowPlayingSheet(
             )
         }
 
-        // Next Up Queue with smooth upwards pull spring animation and horizontal slide when toggling with lyrics
-        if (nextUpProgress > 0.001f || subpageSlideFraction > 0.005f) {
-            val screenWidthPx = with(density) { screenWidth.toPx() }
-            val nextUpSlideX = (1f - subpageSlideFraction) * screenWidthPx
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 190.dp, top = 136.dp)
-                    .graphicsLayer {
-                        translationX = nextUpSlideX
-                        translationY = (1f - nextUpProgress) * 350f
-                        alpha = (nextUpProgress * subpageSlideFraction.coerceIn(0.01f, 1f)).coerceIn(0f, 1f)
-                    }
-                    .pointerInput(Unit) {
-                        var totalDx = 0f
-                        detectHorizontalDragGestures(
-                            onDragStart = { totalDx = 0f },
-                            onDragEnd = {
-                                if (totalDx > 90f) {
-                                    Haptics.confirm(view)
-                                    onToggleNextUp()
-                                }
-                                totalDx = 0f
-                            },
-                            onHorizontalDrag = { _, dragAmount ->
-                                if (dragAmount > 0) totalDx += dragAmount
-                            }
-                        )
-                    }
-            ) {
-                val currentIdx = playlist.indexOfFirst { it.id == song.id }
-                val upcoming = if (currentIdx >= 0) playlist.drop(currentIdx + 1) else playlist
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(
-                                brush = Brush.verticalGradient(
-                                    0.0f to Color.Transparent,
-                                    0.025f to Color.Black,
-                                    0.94f to Color.Black,
-                                    1.0f to Color.Transparent
-                                ),
-                                blendMode = BlendMode.DstIn
-                            )
-                        }
-                ) {
-                    if (upcoming.isEmpty()) {
-                        Column(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp)) {
-                            NextUpControlPillsRow(
-                                shuffleEnabled = shuffleEnabled,
-                                onToggleShuffle = onToggleShuffle,
-                                repeatMode = repeatMode,
-                                onToggleRepeat = onToggleRepeat,
-                                autoMixEnabled = autoMixEnabled,
-                                onToggleAutoMix = onToggleAutoMix,
-                                autoPlayEnabled = autoPlayEnabled,
-                                onToggleAutoPlay = onToggleAutoPlay,
-                                isDark = isDark
-                            )
-                            LaunchedEffect(Unit) {
-                                onLoadMoreUpcoming()
-                            }
-                            Spacer(modifier = Modifier.height(48.dp))
-                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = AccentRed, strokeWidth = 2.5.dp)
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    Text("Finding more songs for your queue...", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
-                                }
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(top = 10.dp, bottom = 40.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            if (queueTitle != null) {
-                                item {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 20.dp, vertical = 4.dp)
-                                            .clip(RoundedCornerShape(14.dp))
-                                            .background(Color.White.copy(alpha = 0.12f))
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.Radio, contentDescription = null, tint = AccentRed, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(queueTitle, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                                        if (isArtistMixLoading) {
-                                            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White.copy(alpha = 0.7f), strokeWidth = 2.dp)
-                                        }
-                                    }
-                                }
-                            }
-                            item {
-                                NextUpControlPillsRow(
-                                    shuffleEnabled = shuffleEnabled,
-                                    onToggleShuffle = onToggleShuffle,
-                                    repeatMode = repeatMode,
-                                    onToggleRepeat = onToggleRepeat,
-                                    autoMixEnabled = autoMixEnabled,
-                                    onToggleAutoMix = onToggleAutoMix,
-                                    autoPlayEnabled = autoPlayEnabled,
-                                    onToggleAutoPlay = onToggleAutoPlay,
-                                    isDark = isDark
-                                )
-                            }
-                            itemsIndexed(upcoming, key = { _, s -> s.id }) { idx, s ->
-                                if (idx >= upcoming.size - 4) {
-                                    LaunchedEffect(upcoming.size) {
-                                        onLoadMoreUpcoming()
-                                    }
-                                }
-                                QueueSongItem(
-                                    song = s,
-                                    index = idx,
-                                    totalCount = upcoming.size,
-                                    onPlay = { onPlayFromQueue(s) },
-                                    onMoveToPlayNext = { onMoveToPlayNext(s) },
-                                    onRemove = { onRemoveFromQueue(s.id) },
-                                    onMoveUp = { if (idx > 0) onMoveInQueue(idx, idx - 1) },
-                                    onMoveDown = { if (idx < upcoming.size - 1) onMoveInQueue(idx, idx + 1) }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+        // Next Up Queue: Upward stretch when opened from main player, 90° horizontal side-stretch when toggling with lyrics
+        if (nextUpProgress > 0.001f || (isSwitchingSubpages && subpageSlideFraction > 0.005f)) {
+            NowPlayingQueueLayer(
+                nextUpProgress = nextUpProgress,
+                isSwitchingSubpages = isSwitchingSubpages,
+                subpageSlideFraction = subpageSlideFraction,
+                sideStretchFactor = sideStretchFactor,
+                playlist = playlist,
+                song = song,
+                queueTitle = queueTitle,
+                isArtistMixLoading = isArtistMixLoading,
+                isDark = isDark,
+                shuffleEnabled = shuffleEnabled,
+                onToggleShuffle = onToggleShuffle,
+                repeatMode = repeatMode,
+                onToggleRepeat = onToggleRepeat,
+                autoMixEnabled = autoMixEnabled,
+                onToggleAutoMix = onToggleAutoMix,
+                autoPlayEnabled = autoPlayEnabled,
+                onToggleAutoPlay = onToggleAutoPlay,
+                onLoadMoreUpcoming = onLoadMoreUpcoming,
+                onPlayFromQueue = onPlayFromQueue,
+                onMoveToPlayNext = onMoveToPlayNext,
+                onRemoveFromQueue = onRemoveFromQueue,
+                onMoveInQueue = onMoveInQueue,
+                autoMixTargetSongId = autoMixTargetSongId,
+                onToggleNextUp = onToggleNextUp
+            )
         }
 
         if (lyricsProgress > 0.001f) {
-            val lyrStretchY = 1.0f + 0.08f * (1f - lyricsProgress)
-            val lyrTransY = with(density) { 36.dp.toPx() * (1f - lyricsProgress) }
-
-            // Apple Music Synced Word-by-Word Lyrics View
-            val processedLyrics = remember(lyrics, duration) { LyricsProcessor.processSyncedLyrics(lyrics, trackDurationMs = duration) }
-
-            // High-refresh (60/120fps) frame clock interpolating position from audio playback with ~35ms latency compensation
-            var livePositionMs by remember { mutableLongStateOf(currentPosition) }
-            LaunchedEffect(isPlaying, currentPosition, isLyricsActive) {
-                livePositionMs = currentPosition
-                if (isPlaying && isLyricsActive) {
-                    val anchorRealtime = SystemClock.elapsedRealtime()
-                    val anchorPos = currentPosition
-                    while (isActive && isLyricsActive) {
-                        withFrameMillis {
-                            val elapsed = SystemClock.elapsedRealtime() - anchorRealtime
-                            // Compensate for Bluetooth / speaker audio output buffer latency (~35ms)
-                            livePositionMs = (anchorPos + elapsed - 35L).coerceAtLeast(0L)
-                        }
-                    }
-                }
-            }
-
-            val lyricsTopPad by animateDpAsState(
-                targetValue = if (controlsVisible && controlsAlpha > 0.05f) 110.dp else 16.dp,
-                animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f),
-                label = "lyricsTopPad"
+            NowPlayingLyricsLayer(
+                lyricsProgress = lyricsProgress,
+                isSwitchingSubpages = isSwitchingSubpages,
+                subpageSlideFraction = subpageSlideFraction,
+                sideStretchFactor = sideStretchFactor,
+                lyrics = lyrics,
+                duration = duration,
+                currentPosition = currentPosition,
+                isPlaying = isPlaying,
+                isLyricsActive = isLyricsActive,
+                controlsVisible = controlsVisible,
+                controlsAlpha = controlsAlpha,
+                onToggleControls = {
+                    lastLyricsInteractionTime = System.currentTimeMillis()
+                    controlsVisible = !controlsVisible
+                },
+                onLyricsDragged = {
+                    lastLyricsInteractionTime = System.currentTimeMillis()
+                    controlsVisible = true
+                },
+                onSeek = onSeek,
+                onToggleLyrics = onToggleLyrics
             )
-            val lyricsBottomPad by animateDpAsState(
-                targetValue = if (controlsVisible && controlsAlpha > 0.05f) 180.dp else 16.dp,
-                animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f),
-                label = "lyricsBottomPad"
-            )
-
-            val screenWidthPx = with(density) { screenWidth.toPx() }
-            val lyricsSlideX = -subpageSlideFraction * screenWidthPx
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = lyricsTopPad, bottom = lyricsBottomPad)
-                    .graphicsLayer {
-                        scaleY = lyrStretchY
-                        translationX = lyricsSlideX
-                        translationY = lyrTransY
-                        alpha = (lyricsProgress * (1f - subpageSlideFraction).coerceIn(0.01f, 1f)).coerceIn(0f, 1f)
-                        transformOrigin = TransformOrigin(0.5f, 1.0f)
-                    }
-                    .pointerInput(Unit) {
-                        var totalDx = 0f
-                        detectHorizontalDragGestures(
-                            onDragStart = { totalDx = 0f },
-                            onDragEnd = {
-                                if (totalDx > 90f) {
-                                    Haptics.confirm(view)
-                                    onToggleLyrics()
-                                }
-                                totalDx = 0f
-                            },
-                            onHorizontalDrag = { _, dragAmount ->
-                                if (dragAmount > 0) totalDx += dragAmount
-                            }
-                        )
-                    }
-            ) {
-                if (processedLyrics.isNotEmpty()) {
-                    val initialLineIdx = remember(processedLyrics) {
-                        LyricsProcessor.findActiveLineIndex(processedLyrics, currentPosition).coerceAtLeast(0)
-                    }
-                    val listState = rememberLazyListState(
-                        initialFirstVisibleItemIndex = (initialLineIdx - 1).coerceAtLeast(0)
-                    )
-                    val currentIdx by remember(processedLyrics) {
-                        derivedStateOf {
-                            LyricsProcessor.findActiveLineIndex(processedLyrics, livePositionMs)
-                        }
-                    }
-
-                    val isLyricsDragged by listState.interactionSource.collectIsDraggedAsState()
-                    var manualScrolled by remember { mutableStateOf(false) }
-
-                    LaunchedEffect(isLyricsDragged) {
-                        if (isLyricsDragged) {
-                            manualScrolled = true
-                            lastLyricsInteractionTime = System.currentTimeMillis()
-                            controlsVisible = true
-                        }
-                    }
-
-                    LaunchedEffect(manualScrolled) {
-                        if (manualScrolled) {
-                            // Resume auto-scroll after ~6s idle
-                            delay(6000L)
-                            manualScrolled = false
-                        }
-                    }
-
-                    val anchorSpotDp = if (controlsVisible && controlsAlpha > 0.05f) 72.dp else 28.dp
-                    val anchorSpotPx = with(density) { anchorSpotDp.roundToPx() }
-
-                    // Auto-scroll active line smoothly into the fixed anchor spot without thrashing intermediate items
-                    LaunchedEffect(currentIdx, manualScrolled, isLyricsActive) {
-                        if (isLyricsActive && currentIdx in processedLyrics.indices && !manualScrolled && !isLyricsDragged) {
-                            val item = listState.layoutInfo.visibleItemsInfo.find { it.index == currentIdx }
-                            if (item != null) {
-                                // Only perform animated delta spring once lyrics entry transition is completed/settled
-                                if (lyricsProgress >= 0.88f) {
-                                    val delta = item.offset - anchorSpotPx
-                                    if (kotlin.math.abs(delta) > 2) {
-                                        listState.animateScrollBy(
-                                            value = delta.toFloat(),
-                                            animationSpec = spring(
-                                                dampingRatio = 0.52f,
-                                                stiffness = 260f
-                                            )
-                                        )
-                                    }
-                                }
-                            } else {
-                                // Instantly position at target index so LazyColumn doesn't compose/measure dozens of intermediate items during album cover morph
-                                listState.scrollToItem(
-                                    index = (currentIdx - 1).coerceAtLeast(0),
-                                    scrollOffset = 0
-                                )
-                            }
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                lastLyricsInteractionTime = System.currentTimeMillis()
-                                controlsVisible = !controlsVisible
-                            }
-                            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                            .drawWithContent {
-                                val fadeTopRatio = if (controlsVisible && controlsAlpha > 0.05f) 0.09f else 0.02f
-                                val fadeBottomRatio = if (controlsVisible && controlsAlpha > 0.05f) 0.90f else 0.98f
-                                drawContent()
-                                drawRect(
-                                    brush = Brush.verticalGradient(
-                                        0.0f to Color.Transparent,
-                                        (fadeTopRatio * 0.4f) to Color.Black.copy(alpha = 0.30f),
-                                        fadeTopRatio to Color.Black,
-                                        fadeBottomRatio to Color.Black,
-                                        (fadeBottomRatio + (1f - fadeBottomRatio) * 0.6f) to Color.Black.copy(alpha = 0.30f),
-                                        1.0f to Color.Transparent
-                                    ),
-                                    blendMode = BlendMode.DstIn
-                                )
-                            }
-                    ) {
-                        val lyricsListBottomPad by animateDpAsState(
-                            targetValue = if (controlsVisible && controlsAlpha > 0.05f) 160.dp else 24.dp,
-                            label = "lyricsListBottomPad"
-                        )
-                        val lyricsListTopPad by animateDpAsState(
-                            targetValue = if (controlsVisible && controlsAlpha > 0.05f) anchorSpotDp else 20.dp,
-                            label = "lyricsListTopPad"
-                        )
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(start = 28.dp, end = 28.dp),
-                            contentPadding = PaddingValues(top = lyricsListTopPad, bottom = lyricsListBottomPad),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            itemsIndexed(processedLyrics, key = { idx, line -> "lyric_${line.timeMs}_$idx" }) { idx, line ->
-                                val isActive = idx == currentIdx
-                                val distance = if (currentIdx >= 0) kotlin.math.abs(idx - currentIdx) else 1
-                                val cappedDistance = distance.coerceAtMost(4)
-
-                                val targetScale = if (isActive) 1.05f else 1.0f
-                                val targetAlpha = if (isActive) 1.0f else (0.50f - cappedDistance * 0.08f).coerceAtLeast(0.20f)
-                                val targetBlur = if (isActive) 0.dp else (cappedDistance.coerceAtMost(2) * 0.8f).dp
-                                val targetBounceY = if (isActive) (-6).dp else 0.dp
-
-                                val lineBounceY by animateDpAsState(
-                                    targetValue = targetBounceY,
-                                    animationSpec = spring(
-                                        dampingRatio = 0.44f,
-                                        stiffness = 240f
-                                    ),
-                                    label = "lineBounceY_$idx"
-                                )
-                                val lineScale by animateFloatAsState(
-                                    targetValue = targetScale,
-                                    animationSpec = spring(
-                                        dampingRatio = 0.70f,
-                                        stiffness = 320f
-                                    ),
-                                    label = "lineScale_$idx"
-                                )
-                                val lineAlpha by animateFloatAsState(
-                                    targetValue = targetAlpha,
-                                    animationSpec = spring(
-                                        dampingRatio = 0.70f,
-                                        stiffness = 400f
-                                    ),
-                                    label = "lineAlpha_$idx"
-                                )
-                                val lineBlur by animateDpAsState(
-                                    targetValue = targetBlur,
-                                    animationSpec = tween(300),
-                                    label = "lineBlur_$idx"
-                                )
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .graphicsLayer {
-                                            translationY = lineBounceY.toPx()
-                                            scaleX = lineScale
-                                            scaleY = lineScale
-                                            alpha = lineAlpha
-                                            transformOrigin = TransformOrigin(0f, 0.5f)
-                                            if (lineBlur > 0.dp) {
-                                                compositingStrategy = CompositingStrategy.Offscreen
-                                            }
-                                        }
-                                        .then(if (lineBlur > 0.dp) Modifier.blur(lineBlur) else Modifier)
-                                        .padding(vertical = 4.dp, horizontal = 4.dp)
-                                        .clickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication = null
-                                        ) {
-                                            manualScrolled = false
-                                            onSeek(line.timeMs)
-                                        }
-                                ) {
-                                    if (line.isInstrumental) {
-                                        // Animated Instrumental Interlude: "♪" + 3 dots filling in across the duration
-                                        val breakElapsed = (livePositionMs - line.timeMs).coerceIn(0L, line.durationMs)
-                                        val breakProgress = if (line.durationMs > 0) (breakElapsed.toFloat() / line.durationMs).coerceIn(0f, 1f) else 0f
-                                        val breathScale = if (isActive) (1.0f + 0.012f * kotlin.math.sin(breakElapsed / 700.0).toFloat()) else 1.0f
-
-                                        val dot1Active = if (isActive) (breakProgress >= 0.15f) else (currentIdx >= 0 && idx < currentIdx)
-                                        val dot2Active = if (isActive) (breakProgress >= 0.50f) else (currentIdx >= 0 && idx < currentIdx)
-                                        val dot3Active = if (isActive) (breakProgress >= 0.85f) else (currentIdx >= 0 && idx < currentIdx)
-
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .graphicsLayer {
-                                                    scaleX = breathScale
-                                                    scaleY = breathScale
-                                                }
-                                                .padding(vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.Start
-                                        ) {
-                                            Text(
-                                                text = "♪",
-                                                fontSize = 28.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isActive) Color.White else Color.White.copy(alpha = 0.40f)
-                                            )
-                                            Spacer(modifier = Modifier.width(16.dp))
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                listOf(dot1Active, dot2Active, dot3Active).forEach { dotFilled ->
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(8.dp)
-                                                            .clip(CircleShape)
-                                                            .background(if (dotFilled) Color.White else Color.White.copy(alpha = 0.30f))
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    } else if (line.words.isNotEmpty()) {
-                                        val lineSweep = if (isActive) LyricsProcessor.calculateLineSweepProgress(line, livePositionMs) else 0f
-                                        FlowRow(
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            line.words.forEachIndexed { wordIdx, word ->
-                                                val wordProgress = if (isActive) {
-                                                    LyricsProcessor.calculateWordProgressFromLine(wordIdx, lineSweep)
-                                                } else if (currentIdx >= 0 && idx < currentIdx) {
-                                                    1.0f
-                                                } else {
-                                                    0.0f
-                                                }
-                                                SyncedWordItem(
-                                                    word = word,
-                                                    progress = wordProgress,
-                                                    isCurrentLine = isActive,
-                                                    isPastLine = currentIdx >= 0 && idx < currentIdx,
-                                                    onSeek = {
-                                                        manualScrolled = false
-                                                        onSeek(it)
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    } else {
-                                        Text(
-                                            text = line.text,
-                                            fontSize = 29.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            lineHeight = 37.sp,
-                                            color = if (isActive) Color.White else Color.White.copy(alpha = 0.40f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Lyrics not available", color = Color.White.copy(alpha = 0.5f), fontSize = 18.sp, fontWeight = FontWeight.Medium)
-                    }
-                }
-            }
         }
 
 
@@ -1774,233 +1394,28 @@ fun NowPlayingSheet(
             }
         }
 
-        // 3-Dots iOS 27 Mini Submenu (Pops out from 3-dots with rounded corners blur, shrinks into it)
-        val miniMenuAnim by animateFloatAsState(
-            targetValue = if (showMiniMenu) 1f else 0f,
-            animationSpec = spring(dampingRatio = 0.80f, stiffness = 420f),
-            label = "miniMenuAnim"
+        // 3-Dots iOS 27 Mini Submenu
+        NowPlayingThreeDotsMenu(
+            showMiniMenu = showMiniMenu,
+            onDismissMiniMenu = {
+                showMiniMenu = false
+                showSavePlaylistView = false
+            },
+            showSavePlaylistView = showSavePlaylistView,
+            onSetShowSavePlaylistView = { showSavePlaylistView = it },
+            sheetRootBounds = sheetRootBounds,
+            threeDotButtonBounds = threeDotButtonBounds,
+            song = song,
+            onGoToAlbum = onGoToAlbum,
+            onPlayArtistMix = onPlayArtistMix,
+            autoMixEnabled = autoMixEnabled,
+            onToggleAutoMix = onToggleAutoMix,
+            sleepTimerState = sleepTimerState,
+            onOpenSleepTimerDialog = { showSleepTimerDialog = true },
+            playlists = playlists,
+            onCreatePlaylist = onCreatePlaylist,
+            onAddToPlaylist = onAddToPlaylist
         )
-
-        if (miniMenuAnim > 0.01f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.35f * miniMenuAnim))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        showMiniMenu = false
-                        showSavePlaylistView = false
-                    }
-            ) {
-                val isDark = AppTheme.isDark
-                val currentCornerDp = lerp(19.dp, 24.dp, miniMenuAnim)
-                val menuShape = RoundedCornerShape(currentCornerDp)
-                val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.70f) else Color(0xFFF2F3F7).copy(alpha = 0.78f)
-                val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.08f)
-
-                val density = LocalDensity.current
-                val endPaddingDp = remember(sheetRootBounds, threeDotButtonBounds) {
-                    val sb = sheetRootBounds
-                    val tb = threeDotButtonBounds
-                    if (sb != null && tb != null) {
-                        with(density) { (sb.right - tb.right).toDp().coerceAtLeast(16.dp) }
-                    } else {
-                        20.dp
-                    }
-                }
-                val bottomPaddingDp = remember(sheetRootBounds, threeDotButtonBounds) {
-                    val sb = sheetRootBounds
-                    val tb = threeDotButtonBounds
-                    if (sb != null && tb != null) {
-                        with(density) { (sb.bottom - tb.top + 8.dp.toPx()).toDp().coerceAtLeast(180.dp) }
-                    } else {
-                        246.dp
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = endPaddingDp, bottom = bottomPaddingDp)
-                        .width(230.dp)
-                        .graphicsLayer {
-                            scaleX = miniMenuAnim
-                            scaleY = miniMenuAnim
-                            alpha = miniMenuAnim.coerceIn(0f, 1f)
-                            transformOrigin = TransformOrigin(0.92f, 1.0f)
-                        }
-                        .shadow(12.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.18f))
-                        .clip(menuShape)
-                        .then(
-                            if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                                Modifier.hazeChild(
-                                    state = sheetHaze,
-                                    shape = menuShape,
-                                    style = dev.chrisbanes.haze.HazeStyle(blurRadius = 24.dp, noiseFactor = 0.05f)
-                                )
-                            } else Modifier
-                        )
-                        .background(translucentBarBg)
-                        .border(1.dp, translucentBarBorder, menuShape)
-                        .glassRefraction(currentCornerDp, isDark = isDark)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
-                        .padding(vertical = 6.dp)
-                ) {
-                    if (!showSavePlaylistView) {
-                        Column {
-                            // Option 1: Add to Playlist
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        Haptics.tick(view)
-                                        showSavePlaylistView = true
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 11.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text("Add to Playlist", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
-                            }
-
-                            HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
-
-                            // Option 2: Go to Album
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        Haptics.confirm(view)
-                                        showMiniMenu = false
-                                        onGoToAlbum(song)
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 11.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Album, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text("Go to Album", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
-                            }
-
-                            HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
-
-                            // Option 3: Play Artist Mix
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        Haptics.confirm(view)
-                                        showMiniMenu = false
-                                        onPlayArtistMix(song.artist)
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 11.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Radio, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text("Play Artist Mix", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
-                            }
-
-                            HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
-
-                            // Option 4: AutoMix Toggle
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        Haptics.confirm(view)
-                                        onToggleAutoMix()
-                                    }
-                                    .padding(horizontal = 16.dp, vertical = 11.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.GraphicEq, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text("AutoMix", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                                Text(if (autoMixEnabled) "ON" else "OFF", color = AppTheme.fg(0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    } else {
-                        // Save to Playlist inside popover
-                        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = { showSavePlaylistView = false }, modifier = Modifier.size(28.dp)) {
-                                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = AppTheme.fg(), modifier = Modifier.size(16.dp))
-                                }
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Playlists", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                BasicTextField(
-                                    value = newPlaylistName,
-                                    onValueChange = { newPlaylistName = it },
-                                    textStyle = TextStyle(color = AppTheme.fg(), fontSize = 12.sp),
-                                    singleLine = true,
-                                    cursorBrush = SolidColor(AppTheme.fg()),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .background(AppTheme.fg(0.08f), RoundedCornerShape(8.dp))
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    decorationBox = { inner ->
-                                        if (newPlaylistName.isEmpty()) Text("New playlist...", color = AppTheme.fg(0.4f), fontSize = 12.sp)
-                                        inner()
-                                    }
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Button(
-                                    onClick = {
-                                        if (newPlaylistName.isNotBlank()) {
-                                            onCreatePlaylist(newPlaylistName.trim(), song)
-                                            newPlaylistName = ""
-                                            showMiniMenu = false
-                                            showSavePlaylistView = false
-                                        }
-                                    },
-                                    enabled = newPlaylistName.isNotBlank(),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = AppTheme.fg(), disabledContainerColor = AppTheme.fg(0.1f))
-                                ) {
-                                    Text("+", color = AppTheme.bg, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            if (playlists.isEmpty()) {
-                                Text("No playlists yet", color = AppTheme.fg(0.4f), fontSize = 11.sp, modifier = Modifier.padding(vertical = 8.dp))
-                            } else {
-                                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp)) {
-                                    items(playlists) { pl ->
-                                        val alreadyIn = pl.songs.any { it.id == song.id }
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .clickable {
-                                                    onAddToPlaylist(pl.id, song)
-                                                    showMiniMenu = false
-                                                    showSavePlaylistView = false
-                                                }
-                                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(pl.name, color = AppTheme.fg(), fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1)
-                                            if (alreadyIn) Text("Added", color = Color(0xFF4ADE80), fontSize = 10.sp)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         // Double-Tap Heart Pop Animation Overlay (at top of Box hierarchy so it displays over artwork & queue)
         if (showBigHeartPopup || bigHeartAlpha > 0f) {
@@ -2024,6 +1439,46 @@ fun NowPlayingSheet(
             }
         }
 
+        // Sleep Extend Warning Popup (Floating pill at top center)
+        if (sleepTimerState.showWarningPopup) {
+            SleepExtendWarningPopup(
+                remainingSeconds = sleepTimerState.warningPopupRemainingSeconds,
+                onDismiss = onDismissSleepWarning,
+                onExtendMinutes = onExtendSleepTimerMinutes,
+                onExtendSongs = onExtendSleepTimerSongs,
+                onExtendAlbum = onExtendSleepTimerAlbum
+            )
+        }
+
+        // Custom Beatles Sleep Timer Modal Sheet
+        if (showSleepTimerDialog) {
+            BeatlesSleepTimerSheet(
+                state = sleepTimerState,
+                currentSong = song,
+                onDismiss = { showSleepTimerDialog = false },
+                onStartMinutes = {
+                    onStartSleepTimerMinutes(it)
+                    showSleepTimerDialog = false
+                },
+                onStartSongs = {
+                    onStartSleepTimerSongs(it)
+                    showSleepTimerDialog = false
+                },
+                onStartAlbum = {
+                    onStartSleepTimerAlbum()
+                    showSleepTimerDialog = false
+                },
+                onStartEndOfTrack = {
+                    onStartSleepTimerEndOfTrack()
+                    showSleepTimerDialog = false
+                },
+                onCancelTimer = {
+                    onCancelSleepTimer()
+                    showSleepTimerDialog = false
+                },
+                onToggleExtendPopup = onSetSleepExtendPopupEnabled
+            )
+        }
 
     }
 }
@@ -2104,7 +1559,8 @@ fun QueueSongItem(
     onMoveToPlayNext: () -> Unit,
     onRemove: () -> Unit,
     onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit
+    onMoveDown: () -> Unit,
+    isAutoMixTarget: Boolean = false
 ) {
     val view = LocalView.current
     var offsetX by remember { mutableFloatStateOf(0f) }
@@ -2231,7 +1687,36 @@ fun QueueSongItem(
                 Column(
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(song.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(song.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                        if (isAutoMixTarget) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFFF82C38).copy(alpha = 0.22f))
+                                    .border(1.dp, Color(0xFFF82C38).copy(alpha = 0.50f), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 6.dp, vertical = 1.5.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Rounded.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = Color(0xFFF82C38),
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        "AutoMix",
+                                        color = Color.White,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(song.artist, color = Color.White.copy(alpha = 0.60f), fontSize = 11.sp, maxLines = 1)
                 }
@@ -2383,3 +1868,1417 @@ private fun SyncedWordItem(
         )
     }
 }
+
+@Composable
+fun SleepExtendWarningPopup(
+    remainingSeconds: Int,
+    onDismiss: () -> Unit,
+    onExtendMinutes: (Int) -> Unit,
+    onExtendSongs: (Int) -> Unit,
+    onExtendAlbum: () -> Unit
+) {
+    val isDark = AppTheme.isDark
+    val view = LocalView.current
+    val popupBg = if (isDark) Color(0xFF1E2026) else Color(0xFFFFFFFF)
+    val popupBorder = if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.10f)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .padding(top = 16.dp, start = 16.dp, end = 16.dp)
+            .zIndex(150f),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        Column(
+            modifier = Modifier
+                .shadow(16.dp, RoundedCornerShape(24.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.6f) else Color.Black.copy(alpha = 0.2f))
+                .clip(RoundedCornerShape(24.dp))
+                .background(popupBg)
+                .border(1.dp, popupBorder, RoundedCornerShape(24.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFF82C38).copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Rounded.Bedtime,
+                        contentDescription = null,
+                        tint = Color(0xFFF82C38),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Music stopping soon",
+                        color = AppTheme.fg(),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "Sleep timer ends in ${remainingSeconds}s",
+                        color = AppTheme.fg(0.6f),
+                        fontSize = 11.sp
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(AppTheme.fg(0.08f))
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                            Haptics.tick(view)
+                            onDismiss()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Dismiss",
+                        tint = AppTheme.fg(0.7f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Quick Extension Presets
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val presets = listOf(
+                    "+5m" to { onExtendMinutes(5) },
+                    "+15m" to { onExtendMinutes(15) },
+                    "+1 Song" to { onExtendSongs(1) },
+                    "+Album" to { onExtendAlbum() }
+                )
+                presets.forEach { (label, onClick) ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(32.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(AppTheme.fg(0.08f))
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                Haptics.confirm(view)
+                                onClick()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            label,
+                            color = AppTheme.fg(),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BeatlesSleepTimerSheet(
+    state: com.beatles.player.viewmodel.SleepTimerState,
+    currentSong: Song,
+    onDismiss: () -> Unit,
+    onStartMinutes: (Int) -> Unit,
+    onStartSongs: (Int) -> Unit,
+    onStartAlbum: () -> Unit,
+    onStartEndOfTrack: () -> Unit,
+    onCancelTimer: () -> Unit,
+    onToggleExtendPopup: (Boolean) -> Unit
+) {
+    val isDark = AppTheme.isDark
+    val view = LocalView.current
+    val sheetBg = if (isDark) Color(0xFF1E2026) else Color(0xFFFFFFFF)
+    val sheetBorder = if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: Time, 1: Songs, 2: 1 Track, 3: Album
+    var customMinutes by remember { mutableIntStateOf(30) }
+    var customSongs by remember { mutableIntStateOf(3) }
+
+    val isTimerActive = state.mode != com.beatles.player.viewmodel.SleepTimerMode.NONE
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(140f)
+            .background(Color.Black.copy(alpha = 0.60f))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                Haptics.tick(view)
+                onDismiss()
+            },
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(24.dp, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.25f))
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(sheetBg)
+                .border(1.dp, sheetBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { /* swallow touches */ }
+                .padding(horizontal = 20.dp)
+                .padding(top = 12.dp, bottom = 28.dp)
+        ) {
+            // Drag handle pill
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(40.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(AppTheme.fg(0.20f))
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Rounded.Bedtime,
+                    contentDescription = null,
+                    tint = if (isTimerActive) Color(0xFFF82C38) else AppTheme.fg(),
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    "Sleep Timer",
+                    color = AppTheme.fg(),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = {
+                        Haptics.tick(view)
+                        onDismiss()
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = AppTheme.fg(0.7f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Active Timer Banner (if currently running)
+            if (isTimerActive) {
+                val activeDescription = when (state.mode) {
+                    com.beatles.player.viewmodel.SleepTimerMode.TIME -> {
+                        val m = state.remainingSeconds / 60
+                        val s = state.remainingSeconds % 60
+                        "Music turns off in ${m}m ${String.format("%02d", s)}s"
+                    }
+                    com.beatles.player.viewmodel.SleepTimerMode.SONGS -> {
+                        "Music turns off after ${state.remainingSongs} song${if (state.remainingSongs > 1) "s" else ""}"
+                    }
+                    com.beatles.player.viewmodel.SleepTimerMode.ALBUM -> {
+                        "Music turns off after current album: ${state.targetAlbumId ?: "Album"}"
+                    }
+                    com.beatles.player.viewmodel.SleepTimerMode.END_OF_TRACK -> {
+                        "Music turns off after this song finishes"
+                    }
+                    else -> "Active"
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFF82C38).copy(alpha = 0.12f))
+                        .border(1.dp, Color(0xFFF82C38).copy(alpha = 0.30f), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "TIMER ACTIVE",
+                            color = Color(0xFFF82C38),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            activeDescription,
+                            color = AppTheme.fg(),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            Haptics.confirm(view)
+                            onCancelTimer()
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF82C38)),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("Turn Off", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+            }
+
+            // Tab selector pills: [Time | Songs | 1 Track | Album]
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(AppTheme.fg(0.06f))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val tabs = listOf("Time", "Songs", "1 Track", "Album")
+                tabs.forEachIndexed { idx, title ->
+                    val isSelected = selectedTab == idx
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(17.dp))
+                            .background(if (isSelected) AppTheme.fg() else Color.Transparent)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                Haptics.tick(view)
+                                selectedTab = idx
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            title,
+                            color = if (isSelected) (if (isDark) Color(0xFF141416) else Color.White) else AppTheme.fg(0.6f),
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Tab Content
+            when (selectedTab) {
+                0 -> {
+                    // Time Mode: Presets + Custom Stepper
+                    Text("Preset Duration", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val minutePresets = listOf(15, 30, 45, 60, 90)
+                        minutePresets.forEach { m ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(AppTheme.fg(0.08f))
+                                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                        Haptics.confirm(view)
+                                        onStartMinutes(m)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("${m}m", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Custom Duration", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Custom Stepper
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(AppTheme.fg(0.06f))
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (customMinutes > 5) {
+                                    Haptics.tick(view)
+                                    customMinutes = (customMinutes - 5).coerceAtLeast(5)
+                                }
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(AppTheme.fg(0.10f))
+                        ) {
+                            Text("-", color = AppTheme.fg(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "$customMinutes min",
+                                color = AppTheme.fg(),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                if (customMinutes >= 60) "${customMinutes / 60}h ${customMinutes % 60}m" else "Timer",
+                                color = AppTheme.fg(0.5f),
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                if (customMinutes < 300) {
+                                    Haptics.tick(view)
+                                    customMinutes = (customMinutes + 5).coerceAtMost(300)
+                                }
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(AppTheme.fg(0.10f))
+                        ) {
+                            Text("+", color = AppTheme.fg(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            Haptics.confirm(view)
+                            onStartMinutes(customMinutes)
+                        },
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF82C38))
+                    ) {
+                        Text("Start Timer ($customMinutes min)", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                1 -> {
+                    // Songs Mode: Presets + Stepper
+                    Text("Preset Songs", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val songPresets = listOf(1, 2, 3, 5, 10)
+                        songPresets.forEach { count ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(AppTheme.fg(0.08f))
+                                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                        Haptics.confirm(view)
+                                        onStartSongs(count)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("$count", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Custom Song Count", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(AppTheme.fg(0.06f))
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (customSongs > 1) {
+                                    Haptics.tick(view)
+                                    customSongs--
+                                }
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(AppTheme.fg(0.10f))
+                        ) {
+                            Text("-", color = AppTheme.fg(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "$customSongs song${if (customSongs > 1) "s" else ""}",
+                                color = AppTheme.fg(),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text("Before sleep", color = AppTheme.fg(0.5f), fontSize = 11.sp)
+                        }
+
+                        IconButton(
+                            onClick = {
+                                if (customSongs < 50) {
+                                    Haptics.tick(view)
+                                    customSongs++
+                                }
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(AppTheme.fg(0.10f))
+                        ) {
+                            Text("+", color = AppTheme.fg(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            Haptics.confirm(view)
+                            onStartSongs(customSongs)
+                        },
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF82C38))
+                    ) {
+                        Text("Start Timer ($customSongs song${if (customSongs > 1) "s" else ""})", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                2 -> {
+                    // End of current track
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(AppTheme.fg(0.06f))
+                            .padding(16.dp)
+                    ) {
+                        Text("Current Song", color = AppTheme.fg(0.5f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(currentSong.title, color = AppTheme.fg(), fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(currentSong.artist, color = AppTheme.fg(0.7f), fontSize = 12.sp, maxLines = 1)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Playback will stop smoothly as soon as this song completes.", color = AppTheme.fg(0.6f), fontSize = 12.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                        onClick = {
+                            Haptics.confirm(view)
+                            onStartEndOfTrack()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF82C38))
+                    ) {
+                        Text("Stop at End of Track", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                3 -> {
+                    // Album Timer
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(AppTheme.fg(0.06f))
+                            .padding(16.dp)
+                    ) {
+                        Text("Current Album", color = AppTheme.fg(0.5f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(currentSong.album.ifBlank { "Current Album" }, color = AppTheme.fg(), fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(currentSong.artist, color = AppTheme.fg(0.7f), fontSize = 12.sp, maxLines = 1)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Playback will stop when all upcoming songs in this album finish playing.", color = AppTheme.fg(0.6f), fontSize = 12.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                        onClick = {
+                            Haptics.confirm(view)
+                            onStartAlbum()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF82C38))
+                    ) {
+                        Text("Stop at End of Album", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+            HorizontalDivider(color = AppTheme.fg(0.08f))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Extend Reminder Settings Toggle Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                        Haptics.tick(view)
+                        onToggleExtendPopup(!state.isExtendPopupEnabled)
+                    },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Extend reminder popup",
+                        color = AppTheme.fg(),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "Show a 20s popup with extension presets before sleep",
+                        color = AppTheme.fg(0.5f),
+                        fontSize = 11.sp
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Switch(
+                    checked = state.isExtendPopupEnabled,
+                    onCheckedChange = {
+                        Haptics.tick(view)
+                        onToggleExtendPopup(it)
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFFF82C38),
+                        uncheckedThumbColor = AppTheme.fg(0.6f),
+                        uncheckedTrackColor = AppTheme.fg(0.12f)
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun NowPlayingQueueLayer(
+    nextUpProgress: Float,
+    isSwitchingSubpages: Boolean,
+    subpageSlideFraction: Float,
+    sideStretchFactor: Float,
+    playlist: List<Song>,
+    song: Song,
+    queueTitle: String?,
+    isArtistMixLoading: Boolean,
+    isDark: Boolean,
+    shuffleEnabled: Boolean,
+    onToggleShuffle: () -> Unit,
+    repeatMode: Int,
+    onToggleRepeat: () -> Unit,
+    autoMixEnabled: Boolean,
+    onToggleAutoMix: () -> Unit,
+    autoPlayEnabled: Boolean,
+    onToggleAutoPlay: () -> Unit,
+    onLoadMoreUpcoming: () -> Unit,
+    onPlayFromQueue: (Song) -> Unit,
+    onMoveToPlayNext: (Song) -> Unit,
+    onRemoveFromQueue: (String) -> Unit,
+    onMoveInQueue: (Int, Int) -> Unit,
+    autoMixTargetSongId: String?,
+    onToggleNextUp: () -> Unit
+) {
+    val density = LocalDensity.current
+    val view = LocalView.current
+    val nextUpSlideX = if (isSwitchingSubpages) (1f - subpageSlideFraction) * with(density) { 60.dp.toPx() } else 0f
+    val nextUpStretchY = 1.0f + 0.08f * (1f - nextUpProgress)
+    val nextUpTransY = if (isSwitchingSubpages) 0f else with(density) { 36.dp.toPx() * (1f - nextUpProgress) }
+    val sideStretch = if (isSwitchingSubpages) 1f + 0.05f * sideStretchFactor else 1f
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 190.dp, top = 136.dp)
+            .graphicsLayer {
+                scaleX = sideStretch
+                scaleY = nextUpStretchY
+                translationX = nextUpSlideX
+                translationY = nextUpTransY
+                transformOrigin = TransformOrigin(0.5f, 1.0f)
+                alpha = if (isSwitchingSubpages) subpageSlideFraction.coerceIn(0f, 1f) else nextUpProgress.coerceIn(0f, 1f)
+            }
+            .pointerInput(Unit) {
+                var totalDx = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDx = 0f },
+                    onDragEnd = {
+                        if (totalDx > 90f) {
+                            Haptics.confirm(view)
+                            onToggleNextUp()
+                        }
+                        totalDx = 0f
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        if (dragAmount > 0) totalDx += dragAmount
+                    }
+                )
+            }
+    ) {
+        val currentIdx = playlist.indexOfFirst { it.id == song.id }
+        val upcoming = if (currentIdx >= 0) playlist.drop(currentIdx + 1) else playlist
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            0.0f to Color.Transparent,
+                            0.025f to Color.Black,
+                            0.94f to Color.Black,
+                            1.0f to Color.Transparent
+                        ),
+                        blendMode = BlendMode.DstIn
+                    )
+                }
+        ) {
+            if (upcoming.isEmpty()) {
+                Column(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp)) {
+                    NextUpControlPillsRow(
+                        shuffleEnabled = shuffleEnabled,
+                        onToggleShuffle = onToggleShuffle,
+                        repeatMode = repeatMode,
+                        onToggleRepeat = onToggleRepeat,
+                        autoMixEnabled = autoMixEnabled,
+                        onToggleAutoMix = onToggleAutoMix,
+                        autoPlayEnabled = autoPlayEnabled,
+                        onToggleAutoPlay = onToggleAutoPlay,
+                        isDark = isDark
+                    )
+                    LaunchedEffect(Unit) {
+                        onLoadMoreUpcoming()
+                    }
+                    Spacer(modifier = Modifier.height(48.dp))
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = AccentRed, strokeWidth = 2.5.dp)
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Finding more songs for your queue...", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = 10.dp, bottom = 40.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (queueTitle != null) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 4.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color.White.copy(alpha = 0.12f))
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Radio, contentDescription = null, tint = AccentRed, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(queueTitle, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                if (isArtistMixLoading) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White.copy(alpha = 0.7f), strokeWidth = 2.dp)
+                                }
+                            }
+                        }
+                    }
+                    item {
+                        NextUpControlPillsRow(
+                            shuffleEnabled = shuffleEnabled,
+                            onToggleShuffle = onToggleShuffle,
+                            repeatMode = repeatMode,
+                            onToggleRepeat = onToggleRepeat,
+                            autoMixEnabled = autoMixEnabled,
+                            onToggleAutoMix = onToggleAutoMix,
+                            autoPlayEnabled = autoPlayEnabled,
+                            onToggleAutoPlay = onToggleAutoPlay,
+                            isDark = isDark
+                        )
+                    }
+                    itemsIndexed(upcoming, key = { _, s -> s.id }) { idx, s ->
+                        if (idx >= upcoming.size - 4) {
+                            LaunchedEffect(upcoming.size) {
+                                onLoadMoreUpcoming()
+                            }
+                        }
+                        QueueSongItem(
+                            song = s,
+                            index = idx,
+                            totalCount = upcoming.size,
+                            onPlay = { onPlayFromQueue(s) },
+                            onMoveToPlayNext = { onMoveToPlayNext(s) },
+                            onRemove = { onRemoveFromQueue(s.id) },
+                            onMoveUp = { if (idx > 0) onMoveInQueue(idx, idx - 1) },
+                            onMoveDown = { if (idx < upcoming.size - 1) onMoveInQueue(idx, idx + 1) },
+                            isAutoMixTarget = (s.id == autoMixTargetSongId)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun NowPlayingLyricsLayer(
+    lyricsProgress: Float,
+    isSwitchingSubpages: Boolean,
+    subpageSlideFraction: Float,
+    sideStretchFactor: Float,
+    lyrics: List<LyricLine>,
+    duration: Long,
+    currentPosition: Long,
+    isPlaying: Boolean,
+    isLyricsActive: Boolean,
+    controlsVisible: Boolean,
+    controlsAlpha: Float,
+    onToggleControls: () -> Unit,
+    onLyricsDragged: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onToggleLyrics: () -> Unit
+) {
+    val density = LocalDensity.current
+    val view = LocalView.current
+    val lyrStretchY = 1.0f + 0.08f * (1f - lyricsProgress)
+    val lyrTransY = with(density) { 36.dp.toPx() * (1f - lyricsProgress) }
+
+    // Apple Music Synced Word-by-Word Lyrics View
+    val processedLyrics = remember(lyrics, duration) { LyricsProcessor.processSyncedLyrics(lyrics, trackDurationMs = duration) }
+
+    // High-refresh (60/120fps) frame clock interpolating position from audio playback with ~35ms latency compensation
+    var livePositionMs by remember { mutableLongStateOf(currentPosition) }
+    LaunchedEffect(isPlaying, currentPosition, isLyricsActive) {
+        livePositionMs = currentPosition
+        if (isPlaying && isLyricsActive) {
+            val anchorRealtime = android.os.SystemClock.elapsedRealtime()
+            val anchorPos = currentPosition
+            while (isLyricsActive) {
+                withFrameMillis {
+                    val elapsed = android.os.SystemClock.elapsedRealtime() - anchorRealtime
+                    // Compensate for Bluetooth / speaker audio output buffer latency (~35ms)
+                    livePositionMs = (anchorPos + elapsed - 35L).coerceAtLeast(0L)
+                }
+            }
+        }
+    }
+
+    val lyricsTopPad by animateDpAsState(
+        targetValue = if (controlsVisible && controlsAlpha > 0.05f) 110.dp else 16.dp,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f),
+        label = "lyricsTopPad"
+    )
+    val lyricsBottomPad by animateDpAsState(
+        targetValue = if (controlsVisible && controlsAlpha > 0.05f) 180.dp else 16.dp,
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f),
+        label = "lyricsBottomPad"
+    )
+
+    val lyricsSlideX = if (isSwitchingSubpages) -subpageSlideFraction * with(density) { 60.dp.toPx() } else 0f
+    val sideStretch = if (isSwitchingSubpages) 1f + 0.05f * sideStretchFactor else 1f
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = lyricsTopPad, bottom = lyricsBottomPad)
+            .graphicsLayer {
+                scaleX = sideStretch
+                scaleY = lyrStretchY
+                translationX = lyricsSlideX
+                translationY = if (isSwitchingSubpages) 0f else lyrTransY
+                alpha = if (isSwitchingSubpages) (1f - subpageSlideFraction).coerceIn(0f, 1f) else lyricsProgress.coerceIn(0f, 1f)
+                transformOrigin = TransformOrigin(0.5f, 1.0f)
+            }
+            .pointerInput(Unit) {
+                var totalDx = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDx = 0f },
+                    onDragEnd = {
+                        if (totalDx > 90f) {
+                            Haptics.confirm(view)
+                            onToggleLyrics()
+                        }
+                        totalDx = 0f
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        if (dragAmount > 0) totalDx += dragAmount
+                    }
+                )
+            }
+    ) {
+        if (processedLyrics.isNotEmpty()) {
+            val initialLineIdx = remember(processedLyrics) {
+                LyricsProcessor.findActiveLineIndex(processedLyrics, currentPosition).coerceAtLeast(0)
+            }
+            val listState = rememberLazyListState(
+                initialFirstVisibleItemIndex = (initialLineIdx - 1).coerceAtLeast(0)
+            )
+            val currentIdx by remember(processedLyrics) {
+                derivedStateOf {
+                    LyricsProcessor.findActiveLineIndex(processedLyrics, livePositionMs)
+                }
+            }
+
+            val isLyricsDragged by listState.interactionSource.collectIsDraggedAsState()
+            var manualScrolled by remember { mutableStateOf(false) }
+
+            LaunchedEffect(isLyricsDragged) {
+                if (isLyricsDragged) {
+                    manualScrolled = true
+                    onLyricsDragged()
+                }
+            }
+
+            LaunchedEffect(manualScrolled) {
+                if (manualScrolled) {
+                    // Resume auto-scroll after ~6s idle
+                    delay(6000L)
+                    manualScrolled = false
+                }
+            }
+
+            val anchorSpotDp = if (controlsVisible && controlsAlpha > 0.05f) 72.dp else 28.dp
+            val anchorSpotPx = with(density) { anchorSpotDp.roundToPx() }
+
+            // Auto-scroll active line smoothly into the fixed anchor spot without thrashing intermediate items
+            LaunchedEffect(currentIdx, manualScrolled, isLyricsActive) {
+                if (isLyricsActive && currentIdx in processedLyrics.indices && !manualScrolled && !isLyricsDragged) {
+                    val item = listState.layoutInfo.visibleItemsInfo.find { it.index == currentIdx }
+                    if (item != null) {
+                        // Only perform animated delta spring once lyrics entry transition is completed/settled
+                        if (lyricsProgress >= 0.88f) {
+                            val delta = item.offset - anchorSpotPx
+                            if (kotlin.math.abs(delta) > 2) {
+                                listState.animateScrollBy(
+                                    value = delta.toFloat(),
+                                    animationSpec = spring(
+                                        dampingRatio = 0.52f,
+                                        stiffness = 260f
+                                    )
+                                )
+                            }
+                        }
+                    } else {
+                        // Instantly position at target index so LazyColumn doesn't compose/measure dozens of intermediate items during album cover morph
+                        listState.scrollToItem(
+                            index = (currentIdx - 1).coerceAtLeast(0),
+                            scrollOffset = 0
+                        )
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        onToggleControls()
+                    }
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        val fadeTopRatio = if (controlsVisible && controlsAlpha > 0.05f) 0.09f else 0.02f
+                        val fadeBottomRatio = if (controlsVisible && controlsAlpha > 0.05f) 0.90f else 0.98f
+                        drawContent()
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                0.0f to Color.Transparent,
+                                (fadeTopRatio * 0.4f) to Color.Black.copy(alpha = 0.30f),
+                                fadeTopRatio to Color.Black,
+                                fadeBottomRatio to Color.Black,
+                                (fadeBottomRatio + (1f - fadeBottomRatio) * 0.6f) to Color.Black.copy(alpha = 0.30f),
+                                1.0f to Color.Transparent
+                            ),
+                            blendMode = BlendMode.DstIn
+                        )
+                    }
+            ) {
+                val lyricsListBottomPad by animateDpAsState(
+                    targetValue = if (controlsVisible && controlsAlpha > 0.05f) 160.dp else 24.dp,
+                    label = "lyricsListBottomPad"
+                )
+                val lyricsListTopPad by animateDpAsState(
+                    targetValue = if (controlsVisible && controlsAlpha > 0.05f) anchorSpotDp else 20.dp,
+                    label = "lyricsListTopPad"
+                )
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 28.dp, end = 28.dp),
+                    contentPadding = PaddingValues(top = lyricsListTopPad, bottom = lyricsListBottomPad),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    itemsIndexed(processedLyrics, key = { idx, line -> "lyric_${line.timeMs}_$idx" }) { idx, line ->
+                        val isActive = idx == currentIdx
+                        val distance = if (currentIdx >= 0) kotlin.math.abs(idx - currentIdx) else 1
+                        val cappedDistance = distance.coerceAtMost(4)
+
+                        val targetScale = if (isActive) 1.05f else 1.0f
+                        val targetAlpha = if (isActive) 1.0f else (0.50f - cappedDistance * 0.08f).coerceAtLeast(0.20f)
+                        val targetBlur = if (isActive) 0.dp else (cappedDistance.coerceAtMost(2) * 0.8f).dp
+                        val targetBounceY = if (isActive) (-6).dp else 0.dp
+
+                        val lineBounceY by animateDpAsState(
+                            targetValue = targetBounceY,
+                            animationSpec = spring(
+                                dampingRatio = 0.44f,
+                                stiffness = 240f
+                            ),
+                            label = "lineBounceY_$idx"
+                        )
+                        val lineScale by animateFloatAsState(
+                            targetValue = targetScale,
+                            animationSpec = spring(
+                                dampingRatio = 0.70f,
+                                stiffness = 320f
+                            ),
+                            label = "lineScale_$idx"
+                        )
+                        val lineAlpha by animateFloatAsState(
+                            targetValue = targetAlpha,
+                            animationSpec = spring(
+                                dampingRatio = 0.70f,
+                                stiffness = 400f
+                            ),
+                            label = "lineAlpha_$idx"
+                        )
+                        val lineBlur by animateDpAsState(
+                            targetValue = targetBlur,
+                            animationSpec = tween(300),
+                            label = "lineBlur_$idx"
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .graphicsLayer {
+                                    translationY = lineBounceY.toPx()
+                                    scaleX = lineScale
+                                    scaleY = lineScale
+                                    alpha = lineAlpha
+                                    transformOrigin = TransformOrigin(0f, 0.5f)
+                                    if (lineBlur > 0.dp) {
+                                        compositingStrategy = CompositingStrategy.Offscreen
+                                    }
+                                }
+                                .then(if (lineBlur > 0.dp) Modifier.blur(lineBlur) else Modifier)
+                                .padding(vertical = 4.dp, horizontal = 4.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    manualScrolled = false
+                                    onSeek(line.timeMs)
+                                }
+                        ) {
+                            if (line.isInstrumental) {
+                                // Animated Instrumental Interlude: "♪" + 3 dots filling in across the duration
+                                val breakElapsed = (livePositionMs - line.timeMs).coerceIn(0L, line.durationMs)
+                                val breakProgress = if (line.durationMs > 0) (breakElapsed.toFloat() / line.durationMs).coerceIn(0f, 1f) else 0f
+                                val breathScale = if (isActive) (1.0f + 0.012f * kotlin.math.sin(breakElapsed / 700.0).toFloat()) else 1.0f
+
+                                val dot1Active = if (isActive) (breakProgress >= 0.15f) else (currentIdx >= 0 && idx < currentIdx)
+                                val dot2Active = if (isActive) (breakProgress >= 0.50f) else (currentIdx >= 0 && idx < currentIdx)
+                                val dot3Active = if (isActive) (breakProgress >= 0.85f) else (currentIdx >= 0 && idx < currentIdx)
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .graphicsLayer {
+                                            scaleX = breathScale
+                                            scaleY = breathScale
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    Text(
+                                        text = "♪",
+                                        fontSize = 28.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isActive) Color.White else Color.White.copy(alpha = 0.40f)
+                                    )
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        listOf(dot1Active, dot2Active, dot3Active).forEach { dotFilled ->
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (dotFilled) Color.White else Color.White.copy(alpha = 0.30f))
+                                            )
+                                        }
+                                    }
+                                }
+                            } else if (line.words.isNotEmpty()) {
+                                val lineSweep = if (isActive) LyricsProcessor.calculateLineSweepProgress(line, livePositionMs) else 0f
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    line.words.forEachIndexed { wordIdx, word ->
+                                        val wordProgress = if (isActive) {
+                                            LyricsProcessor.calculateWordProgressFromLine(wordIdx, lineSweep)
+                                        } else if (currentIdx >= 0 && idx < currentIdx) {
+                                            1.0f
+                                        } else {
+                                            0.0f
+                                        }
+                                        SyncedWordItem(
+                                            word = word,
+                                            progress = wordProgress,
+                                            isCurrentLine = isActive,
+                                            isPastLine = currentIdx >= 0 && idx < currentIdx,
+                                            onSeek = {
+                                                manualScrolled = false
+                                                onSeek(it)
+                                            }
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = line.text,
+                                    fontSize = 29.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    lineHeight = 37.sp,
+                                    color = if (isActive) Color.White else Color.White.copy(alpha = 0.40f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Lyrics not available", color = Color.White.copy(alpha = 0.5f), fontSize = 18.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+@Composable
+fun NowPlayingThreeDotsMenu(
+    showMiniMenu: Boolean,
+    onDismissMiniMenu: () -> Unit,
+    showSavePlaylistView: Boolean,
+    onSetShowSavePlaylistView: (Boolean) -> Unit,
+    sheetRootBounds: Rect?,
+    threeDotButtonBounds: Rect?,
+    song: Song,
+    onGoToAlbum: (Song) -> Unit,
+    onPlayArtistMix: (String) -> Unit,
+    autoMixEnabled: Boolean,
+    onToggleAutoMix: () -> Unit,
+    sleepTimerState: com.beatles.player.viewmodel.SleepTimerState,
+    onOpenSleepTimerDialog: () -> Unit,
+    playlists: List<Playlist>,
+    onCreatePlaylist: (String, Song) -> Unit,
+    onAddToPlaylist: (String, Song) -> Unit
+) {
+    val miniMenuAnim by animateFloatAsState(
+        targetValue = if (showMiniMenu) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.80f, stiffness = 420f),
+        label = "miniMenuAnim"
+    )
+
+    if (miniMenuAnim > 0.01f) {
+        val view = LocalView.current
+        var newPlaylistName by remember { mutableStateOf("") }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.35f * miniMenuAnim))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    onDismissMiniMenu()
+                }
+        ) {
+            val isDark = AppTheme.isDark
+            val currentCornerDp = lerp(19.dp, 24.dp, miniMenuAnim)
+            val menuShape = RoundedCornerShape(currentCornerDp)
+            val solidMenuBg = if (isDark) Color(0xFF1E2026) else Color(0xFFFFFFFF)
+            val solidMenuBorder = if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+
+            val density = LocalDensity.current
+            val endPaddingDp = remember(sheetRootBounds, threeDotButtonBounds) {
+                val sb = sheetRootBounds
+                val tb = threeDotButtonBounds
+                if (sb != null && tb != null) {
+                    with(density) { (sb.right - tb.right).toDp().coerceAtLeast(16.dp) }
+                } else {
+                    20.dp
+                }
+            }
+            val bottomPaddingDp = remember(sheetRootBounds, threeDotButtonBounds) {
+                val sb = sheetRootBounds
+                val tb = threeDotButtonBounds
+                if (sb != null && tb != null) {
+                    with(density) { (sb.bottom - tb.top + 8.dp.toPx()).toDp().coerceAtLeast(180.dp) }
+                } else {
+                    246.dp
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = endPaddingDp, bottom = bottomPaddingDp)
+                    .width(230.dp)
+                    .graphicsLayer {
+                        scaleX = miniMenuAnim
+                        scaleY = miniMenuAnim
+                        alpha = miniMenuAnim.coerceIn(0f, 1f)
+                        transformOrigin = TransformOrigin(0.92f, 1.0f)
+                    }
+                    .shadow(12.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.18f))
+                    .clip(menuShape)
+                    .background(solidMenuBg)
+                    .border(1.dp, solidMenuBorder, menuShape)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+                    .padding(vertical = 6.dp)
+            ) {
+                if (!showSavePlaylistView) {
+                    Column {
+                        // Option 1: Add to Playlist
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    Haptics.tick(view)
+                                    onSetShowSavePlaylistView(true)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.PlaylistAdd, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Add to Playlist", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
+                        }
+
+                        HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
+
+                        // Option 2: Go to Album
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    Haptics.confirm(view)
+                                    onDismissMiniMenu()
+                                    onGoToAlbum(song)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Album, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Go to Album", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
+                        }
+
+                        HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
+
+                        // Option 3: Play Artist Mix
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    Haptics.confirm(view)
+                                    onDismissMiniMenu()
+                                    onPlayArtistMix(song.artist)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Radio, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Play Artist Mix", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
+                        }
+
+                        HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
+
+                        // Option 4: AutoMix Toggle
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    Haptics.confirm(view)
+                                    onToggleAutoMix()
+                                }
+                                .padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.GraphicEq, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("AutoMix", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Text(if (autoMixEnabled) "ON" else "OFF", color = AppTheme.fg(0.6f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
+
+                        // Option 5: Sleep Timer
+                        val isTimerActive = sleepTimerState.mode != com.beatles.player.viewmodel.SleepTimerMode.NONE
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    Haptics.confirm(view)
+                                    onDismissMiniMenu()
+                                    onOpenSleepTimerDialog()
+                                }
+                                .padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Rounded.Bedtime,
+                                contentDescription = null,
+                                tint = if (isTimerActive) Color(0xFFF82C38) else AppTheme.fg(),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                "Sleep Timer",
+                                color = if (isTimerActive) Color(0xFFF82C38) else AppTheme.fg(),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (isTimerActive) {
+                                val label = when (sleepTimerState.mode) {
+                                    com.beatles.player.viewmodel.SleepTimerMode.TIME -> "${sleepTimerState.remainingSeconds / 60}m"
+                                    com.beatles.player.viewmodel.SleepTimerMode.SONGS -> "${sleepTimerState.remainingSongs} songs"
+                                    com.beatles.player.viewmodel.SleepTimerMode.ALBUM -> "Album"
+                                    com.beatles.player.viewmodel.SleepTimerMode.END_OF_TRACK -> "1 track"
+                                    else -> "Active"
+                                }
+                                Text(label, color = Color(0xFFF82C38), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                } else {
+                    // Save to Playlist inside popover
+                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { onSetShowSavePlaylistView(false) }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = AppTheme.fg(), modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Playlists", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            BasicTextField(
+                                value = newPlaylistName,
+                                onValueChange = { newPlaylistName = it },
+                                textStyle = TextStyle(color = AppTheme.fg(), fontSize = 12.sp),
+                                singleLine = true,
+                                cursorBrush = SolidColor(AppTheme.fg()),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(AppTheme.fg(0.08f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                decorationBox = { inner ->
+                                    if (newPlaylistName.isEmpty()) Text("New playlist...", color = AppTheme.fg(0.4f), fontSize = 12.sp)
+                                    inner()
+                                }
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Button(
+                                onClick = {
+                                    if (newPlaylistName.isNotBlank()) {
+                                        onCreatePlaylist(newPlaylistName.trim(), song)
+                                        newPlaylistName = ""
+                                        onDismissMiniMenu()
+                                    }
+                                },
+                                enabled = newPlaylistName.isNotBlank(),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = AppTheme.fg(), disabledContainerColor = AppTheme.fg(0.1f))
+                            ) {
+                                Text("+", color = AppTheme.bg, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        if (playlists.isEmpty()) {
+                            Text("No playlists yet", color = AppTheme.fg(0.4f), fontSize = 11.sp, modifier = Modifier.padding(vertical = 8.dp))
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp)) {
+                                items(playlists) { pl ->
+                                    val alreadyIn = pl.songs.any { it.id == song.id }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                onAddToPlaylist(pl.id, song)
+                                                onDismissMiniMenu()
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(pl.name, color = AppTheme.fg(), fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1)
+                                        if (alreadyIn) Text("Added", color = Color(0xFF4ADE80), fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+

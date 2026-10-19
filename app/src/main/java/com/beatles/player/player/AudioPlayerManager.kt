@@ -141,6 +141,9 @@ class AudioPlayerManager(private val context: Context) {
         activePlayerOverride?.stop()
         activePlayerOverride?.clearMediaItems()
         activePlayerOverride = null
+        PlaybackService.instance?.secondaryPlayer?.stop()
+        PlaybackService.instance?.secondaryPlayer?.clearMediaItems()
+        PlaybackService.instance?.secondaryPlayer?.volume = 0f
         PlaybackService.instance?.restoreDefaultPlayer()
 
         val mediaItem = buildMediaItem(streamUrl, song)
@@ -163,6 +166,9 @@ class AudioPlayerManager(private val context: Context) {
         activePlayerOverride?.stop()
         activePlayerOverride?.clearMediaItems()
         activePlayerOverride = null
+        PlaybackService.instance?.secondaryPlayer?.stop()
+        PlaybackService.instance?.secondaryPlayer?.clearMediaItems()
+        PlaybackService.instance?.secondaryPlayer?.volume = 0f
         PlaybackService.instance?.restoreDefaultPlayer()
 
         val mediaItem = buildMediaItem(streamUrl, song)
@@ -186,6 +192,9 @@ class AudioPlayerManager(private val context: Context) {
         activePlayerOverride?.stop()
         activePlayerOverride?.clearMediaItems()
         activePlayerOverride = null
+        PlaybackService.instance?.secondaryPlayer?.stop()
+        PlaybackService.instance?.secondaryPlayer?.clearMediaItems()
+        PlaybackService.instance?.secondaryPlayer?.volume = 0f
         PlaybackService.instance?.restoreDefaultPlayer()
 
         val mediaItem = buildMediaItem(streamUrl, song)
@@ -222,9 +231,14 @@ class AudioPlayerManager(private val context: Context) {
         activePlayerOverride?.stop()
         activePlayerOverride?.clearMediaItems()
         activePlayerOverride = null
+        PlaybackService.instance?.secondaryPlayer?.stop()
+        PlaybackService.instance?.secondaryPlayer?.clearMediaItems()
+        PlaybackService.instance?.secondaryPlayer?.volume = 0f
         val target = player ?: PlaybackService.instance?.defaultPlayer
         target?.stop()
         target?.clearMediaItems()
+        PlaybackService.instance?.defaultPlayer?.stop()
+        PlaybackService.instance?.defaultPlayer?.clearMediaItems()
         PlaybackService.instance?.abandonAudioFocus()
     }
 

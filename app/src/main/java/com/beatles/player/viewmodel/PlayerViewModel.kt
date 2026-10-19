@@ -15,6 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.geometry.Rect
@@ -51,6 +52,26 @@ val DEFAULT_FEEDBACK = listOf(
 )
 
 val DEFAULT_PLAYLISTS = emptyList<Playlist>()
+
+enum class SleepTimerMode {
+    NONE,
+    TIME,
+    SONGS,
+    ALBUM,
+    END_OF_TRACK
+}
+
+data class SleepTimerState(
+    val mode: SleepTimerMode = SleepTimerMode.NONE,
+    val targetTimeMillis: Long = 0L,
+    val totalDurationMillis: Long = 0L,
+    val remainingSeconds: Long = 0L,
+    val remainingSongs: Int = 0,
+    val targetAlbumId: String? = null,
+    val showWarningPopup: Boolean = false,
+    val warningPopupRemainingSeconds: Int = 20,
+    val isExtendPopupEnabled: Boolean = true
+)
 
 data class PlayerUiState(
     val onboardStep: Int = 1,
@@ -134,7 +155,9 @@ data class PlayerUiState(
     val userGeoLocation: UserGeoLocation? = null,
     val isAnalyticsLoading: Boolean = false,
     val customAnalyticsWebhookUrl: String = "",
-    val analyticsPingStatus: String? = null
+    val analyticsPingStatus: String? = null,
+    val sleepTimerState: SleepTimerState = SleepTimerState(),
+    val autoMixTargetSongId: String? = null
 )
 
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
@@ -155,6 +178,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var activeLyricsJob: kotlinx.coroutines.Job? = null
     private var activeDownloadJob: kotlinx.coroutines.Job? = null
     @Volatile private var activeTargetSongId: String? = null
+    private var sleepTimerJob: kotlinx.coroutines.Job? = null
+    private var warningPopupJob: kotlinx.coroutines.Job? = null
 
     init {
         val userRole = if (com.beatles.player.BuildConfig.IS_ADMIN_EDITION) {
@@ -208,6 +233,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val themeMode = try { storage.getThemeMode(application) } catch (_: Exception) { ThemeMode.SYSTEM }
         val downloadedSongs = try { storage.getDownloadedSongs(application) } catch (_: Exception) { emptyList() }
         val initialRecs = try { repo.getRealPredictiveSongs() } catch (_: Exception) { emptyList() }
+        val isSleepExtendEnabled = try { storage.isSleepExtendPopupEnabled(application) } catch (_: Exception) { true }
         _uiState.update { it.copy(
             onboardStep = if (isOnboarded) 0 else 1,
             userName = userName,
@@ -223,7 +249,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             downloadedSongs = downloadedSongs,
             favoriteSongs = savedFavorites,
             recentlyPlayed = savedRecent,
-            recommendations = initialRecs
+            recommendations = initialRecs,
+            sleepTimerState = SleepTimerState(isExtendPopupEnabled = isSleepExtendEnabled)
         )}
         AudioPlayerManager.onExternalSkipNext = { playNext() }
         AudioPlayerManager.onExternalSkipPrevious = { playPrevious() }
@@ -234,21 +261,31 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
         var lastSongEndedTime = 0L
         player.onSongEnded = {
-            val now = System.currentTimeMillis()
-            val state = _uiState.value
-            val currentSong = state.currentSong
-            val isNotImmediatePostHandoffRepeat = (now - lastAutoMixHandoffTime >= 3_000L) || (currentSong != null && currentSong.id != lastHandoffSongId)
-            if (!autoMixEngine.isBusy && isNotImmediatePostHandoffRepeat && (now - lastSongEndedTime > 1500L)) {
-                lastSongEndedTime = now
-                playNext(isAutoMix = true)
+            val stState = _uiState.value.sleepTimerState
+            if (stState.mode == SleepTimerMode.END_OF_TRACK || (stState.mode == SleepTimerMode.SONGS && stState.remainingSongs <= 1)) {
+                executeSleepTimerShutdown()
+            } else {
+                val now = System.currentTimeMillis()
+                val state = _uiState.value
+                val currentSong = state.currentSong
+                val isNotImmediatePostHandoffRepeat = (now - lastAutoMixHandoffTime >= 3_000L) || (currentSong != null && currentSong.id != lastHandoffSongId)
+                if (!autoMixEngine.isBusy && isNotImmediatePostHandoffRepeat && (now - lastSongEndedTime > 1500L)) {
+                    lastSongEndedTime = now
+                    playNext(isAutoMix = true)
+                }
             }
         }
         autoMixEngine.onSongEnded = {
-            val now = System.currentTimeMillis()
-            if (now - lastSongEndedTime > 1500L) {
-                lastSongEndedTime = now
-                android.util.Log.i("PlayerViewModel", "Deck B onSongEnded triggered; advancing playback")
-                playNext(isAutoMix = true)
+            val stState = _uiState.value.sleepTimerState
+            if (stState.mode == SleepTimerMode.END_OF_TRACK || (stState.mode == SleepTimerMode.SONGS && stState.remainingSongs <= 1)) {
+                executeSleepTimerShutdown()
+            } else {
+                val now = System.currentTimeMillis()
+                if (now - lastSongEndedTime > 1500L) {
+                    lastSongEndedTime = now
+                    android.util.Log.i("PlayerViewModel", "Deck B onSongEnded triggered; advancing playback")
+                    playNext(isAutoMix = true)
+                }
             }
         }
         autoMixEngine.urlResolver = { song -> resolvePlayableUrl(song) }
@@ -279,11 +316,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val currentSong = state.currentSong
             // Intelligent AutoMix: Evaluate toward outro across all track durations
             val minPlayTime = if (dur < 30_000L) (dur * 0.30f).toLong() else maxOf(12_000L, (dur * 0.55f).toLong())
-            if (state.autoMixEnabled && state.repeatMode != 2 && dur >= 5_000L && currentSong != null && !state.isLoadingStream && (pos >= minPlayTime || dur - pos <= 25_000L)) {
+            if (state.autoMixEnabled && state.repeatMode != 2 && dur >= 5_000L && currentSong != null && !state.isLoadingStream && (pos >= minPlayTime || dur - pos <= 65_000L)) {
                 val now = System.currentTimeMillis()
                 if (now - lastAutoMixHandoffTime >= 8_000L) {
                     val remaining = dur - pos
-                    if (remaining in 1_200L..45_000L) {
+                    if (remaining in 1_200L..65_000L) {
                         val next = precomputedAutoMixCandidate ?: peekNextSong(state)
                         if (precomputedAutoMixCandidate == null) {
                             triggerCandidatePrecomputation(currentSong)
@@ -306,6 +343,23 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update { it.copy(trendingTags = tags) }
         }
         player.onSongTransition = { mediaId ->
+            val stState = _uiState.value.sleepTimerState
+            if (stState.mode == SleepTimerMode.END_OF_TRACK) {
+                executeSleepTimerShutdown()
+            } else if (stState.mode == SleepTimerMode.SONGS) {
+                val rem = stState.remainingSongs - 1
+                if (rem <= 0) {
+                    executeSleepTimerShutdown()
+                } else {
+                    _uiState.update { it.copy(sleepTimerState = it.sleepTimerState.copy(remainingSongs = rem)) }
+                }
+            } else if (stState.mode == SleepTimerMode.ALBUM) {
+                val targetAlb = stState.targetAlbumId
+                val newSong = _uiState.value.playlist.find { it.id == mediaId }
+                if (targetAlb != null && newSong != null && newSong.album != targetAlb) {
+                    executeSleepTimerShutdown()
+                }
+            }
             val now = System.currentTimeMillis()
             if (now - lastAutoMixHandoffTime >= 15_000L) {
                 if (!autoMixEngine.isBusy) {
@@ -913,6 +967,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun moveSongToPlayNext(song: Song) {
         userQueuedSongIds.add(song.id)
+        cachedAutoMixSongId = null
+        cachedAutoMixCandidate = null
+        precomputedAutoMixCandidate = song
+        autoMixEngine.resetPlanning(keepSongId = true)
         _uiState.update { state ->
             val currentSong = state.currentSong
             val currentPl = state.playlist.toMutableList()
@@ -927,7 +985,15 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             } else {
                 currentPl.add(0, song)
             }
-            state.copy(playlist = currentPl, downloadNotice = "Playing \"${song.title}\" next")
+            state.copy(
+                playlist = currentPl,
+                autoMixTargetSongId = song.id,
+                downloadNotice = "Playing \"${song.title}\" next"
+            )
+        }
+        val currentSong = _uiState.value.currentSong
+        if (currentSong != null) {
+            triggerCandidatePrecomputation(currentSong)
         }
     }
 
@@ -1048,8 +1114,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
         if (_uiState.value.currentSong?.id == song.id && !_uiState.value.isLoadingStream && !isAutoMix) { togglePlayPause(); return }
 
+        activePlayJob?.cancel()
+        activeLyricsJob?.cancel()
+
         if (!isAutoMix) {
-            autoMixEngine.abortTransition()
+            autoMixEngine.abortTransition(stopPlayback = true)
             autoMixEngine.resetToDefaultDeck()
             // Immediately stop old song and reset seekbar to 0 so there is no residual audio playback
             player.pause()
@@ -1709,6 +1778,214 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    // --- Sleep Timer Engine ---
+    fun startSleepTimerMinutes(minutes: Int) {
+        val totalMs = minutes * 60_000L
+        val targetMs = System.currentTimeMillis() + totalMs
+        _uiState.update {
+            it.copy(
+                sleepTimerState = it.sleepTimerState.copy(
+                    mode = SleepTimerMode.TIME,
+                    targetTimeMillis = targetMs,
+                    totalDurationMillis = totalMs,
+                    remainingSeconds = (minutes * 60).toLong(),
+                    showWarningPopup = false
+                ),
+                downloadNotice = "Sleep timer set for $minutes min"
+            )
+        }
+        startSleepTimerTicker()
+    }
+
+    fun startSleepTimerSongs(songCount: Int) {
+        val mode = if (songCount <= 1) SleepTimerMode.END_OF_TRACK else SleepTimerMode.SONGS
+        _uiState.update {
+            it.copy(
+                sleepTimerState = it.sleepTimerState.copy(
+                    mode = mode,
+                    remainingSongs = songCount,
+                    showWarningPopup = false
+                ),
+                downloadNotice = if (songCount <= 1) "Sleep timer set for end of track" else "Sleep timer set for $songCount songs"
+            )
+        }
+        startSleepTimerTicker()
+    }
+
+    fun startSleepTimerAlbum() {
+        val currentAlb = _uiState.value.currentSong?.album ?: "Album"
+        _uiState.update {
+            it.copy(
+                sleepTimerState = it.sleepTimerState.copy(
+                    mode = SleepTimerMode.ALBUM,
+                    targetAlbumId = currentAlb,
+                    showWarningPopup = false
+                ),
+                downloadNotice = "Sleep timer set for end of album"
+            )
+        }
+        startSleepTimerTicker()
+    }
+
+    fun startSleepTimerEndOfTrack() {
+        startSleepTimerSongs(1)
+    }
+
+    fun extendSleepTimerMinutes(addedMinutes: Int) {
+        val currState = _uiState.value.sleepTimerState
+        val addedMs = addedMinutes * 60_000L
+        val baseTarget = if (currState.mode == SleepTimerMode.TIME && currState.targetTimeMillis > System.currentTimeMillis()) {
+            currState.targetTimeMillis
+        } else {
+            System.currentTimeMillis()
+        }
+        val newTarget = baseTarget + addedMs
+        val remSec = ((newTarget - System.currentTimeMillis()).coerceAtLeast(0L) + 999L) / 1000L
+        _uiState.update {
+            it.copy(
+                sleepTimerState = it.sleepTimerState.copy(
+                    mode = SleepTimerMode.TIME,
+                    targetTimeMillis = newTarget,
+                    totalDurationMillis = currState.totalDurationMillis + addedMs,
+                    remainingSeconds = remSec,
+                    showWarningPopup = false
+                ),
+                downloadNotice = "Extended sleep timer by $addedMinutes min"
+            )
+        }
+        startSleepTimerTicker()
+    }
+
+    fun extendSleepTimerSongs(addedSongs: Int) {
+        val currState = _uiState.value.sleepTimerState
+        val baseRemaining = if (currState.mode == SleepTimerMode.SONGS || currState.mode == SleepTimerMode.END_OF_TRACK) {
+            currState.remainingSongs
+        } else 0
+        val newCount = baseRemaining + addedSongs
+        _uiState.update {
+            it.copy(
+                sleepTimerState = it.sleepTimerState.copy(
+                    mode = SleepTimerMode.SONGS,
+                    remainingSongs = newCount,
+                    showWarningPopup = false
+                ),
+                downloadNotice = "Extended sleep timer by $addedSongs song${if (addedSongs > 1) "s" else ""}"
+            )
+        }
+        startSleepTimerTicker()
+    }
+
+    fun extendSleepTimerAlbum() {
+        startSleepTimerAlbum()
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        warningPopupJob?.cancel()
+        warningPopupJob = null
+        val popupEnabled = storage.isSleepExtendPopupEnabled(getApplication())
+        _uiState.update {
+            it.copy(
+                sleepTimerState = SleepTimerState(isExtendPopupEnabled = popupEnabled),
+                downloadNotice = "Sleep timer turned off"
+            )
+        }
+    }
+
+    fun dismissSleepWarningPopup() {
+        warningPopupJob?.cancel()
+        warningPopupJob = null
+        _uiState.update {
+            it.copy(sleepTimerState = it.sleepTimerState.copy(showWarningPopup = false))
+        }
+    }
+
+    fun setSleepExtendPopupEnabled(enabled: Boolean) {
+        storage.setSleepExtendPopupEnabled(getApplication(), enabled)
+        _uiState.update {
+            it.copy(sleepTimerState = it.sleepTimerState.copy(isExtendPopupEnabled = enabled))
+        }
+    }
+
+    private fun startSleepTimerTicker() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = viewModelScope.launch {
+            var warningFired = false
+            while (isActive) {
+                val state = _uiState.value.sleepTimerState
+                if (state.mode == SleepTimerMode.NONE) break
+
+                if (state.mode == SleepTimerMode.TIME) {
+                    val now = System.currentTimeMillis()
+                    val remMs = (state.targetTimeMillis - now).coerceAtLeast(0L)
+                    val remSec = (remMs + 999L) / 1000L
+                    _uiState.update { it.copy(sleepTimerState = it.sleepTimerState.copy(remainingSeconds = remSec)) }
+
+                    if (state.isExtendPopupEnabled && remSec in 1L..60L && !warningFired) {
+                        warningFired = true
+                        triggerSleepWarningPopup()
+                    }
+
+                    if (remSec <= 0L) {
+                        executeSleepTimerShutdown()
+                        break
+                    }
+                } else if (state.mode == SleepTimerMode.END_OF_TRACK || state.mode == SleepTimerMode.SONGS) {
+                    val dur = _uiState.value.duration
+                    val pos = _uiState.value.currentPosition
+                    if (state.isExtendPopupEnabled && state.remainingSongs <= 1 && dur > 0L && (dur - pos) in 1L..35_000L && !warningFired) {
+                        warningFired = true
+                        triggerSleepWarningPopup()
+                    }
+                } else if (state.mode == SleepTimerMode.ALBUM) {
+                    val dur = _uiState.value.duration
+                    val pos = _uiState.value.currentPosition
+                    val pl = _uiState.value.playlist
+                    val curr = _uiState.value.currentSong
+                    val currIdx = pl.indexOfFirst { it.id == curr?.id }
+                    val isLastInAlbum = currIdx < 0 || currIdx >= pl.size - 1 || pl.getOrNull(currIdx + 1)?.album != state.targetAlbumId
+                    if (state.isExtendPopupEnabled && isLastInAlbum && dur > 0L && (dur - pos) in 1L..35_000L && !warningFired) {
+                        warningFired = true
+                        triggerSleepWarningPopup()
+                    }
+                }
+                delay(1000L)
+            }
+        }
+    }
+
+    private fun triggerSleepWarningPopup() {
+        warningPopupJob?.cancel()
+        warningPopupJob = viewModelScope.launch {
+            _uiState.update { it.copy(sleepTimerState = it.sleepTimerState.copy(showWarningPopup = true, warningPopupRemainingSeconds = 20)) }
+            for (sec in 19 downTo 0) {
+                delay(1000L)
+                if (!_uiState.value.sleepTimerState.showWarningPopup) break
+                _uiState.update { it.copy(sleepTimerState = it.sleepTimerState.copy(warningPopupRemainingSeconds = sec)) }
+            }
+            _uiState.update { it.copy(sleepTimerState = it.sleepTimerState.copy(showWarningPopup = false)) }
+        }
+    }
+
+    private fun executeSleepTimerShutdown() {
+        viewModelScope.launch {
+            val defaultDeck = player.player
+            val secondaryDeck = autoMixEngine.currentDeck
+            for (step in 10 downTo 0) {
+                val vol = step / 10f
+                defaultDeck?.volume = vol
+                secondaryDeck?.volume = vol
+                delay(250L)
+            }
+            player.pause()
+            player.stop()
+            autoMixEngine.abortTransition(stopPlayback = true)
+            defaultDeck?.volume = 1f
+            cancelSleepTimer()
+        }
+    }
+
     fun toggleAutoMix() {
         val nextMode = when (_uiState.value.autoMixMode) {
             com.beatles.player.player.automix.AutoMixMode.ON -> com.beatles.player.player.automix.AutoMixMode.OFF
@@ -1820,6 +2097,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         precomputeJob = viewModelScope.launch(Dispatchers.Default) {
             val candidate = computeBestAutoMixCandidate(current, _uiState.value)
             precomputedAutoMixCandidate = candidate
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(autoMixTargetSongId = candidate?.id) }
+            }
         }
     }
 
@@ -2132,6 +2412,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     override fun onCleared() { 
+        sleepTimerJob?.cancel()
+        warningPopupJob?.cancel()
         autoMixEngine.release()
         player.release()
         super.onCleared() 
