@@ -624,6 +624,11 @@ fun SearchSongSwipeItem(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .height(68.dp)
+            .onGloballyPositioned { coords ->
+                if (coords.isAttached) {
+                    itemBounds = coords.boundsInRoot()
+                }
+            }
             .shadow(2.dp, RoundedCornerShape(16.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
             .clip(RoundedCornerShape(16.dp))
             .glassRefraction(16.dp, isDark = isDark)
@@ -696,7 +701,6 @@ fun SearchSongSwipeItem(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(52.dp)
-                    .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
                     .clip(if (song.isAlbum) RoundedCornerShape(12.dp) else RoundedCornerShape(10.dp))
             )
             Spacer(modifier = Modifier.width(14.dp))

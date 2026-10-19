@@ -654,6 +654,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(selectedGenre = genre, selectedGenreBounds = bounds) }
     }
 
+    fun clearSelectedSongBounds() {
+        _uiState.update { it.copy(selectedSongBounds = null) }
+    }
+
     fun setSelectedAlbumSet(set: AlbumSet?, bounds: Rect? = null) {
         _uiState.update { it.copy(selectedAlbumSet = set, selectedAlbumSetBounds = bounds) }
         if (set != null && set.albums.any { it.songs.isEmpty() }) {
@@ -1146,20 +1150,32 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
         
         // Immediate Next Up population when autoplay is enabled so Next Up is NEVER empty,
-        // strictly matching the active track's artist and language (no unrelated random recommendations!)
+        // strictly matching the active track's genre and language without flooding the queue with one singer
         if (_uiState.value.autoPlayEnabled && pl.size <= 1) {
             val cleanArtist = song.artist.replace(" - Topic", "").trim()
             val localPool = (if (isFromSearch) _uiState.value.searchResults else emptyList()) +
                     _uiState.value.albums.flatMap { it.songs } +
                     _uiState.value.favoriteSongs +
                     _uiState.value.recentlyPlayed
+
+            // Take at most 1 same-artist match to keep the queue versatile
             val sameArtistMatches = localPool.filter {
                 it.id != song.id && !it.isAlbum && ArtistMixEngine.isArtistMatch(it, cleanArtist) &&
                 repo.detectLanguage(it).equals(songLang, ignoreCase = true)
             }.distinctBy { it.id }
 
             if (sameArtistMatches.isNotEmpty()) {
-                pl.addAll(sameArtistMatches.take(6))
+                pl.add(sameArtistMatches.first())
+            }
+
+            // Complement with 1-2 tracks from other singers in the same language & genre
+            val otherArtistMatches = localPool.filter {
+                it.id != song.id && !it.isAlbum && !ArtistMixEngine.isArtistMatch(it, cleanArtist) &&
+                repo.detectLanguage(it).equals(songLang, ignoreCase = true)
+            }.distinctBy { it.id }
+
+            if (otherArtistMatches.isNotEmpty()) {
+                pl.addAll(otherArtistMatches.take(2))
             }
         }
 
@@ -1223,9 +1239,32 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                             } else {
                                 val related = if (isFromSearch) {
                                     val searchArtist = song.artist.replace(" - Topic", "").trim()
-                                    val artistTracks = repo.search("$searchArtist songs").filter { !it.isAlbum && it.id != song.id }
-                                    val rel = repo.getRelatedSongs(song)
-                                    (artistTracks + rel).distinctBy { it.id }
+                                    // 1. YouTube's recommendation algorithm provides related tracks & similar singers
+                                    val rel = repo.getRelatedSongs(song).filter { !it.isAlbum && it.id != song.id }
+                                    // 2. Fetch at most 2 tracks from the same artist
+                                    val artistTracks = repo.search("$searchArtist songs")
+                                        .filter { !it.isAlbum && it.id != song.id && repo.detectLanguage(it).equals(songLang, ignoreCase = true) }
+                                        .take(2)
+                                    // 3. Search for top hits in the same genre and language
+                                    val genreQuery = when (songLang) {
+                                        "Hindi" -> "top bollywood $songGenre hits"
+                                        "Punjabi" -> "top punjabi $songGenre hits"
+                                        "English" -> "top $songGenre hits"
+                                        else -> "top $songLang $songGenre hits"
+                                    }
+                                    val genreTracks = repo.search(genreQuery)
+                                        .filter { !it.isAlbum && it.id != song.id && !ArtistMixEngine.isArtistMatch(it, searchArtist) }
+                                        .take(6)
+
+                                    // Interleave: 1 track from same artist, 3 diverse tracks from related/genre, 1 track from same artist, then diverse tracks
+                                    val versatilePool = mutableListOf<Song>()
+                                    if (artistTracks.isNotEmpty()) versatilePool.add(artistTracks.first())
+                                    versatilePool.addAll(rel.take(3))
+                                    versatilePool.addAll(genreTracks.take(3))
+                                    if (artistTracks.size > 1) versatilePool.add(artistTracks[1])
+                                    versatilePool.addAll(rel.drop(3))
+                                    versatilePool.addAll(genreTracks.drop(3))
+                                    versatilePool.distinctBy { it.id }
                                 } else {
                                     repo.getRelatedSongs(song)
                                 }
@@ -1281,10 +1320,30 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     extendArtistMixInternal(current.artistMixTarget)
                 } else {
                     val songLang = repo.detectLanguage(song)
+                    val songGenre = repo.detectGenre(song)
                     val searchArtist = song.artist.replace(" - Topic", "").trim()
-                    val artistTracks = repo.search("$searchArtist songs").filter { !it.isAlbum && it.id != song.id }
-                    val relatedTracks = repo.getRelatedSongs(song)
-                    val candidatePool = (artistTracks + relatedTracks).distinctBy { it.id }
+                    val rel = repo.getRelatedSongs(song).filter { !it.isAlbum && it.id != song.id }
+                    val artistTracks = repo.search("$searchArtist songs")
+                        .filter { !it.isAlbum && it.id != song.id && repo.detectLanguage(it).equals(songLang, ignoreCase = true) }
+                        .take(2)
+                    val genreQuery = when (songLang) {
+                        "Hindi" -> "top bollywood $songGenre hits"
+                        "Punjabi" -> "top punjabi $songGenre hits"
+                        "English" -> "top $songGenre hits"
+                        else -> "top $songLang $songGenre hits"
+                    }
+                    val genreTracks = repo.search(genreQuery)
+                        .filter { !it.isAlbum && it.id != song.id && !ArtistMixEngine.isArtistMatch(it, searchArtist) }
+                        .take(6)
+
+                    val candidatePool = mutableListOf<Song>()
+                    if (artistTracks.isNotEmpty()) candidatePool.add(artistTracks.first())
+                    candidatePool.addAll(rel.take(4))
+                    candidatePool.addAll(genreTracks.take(4))
+                    if (artistTracks.size > 1) candidatePool.add(artistTracks[1])
+                    candidatePool.addAll(rel.drop(4))
+                    candidatePool.addAll(genreTracks.drop(4))
+                    candidatePool.distinctBy { it.id }
                     
                     val existingIds = _uiState.value.playlist.map { it.id }.toSet()
                     val cohesive = candidatePool.filter {

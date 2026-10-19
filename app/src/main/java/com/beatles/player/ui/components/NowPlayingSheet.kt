@@ -435,10 +435,16 @@ fun NowPlayingSheet(
         val subpageTarget = if (isNextUpActive) 1f else 0f
         val subpageSlideFraction by animateFloatAsState(
             targetValue = subpageTarget,
-            animationSpec = spring(dampingRatio = 1.0f, stiffness = 320f),
+            animationSpec = spring(dampingRatio = 1.0f, stiffness = 400f),
             label = "subpageSlideFraction"
         )
         val sideStretchFactor = (1f - kotlin.math.abs(subpageSlideFraction - 0.5f) * 2f).coerceIn(0f, 1f)
+
+        LaunchedEffect(subpageSlideFraction) {
+            if (isSwitchingSubpages && (subpageSlideFraction <= 0.001f || subpageSlideFraction >= 0.999f)) {
+                isSwitchingSubpages = false
+            }
+        }
 
         var dragOffsetX by remember { mutableFloatStateOf(0f) }
         val animatedDragX by animateFloatAsState(
@@ -669,7 +675,7 @@ fun NowPlayingSheet(
         }
 
         // Next Up Queue: Upward stretch when opened from main player, 90° horizontal side-stretch when toggling with lyrics
-        if (nextUpProgress > 0.001f || (isSwitchingSubpages && subpageSlideFraction > 0.005f)) {
+        if (nextUpProgress > 0.001f || isSwitchingSubpages) {
             NowPlayingQueueLayer(
                 nextUpProgress = nextUpProgress,
                 isSwitchingSubpages = isSwitchingSubpages,
@@ -698,7 +704,7 @@ fun NowPlayingSheet(
             )
         }
 
-        if (lyricsProgress > 0.001f || (isSwitchingSubpages && subpageSlideFraction < 0.995f)) {
+        if (lyricsProgress > 0.001f || isSwitchingSubpages) {
             NowPlayingLyricsLayer(
                 lyricsProgress = lyricsProgress,
                 isSwitchingSubpages = isSwitchingSubpages,
@@ -2638,17 +2644,20 @@ fun NowPlayingQueueLayer(
     val view = LocalView.current
     val config = androidx.compose.ui.platform.LocalConfiguration.current
     val screenWidthPx = with(density) { config.screenWidthDp.dp.toPx() }
-    val nextUpSlideX = if (isSwitchingSubpages) (1f - subpageSlideFraction) * screenWidthPx else 0f
-    val nextUpTransY = if (isSwitchingSubpages) 0f else with(density) { 36.dp.toPx() * (1f - nextUpProgress) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(bottom = 190.dp, top = 136.dp)
             .graphicsLayer {
-                translationX = nextUpSlideX
-                translationY = nextUpTransY
+                val slideX = if (isSwitchingSubpages) (1f - subpageSlideFraction) * screenWidthPx else 0f
+                val transY = if (isSwitchingSubpages) 0f else with(density) { 36.dp.toPx() * (1f - nextUpProgress) }
+                translationX = slideX
+                translationY = transY
                 alpha = if (isSwitchingSubpages) 1f else nextUpProgress.coerceIn(0f, 1f)
+                if (isSwitchingSubpages) {
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
             }
             .pointerInput(Unit) {
                 var totalDx = 0f
@@ -2845,16 +2854,19 @@ fun NowPlayingLyricsLayer(
 
     val config = androidx.compose.ui.platform.LocalConfiguration.current
     val screenWidthPx = with(density) { config.screenWidthDp.dp.toPx() }
-    val lyricsSlideX = if (isSwitchingSubpages) -subpageSlideFraction * screenWidthPx else 0f
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(top = lyricsTopPad, bottom = lyricsBottomPad)
             .graphicsLayer {
-                translationX = lyricsSlideX
+                val slideX = if (isSwitchingSubpages) -subpageSlideFraction * screenWidthPx else 0f
+                translationX = slideX
                 translationY = if (isSwitchingSubpages) 0f else lyrTransY
                 alpha = if (isSwitchingSubpages) 1f else lyricsProgress.coerceIn(0f, 1f)
+                if (isSwitchingSubpages) {
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
             }
             .pointerInput(Unit) {
                 var totalDx = 0f

@@ -137,13 +137,21 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     val hazeState = remember { HazeState() }
     val scope = rememberCoroutineScope()
     var activeMiniArtBounds by remember { mutableStateOf<Rect?>(null) }
+    var standardMiniPillBounds by remember { mutableStateOf<Rect?>(null) }
     var activeMiniPillBounds by remember { mutableStateOf<Rect?>(null) }
     var activeMiniPillCorner by remember { mutableStateOf(22.dp) }
     val playerProgress = remember { Animatable(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
 
+    val density = LocalDensity.current
+    val maxHeaderOffset = with(density) { 110.dp.toPx() }
+    var headerOffsetPx by remember { mutableFloatStateOf(0f) }
+    var scrolledState by remember { mutableStateOf(false) }
+
     LaunchedEffect(state.isExpanded) {
         if (state.isExpanded) {
+            scrolledState = false
+            headerOffsetPx = 0f
             playerProgress.animateTo(
                 targetValue = 1f,
                 animationSpec = spring(dampingRatio = 0.90f, stiffness = 550f)
@@ -157,10 +165,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     }
 
     // Dynamic Header Collapse on Scroll – raw offset is only read in layout/draw lambdas (no recomposition per frame)
-    val density = LocalDensity.current
-    val maxHeaderOffset = with(density) { 110.dp.toPx() }
-    var headerOffsetPx by remember { mutableFloatStateOf(0f) }
-    var scrolledState by remember { mutableStateOf(false) }
 
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
@@ -662,12 +666,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 val b = coords.boundsInRoot()
                                                 if (b.width > 20f && b.height > 20f) {
                                                     if (compact) {
-                                                        if (morph > 0.25f) {
+                                                        if (morph > 0.6f && !state.isExpanded) {
                                                             activeMiniPillBounds = b
                                                             activeMiniPillCorner = pillCorner
                                                         }
                                                     } else {
-                                                        if (morph <= 0.75f) {
+                                                        standardMiniPillBounds = b
+                                                        if (!state.isExpanded || activeMiniPillBounds == null) {
                                                             activeMiniPillBounds = b
                                                             activeMiniPillCorner = pillCorner
                                                         }
@@ -907,8 +912,9 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     }
 
                     // Top Mini Player: smoothly collapses height and fades out when scrolling or entering search
+                    val isPlayerMorphing = playerProgress.value > 0.001f || state.isExpanded
                     val topMorphScale = (1f - morph).coerceIn(0f, 1f)
-                    val topPlayerAlpha = (1f - combined * 2.5f).coerceIn(0f, 1f) * (1f - playerProgress.value)
+                    val topPlayerAlpha = if (isPlayerMorphing) 0f else (1f - combined * 2.5f).coerceIn(0f, 1f)
                     if (hasSong && topPlayerAlpha > 0.01f && topMorphScale > 0.01f) {
                         val animatedTopHeight = 45.dp * topMorphScale
                         val animatedTopPad = 4.dp * topMorphScale
@@ -1199,7 +1205,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 .width(with(density) { middleWidth.toDp() })
                                                 .fillMaxHeight()
                                                 .clip(RoundedCornerShape(barCorner))
-                                                .graphicsLayer { alpha = morph }
+                                                .graphicsLayer { alpha = if (isPlayerMorphing) 0f else morph }
                                         ) {
                                             miniPlayerPill(Modifier.fillMaxSize(), true)
                                         }
@@ -1682,14 +1688,25 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         val screenWidthPx = with(density) { screenWidthDp.toPx() }
                         val screenHeightPx = with(density) { screenHeightDp.toPx() }
 
-                        // YouTube Music style full-page morph into mini media player pill shape
-                        val startBounds = activeMiniPillBounds ?: Rect(
-                            left = with(density) { 16.dp.toPx() },
-                            top = screenHeightPx - with(density) { 145.dp.toPx() },
-                            right = screenWidthPx - with(density) { 16.dp.toPx() },
-                            bottom = screenHeightPx - with(density) { 100.dp.toPx() }
-                        )
-                        val startCorner = activeMiniPillCorner
+                        // Full-page morph from song card (search) or mini media player pill shape
+                        val isExpandingFromSongCard = state.isExpanded && playerProgress.value < 0.99f && state.selectedSongBounds != null
+                        val startBounds = if (isExpandingFromSongCard) {
+                            state.selectedSongBounds!!
+                        } else {
+                            activeMiniPillBounds ?: Rect(
+                                left = with(density) { 16.dp.toPx() },
+                                top = screenHeightPx - with(density) { 145.dp.toPx() },
+                                right = screenWidthPx - with(density) { 16.dp.toPx() },
+                                bottom = screenHeightPx - with(density) { 100.dp.toPx() }
+                            )
+                        }
+                        val startCorner = if (isExpandingFromSongCard) 16.dp else activeMiniPillCorner
+
+                        LaunchedEffect(playerProgress.value) {
+                            if (playerProgress.value >= 0.99f && state.selectedSongBounds != null) {
+                                viewModel.clearSelectedSongBounds()
+                            }
+                        }
 
                         val curLeft = startBounds.left * (1f - p)
                         val curTop = startBounds.top * (1f - p)
@@ -1719,7 +1736,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     .offset { IntOffset(curLeftPx, curTopPx) }
                                     .size(curWidthDp, curHeightDp)
                                     .shadow(
-                                        elevation = (18.dp * (1f - p)).coerceAtLeast(0.dp),
+                                        elevation = (16.dp * p).coerceAtLeast(0.dp),
                                         shape = curCornerShape,
                                         spotColor = Color.Black.copy(alpha = 0.5f)
                                     )
@@ -1731,6 +1748,11 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
                                                 if (isInSubPage) return@detectVerticalDragGestures
                                                 if (playerProgress.value < 0.85f) {
+                                                    // Downward swipe collapse: always contract into the mini media player itself
+                                                    if (standardMiniPillBounds != null) {
+                                                        activeMiniPillBounds = standardMiniPillBounds
+                                                        activeMiniPillCorner = 22.dp
+                                                    }
                                                     viewModel.setExpanded(false)
                                                 } else {
                                                     scope.launch {
@@ -1838,6 +1860,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 val miniPillAlpha = if (p >= 0.35f) 0f else ((0.35f - p) / 0.35f).coerceIn(0f, 1f)
                                 if (miniPillAlpha > 0.001f) {
                                     val isCircleMini = startBounds.width < 100f
+                                    val isMidCompact = !isCircleMini && !isExpandingFromSongCard && (startBounds.width < screenWidthPx * 0.72f)
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
@@ -1864,12 +1887,57 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         .background(Color.Gray)
                                                 )
                                             }
+                                        } else if (isExpandingFromSongCard) {
+                                            val currentSong = state.currentSong!!
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                AsyncImage(
+                                                    model = currentSong.coverUrl,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(52.dp)
+                                                        .clip(if (currentSong.isAlbum) RoundedCornerShape(12.dp) else RoundedCornerShape(10.dp))
+                                                )
+                                                Spacer(modifier = Modifier.width(14.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        currentSong.title,
+                                                        color = if (isDark) Color.White else Color(0xFF141416),
+                                                        fontSize = 15.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    val subText = if (currentSong.album.isNotBlank() && currentSong.album != "Single" && currentSong.album != "Album") "${currentSong.artist} • ${currentSong.album}" else currentSong.artist
+                                                    Text(
+                                                        subText,
+                                                        color = if (isDark) Color.White.copy(alpha = 0.55f) else Color(0xFF6B7280),
+                                                        fontSize = 12.sp,
+                                                        maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                                IconButton(onClick = {}, modifier = Modifier.size(36.dp)) {
+                                                    Icon(
+                                                        Icons.Default.PlayArrow,
+                                                        contentDescription = "Play",
+                                                        tint = if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF141416),
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                }
+                                            }
                                         } else {
                                             Row(
                                                 modifier = Modifier.fillMaxSize(),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                val pillArt = if (startCorner > 24.dp) 38.dp else 32.dp
+                                                val pillArt = if (isMidCompact || startCorner > 24.dp) 38.dp else 32.dp
                                                 if (state.currentSong!!.coverUrl.isNotEmpty()) {
                                                     AsyncImage(
                                                         model = state.currentSong!!.coverUrl,
@@ -1895,38 +1963,42 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     Text(
                                                         state.currentSong!!.title,
                                                         color = Color.White,
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Medium,
+                                                        fontSize = if (isMidCompact) 12.sp else 13.sp,
+                                                        fontWeight = FontWeight.SemiBold,
                                                         maxLines = 1
                                                     )
-                                                    Text(
-                                                        state.currentSong!!.artist,
-                                                        color = Color.White.copy(alpha = 0.6f),
-                                                        fontSize = 10.sp,
-                                                        maxLines = 1
-                                                    )
+                                                    if (!isMidCompact) {
+                                                        Text(
+                                                            state.currentSong!!.artist,
+                                                            color = Color.White.copy(alpha = 0.6f),
+                                                            fontSize = 10.sp,
+                                                            maxLines = 1
+                                                        )
+                                                    }
                                                 }
                                                 IconButton(
                                                     onClick = { viewModel.togglePlayPause() },
-                                                    modifier = Modifier.size(34.dp)
+                                                    modifier = Modifier.size(if (isMidCompact) 32.dp else 34.dp)
                                                  ) {
                                                     Icon(
                                                         if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                                                         contentDescription = null,
                                                         tint = Color.White,
-                                                        modifier = Modifier.size(20.dp)
+                                                        modifier = Modifier.size(if (isMidCompact) 19.dp else 20.dp)
                                                     )
                                                 }
-                                                IconButton(
-                                                    onClick = { viewModel.playNext() },
-                                                    modifier = Modifier.size(34.dp)
-                                                ) {
-                                                    Icon(
-                                                        Icons.Rounded.SkipNext,
-                                                        contentDescription = null,
-                                                        tint = Color.White,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
+                                                if (!isMidCompact) {
+                                                    IconButton(
+                                                        onClick = { viewModel.playNext() },
+                                                        modifier = Modifier.size(34.dp)
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Rounded.SkipNext,
+                                                            contentDescription = null,
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
