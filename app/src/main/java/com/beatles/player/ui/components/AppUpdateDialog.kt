@@ -146,13 +146,13 @@ fun AppUpdateDialog(
             val dialogShape = RoundedCornerShape(32.dp)
             val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.78f) else Color(0xFFFFFFFF).copy(alpha = 0.88f)
             val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.12f)
+            val navBottomPadding = maxOf(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(), 28.dp) + 16.dp
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .navigationBarsPadding()
-                    .padding(bottom = 12.dp)
+                    .padding(bottom = navBottomPadding)
                     .graphicsLayer {
                         translationY = enterSlideY.value
                         alpha = enterAlpha.value

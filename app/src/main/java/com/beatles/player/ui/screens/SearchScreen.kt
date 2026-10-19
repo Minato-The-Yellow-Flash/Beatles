@@ -153,25 +153,8 @@ fun SearchScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .edgeFade(if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)),
-            contentPadding = PaddingValues(top = 90.dp, bottom = LocalDynamicBottomPadding.current)
+            contentPadding = PaddingValues(top = 18.dp, bottom = LocalDynamicBottomPadding.current)
         ) {
-            // Header title (static – no text/progress changes while typing, so nothing flickers)
-            item(key = "search_header") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(top = 8.dp, bottom = 16.dp)
-                ) {
-                    Text(
-                        text = "Search",
-                        color = textPrimary,
-                        fontSize = 31.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-            }
-
             if (state.searchQuery.isNotBlank()) {
                 // 4 Autocorrect & Suggestion pills displayed prominently above results
                 if (autocorrectChips.isNotEmpty()) {

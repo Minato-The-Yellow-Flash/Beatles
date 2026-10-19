@@ -1,6 +1,6 @@
 package com.beatles.player.ui.components
 
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
@@ -388,6 +388,7 @@ fun NowPlayingSheet(
 
         val isLyricsActive = showLyrics && !showNextUp
         val isNextUpActive = showNextUp
+        val isCompactTarget = isLyricsActive || isNextUpActive
 
         val lyricsProgress by animateFloatAsState(
             targetValue = if (isLyricsActive) 1f else 0f,
@@ -398,6 +399,14 @@ fun NowPlayingSheet(
             targetValue = if (isNextUpActive) 1f else 0f,
             animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 360f),
             label = "nextUpProgress"
+        )
+
+        // Slide fraction between Lyrics (0f) and Next Up (1f)
+        val subpageTarget = if (isNextUpActive) 1f else 0f
+        val subpageSlideFraction by animateFloatAsState(
+            targetValue = subpageTarget,
+            animationSpec = spring(dampingRatio = 0.85f, stiffness = 380f),
+            label = "subpageSlideFraction"
         )
 
         var dragOffsetX by remember { mutableFloatStateOf(0f) }
@@ -414,7 +423,7 @@ fun NowPlayingSheet(
         val defaultCoverLeft = (screenWidth - defaultCoverSize) / 2
         val defaultCoverTop = 84.dp
 
-        val isCompactCover = isNextUpActive || isLyricsActive
+        val isCompactCover = isCompactTarget
 
         var lastLyricsInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
         var controlsVisible by remember { mutableStateOf(true) }
@@ -435,7 +444,12 @@ fun NowPlayingSheet(
             label = "controlsAlpha"
         )
 
-        val compactProgress = maxOf(lyricsProgress, nextUpProgress).coerceIn(0f, 1f)
+        // Single unified compact progress: remains strictly at 1f during lyrics <-> next up toggle so album art never jumps or dips
+        val compactProgress by animateFloatAsState(
+            targetValue = if (isCompactTarget) 1f else 0f,
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 360f),
+            label = "compactProgress"
+        )
         val coverSize = defaultCoverSize + (68.dp - defaultCoverSize) * compactProgress
         val coverLeft = defaultCoverLeft + (24.dp - defaultCoverLeft) * compactProgress
         val coverTop = defaultCoverTop + (54.dp - defaultCoverTop) * compactProgress
@@ -520,7 +534,7 @@ fun NowPlayingSheet(
         }
 
         // Header beside the left-glided cover (Next Up or Lyrics)
-        val compactHeaderAlpha = maxOf(lyricsProgress, nextUpProgress)
+        val compactHeaderAlpha = compactProgress
         if (compactHeaderAlpha > 0.01f) {
             Row(
                 modifier = Modifier
@@ -530,13 +544,25 @@ fun NowPlayingSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        if (isLyricsActive) "LYRICS" else (queueTitle?.uppercase() ?: "PLAYING NEXT"),
-                        color = AccentRed,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
+                    AnimatedContent(
+                        targetState = if (isLyricsActive) "LYRICS" else (queueTitle?.uppercase() ?: "PLAYING NEXT"),
+                        transitionSpec = {
+                            if (targetState == "LYRICS") {
+                                (slideInHorizontally { -it } + fadeIn()).togetherWith(slideOutHorizontally { it } + fadeOut())
+                            } else {
+                                (slideInHorizontally { it } + fadeIn()).togetherWith(slideOutHorizontally { -it } + fadeOut())
+                            }
+                        },
+                        label = "headerTitleTransition"
+                    ) { titleText ->
+                        Text(
+                            titleText,
+                            color = AccentRed,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                    }
                     Text(song.title, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     Text(song.artist, color = Color.White.copy(alpha = 0.65f), fontSize = 12.sp, maxLines = 1)
                 }
@@ -611,15 +637,18 @@ fun NowPlayingSheet(
             )
         }
 
-        // Next Up Queue with smooth upwards pull spring animation
-        if (nextUpProgress > 0.001f) {
+        // Next Up Queue with smooth upwards pull spring animation and horizontal slide when toggling with lyrics
+        if (nextUpProgress > 0.001f || subpageSlideFraction > 0.005f) {
+            val screenWidthPx = with(density) { screenWidth.toPx() }
+            val nextUpSlideX = (1f - subpageSlideFraction) * screenWidthPx
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(bottom = 190.dp, top = 136.dp)
                     .graphicsLayer {
-                        translationY = (1f - nextUpProgress) * 450f
-                        alpha = nextUpProgress.coerceIn(0f, 1f)
+                        translationX = nextUpSlideX
+                        translationY = (1f - nextUpProgress) * 350f
+                        alpha = (nextUpProgress * subpageSlideFraction.coerceIn(0.01f, 1f)).coerceIn(0f, 1f)
                     }
                     .pointerInput(Unit) {
                         var totalDx = 0f
@@ -781,14 +810,17 @@ fun NowPlayingSheet(
                 label = "lyricsBottomPad"
             )
 
+            val screenWidthPx = with(density) { screenWidth.toPx() }
+            val lyricsSlideX = -subpageSlideFraction * screenWidthPx
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = lyricsTopPad, bottom = lyricsBottomPad)
                     .graphicsLayer {
                         scaleY = lyrStretchY
+                        translationX = lyricsSlideX
                         translationY = lyrTransY
-                        alpha = lyricsProgress.coerceIn(0f, 1f)
+                        alpha = (lyricsProgress * (1f - subpageSlideFraction).coerceIn(0.01f, 1f)).coerceIn(0f, 1f)
                         transformOrigin = TransformOrigin(0.5f, 1.0f)
                     }
                     .pointerInput(Unit) {

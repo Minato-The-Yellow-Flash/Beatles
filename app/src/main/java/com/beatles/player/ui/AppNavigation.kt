@@ -1646,24 +1646,39 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     val p = playerProgress.value.coerceIn(0f, 1f)
 
                     if (playerProgress.value > 0.001f || state.isExpanded) {
-                        val playerCorner = (28.dp * (1f - p)).coerceAtLeast(0.dp)
-                        val morphMotionFactor = (4f * p * (1f - p)).coerceIn(0f, 1f)
-                        val sheetStretchY = 1f + 0.035f * morphMotionFactor
-                        val sheetSqueezeX = 1f - 0.018f * morphMotionFactor
                         val screenHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
-                        val sheetSlideY = (1f - p) * screenHeightPx
+                        val miniTopPx = activeMiniArtBounds?.top ?: (screenHeightPx - with(density) { 145.dp.toPx() })
+
+                        // YouTube Music style full-page morph into mini media player pill shape
+                        val upperCorner = (30.dp * (1f - p)).coerceAtLeast(0.dp)
+                        val lowerCorner = (30.dp * (1f - p)).coerceAtLeast(0.dp)
+                        val playerShape = RoundedCornerShape(
+                            topStart = upperCorner,
+                            topEnd = upperCorner,
+                            bottomStart = lowerCorner,
+                            bottomEnd = lowerCorner
+                        )
+                        val horizontalPad = (16.dp * (1f - p)).coerceAtLeast(0.dp)
+                        val morphMotionFactor = (4f * p * (1f - p)).coerceIn(0f, 1f)
+                        val sheetStretchY = 1f + 0.025f * morphMotionFactor
+                        val sheetSqueezeX = 1f - 0.015f * morphMotionFactor
+                        val sheetSlideY = (1f - p) * miniTopPx
 
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .padding(horizontal = horizontalPad)
                                 .zIndex(100f)
                                 .graphicsLayer {
                                     translationY = sheetSlideY
                                     scaleX = sheetSqueezeX
                                     scaleY = sheetStretchY
                                     alpha = if (p < 0.01f) 0f else 1f
+                                    shape = playerShape
+                                    clip = true
+                                    shadowElevation = (16.dp * (1f - p)).toPx()
                                 }
-                                .clip(RoundedCornerShape(playerCorner))
+                                .clip(playerShape)
                                 .pointerInput(Unit) {
                                     detectVerticalDragGestures(
                                         onDragEnd = {
@@ -1723,14 +1738,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 onToggleShuffle = { viewModel.toggleShuffle() },
                                 onToggleRepeat = { viewModel.toggleRepeat() },
                                 onToggleFavorite = { viewModel.toggleFavorite() },
-                                onToggleLyrics = { 
-                                    if (state.showSeeAllSection == "next_up") viewModel.setSeeAllSection(null)
-                                    viewModel.toggleLyrics()
-                                },
-                                onToggleNextUp = {
-                                    if (state.showLyrics) viewModel.toggleLyrics()
-                                    viewModel.setSeeAllSection(if (state.showSeeAllSection == "next_up") null else "next_up")
-                                },
+                                onToggleLyrics = { viewModel.switchToLyrics() },
+                                onToggleNextUp = { viewModel.switchToNextUp() },
                                 onPlayFromQueue = { s -> viewModel.playSong(s, state.playlist) },
                                 autoPlayEnabled = state.autoPlayEnabled,
                                 onToggleAutoPlay = { viewModel.toggleAutoPlay() },

@@ -11,6 +11,7 @@ import com.beatles.player.player.automix.TransitionPhase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -235,12 +236,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         player.onSongEnded = {
             val now = System.currentTimeMillis()
             val state = _uiState.value
-            val curPos = state.currentPosition
-            val curDur = state.duration
-            val isNearEnd = curDur <= 0L || (curDur - curPos <= 4_000L)
             val currentSong = state.currentSong
             val isNotImmediatePostHandoffRepeat = (now - lastAutoMixHandoffTime >= 3_000L) || (currentSong != null && currentSong.id != lastHandoffSongId)
-            if (!autoMixEngine.isBusy && isNotImmediatePostHandoffRepeat && (now - lastSongEndedTime > 1500L) && isNearEnd) {
+            if (!autoMixEngine.isBusy && isNotImmediatePostHandoffRepeat && (now - lastSongEndedTime > 1500L)) {
                 lastSongEndedTime = now
                 playNext(isAutoMix = true)
             }
@@ -1184,7 +1182,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             } catch (e: Exception) {
                 if (activeTargetSongId == song.id) {
                     repo.clearStreamCache(song.id)
-                    _uiState.update { it.copy(isLoadingStream = false, isPlaying = false, downloadNotice = "Unable to stream \"${song.title}\"") }
+                    _uiState.update { it.copy(isLoadingStream = false, downloadNotice = "Skipping unplayable \"${song.title}\"") }
+                    val pl = _uiState.value.playlist
+                    if (pl.size > 1) {
+                        launch {
+                            delay(400)
+                            playNext(isAutoMix = isAutoMix)
+                        }
+                    } else {
+                        _uiState.update { it.copy(isPlaying = false) }
+                    }
                 }
             }
         }
@@ -1676,6 +1683,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleLyrics() {
         _uiState.update { it.copy(showLyrics = !it.showLyrics) }
+    }
+
+    fun switchToNextUp() {
+        _uiState.update {
+            val isAlreadyNextUp = it.showSeeAllSection == "next_up"
+            it.copy(showLyrics = false, showSeeAllSection = if (isAlreadyNextUp) null else "next_up")
+        }
+    }
+
+    fun switchToLyrics() {
+        _uiState.update {
+            val isAlreadyLyrics = it.showLyrics && it.showSeeAllSection != "next_up"
+            it.copy(showSeeAllSection = null, showLyrics = !isAlreadyLyrics)
+        }
     }
 
     private fun fetchLyrics(song: Song) {

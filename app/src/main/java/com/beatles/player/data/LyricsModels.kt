@@ -17,12 +17,13 @@ data class SyncedLyricLine(
 
 object LyricsProcessor {
 
-    const val MIN_INSTRUMENTAL_GAP_MS = 4000L
+    const val MIN_INSTRUMENTAL_GAP_MS = 2500L
 
     /**
      * Parses raw lyric lines into timed, continuous word-level synced lines.
-     * Automatically inserts instrumental interlude entries ("♪") for gaps >= 4 seconds
-     * at the intro, during instrumental breaks between verses, and at the outro.
+     * Accurately distinguishes vocal lines from instrumental interludes.
+     * Whenever there is an instrumental interlude (intro, inter-verse breaks, outro),
+     * inserts an instrumental entry ("♪") with animated music pulses.
      */
     fun processSyncedLyrics(
         lyrics: List<LyricLine>,
@@ -65,13 +66,45 @@ object LyricsProcessor {
         for (idx in sortedLyrics.indices) {
             val line = sortedLyrics[idx]
             val nextLine = sortedLyrics.getOrNull(idx + 1)
-            val lineDur = if (nextLine != null && nextLine.timeMs > line.timeMs) {
-                (nextLine.timeMs - line.timeMs).coerceIn(1200L, 9000L)
-            } else {
-                4000L
+            val isExplicitInstrumental = line.text.trim().let {
+                it == "♪" || it.equals("(instrumental)", ignoreCase = true) || it.equals("instrumental", ignoreCase = true) || it == "//"
+            }
+
+            if (isExplicitInstrumental) {
+                val instDur = if (nextLine != null && nextLine.timeMs > line.timeMs) {
+                    nextLine.timeMs - line.timeMs
+                } else {
+                    4000L
+                }
+                result.add(
+                    SyncedLyricLine(
+                        timeMs = line.timeMs,
+                        text = "♪",
+                        words = emptyList(),
+                        durationMs = instDur,
+                        isInstrumental = true,
+                        instrumentalDurationMs = instDur
+                    )
+                )
+                continue
             }
 
             val rawWords = line.text.trim().split("\\s+".toRegex()).filter { it.isNotEmpty() }
+            val naturalVocalDur = (rawWords.size * 420L + 600L).coerceIn(1200L, 4800L)
+
+            val availableGap = if (nextLine != null && nextLine.timeMs > line.timeMs) {
+                nextLine.timeMs - line.timeMs
+            } else {
+                naturalVocalDur
+            }
+
+            val hasInstrumentalBreak = availableGap >= naturalVocalDur + MIN_INSTRUMENTAL_GAP_MS
+            val lineDur = if (hasInstrumentalBreak) {
+                naturalVocalDur
+            } else {
+                availableGap.coerceIn(1200L, 6500L)
+            }
+
             val words = if (rawWords.isEmpty()) {
                 emptyList()
             } else {
@@ -90,7 +123,6 @@ object LyricsProcessor {
                     wordList.add(SyncedWord(text = w, startMs = currentStart, endMs = wEnd))
                     currentStart = wEnd
                 }
-                // Ensure continuity between words (end of word N == start of word N+1)
                 wordList
             }
 

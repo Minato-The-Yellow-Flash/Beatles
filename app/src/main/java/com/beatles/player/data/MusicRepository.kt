@@ -1496,12 +1496,22 @@ object MusicRepository {
 
         fun parseLrc(syncedLyrics: String): List<LyricLine> {
             val timestampRegex = Regex("\\[(\\d{1,2}):(\\d{2}(?:[.:]\\d{1,3})?)\\]")
+            val offsetRegex = Regex("\\[offset:\\s*([+\\-]?\\d+)\\]")
+            var offsetMs = 0L
             val result = mutableListOf<LyricLine>()
 
             for (rawLine in syncedLyrics.split("\n")) {
                 val line = rawLine.trim()
-                if (line.isEmpty() || line.startsWith("[ti:") || line.startsWith("[ar:") ||
-                    line.startsWith("[al:") || line.startsWith("[by:") || line.startsWith("[offset:") ||
+                if (line.isEmpty()) continue
+
+                val offsetMatch = offsetRegex.find(line)
+                if (offsetMatch != null) {
+                    offsetMs = offsetMatch.groupValues[1].toLongOrNull() ?: 0L
+                    continue
+                }
+
+                if (line.startsWith("[ti:") || line.startsWith("[ar:") ||
+                    line.startsWith("[al:") || line.startsWith("[by:") ||
                     line.startsWith("[length:") || line.startsWith("[re:") || line.startsWith("[ve:")) {
                     continue
                 }
@@ -1509,14 +1519,15 @@ object MusicRepository {
                 val matches = timestampRegex.findAll(line).toList()
                 if (matches.isEmpty()) continue
 
-                val text = timestampRegex.replace(line, "").trim()
-                if (text.isEmpty()) continue
+                val rawText = timestampRegex.replace(line, "").trim()
+                // If timestamp line has no text, mark it as instrumental break marker
+                val text = if (rawText.isEmpty()) "♪" else rawText
 
                 for (match in matches) {
                     val min = match.groupValues[1].toLongOrNull() ?: 0L
                     val secPart = match.groupValues[2].replace(':', '.')
                     val secDouble = secPart.toDoubleOrNull() ?: 0.0
-                    val ms = min * 60000L + (secDouble * 1000).toLong()
+                    val ms = kotlin.math.max(0L, min * 60000L + (secDouble * 1000).toLong() + offsetMs)
                     result.add(LyricLine(ms, text))
                 }
             }
@@ -1564,7 +1575,14 @@ object MusicRepository {
                     var parsedSynced: List<LyricLine>? = null
                     if (syncedItems.isNotEmpty()) {
                         val best = if (targetDur > 0) {
-                            syncedItems.minByOrNull {
+                            val durationClose = syncedItems.filter {
+                                val d = it.get("duration")?.asDouble ?: 0.0
+                                kotlin.math.abs(d - targetDur) <= 6.0
+                            }.minByOrNull {
+                                val d = it.get("duration")?.asDouble ?: 0.0
+                                kotlin.math.abs(d - targetDur)
+                            }
+                            durationClose ?: syncedItems.minByOrNull {
                                 val d = it.get("duration")?.asDouble ?: 0.0
                                 kotlin.math.abs(d - targetDur)
                             } ?: syncedItems.first()

@@ -149,13 +149,21 @@ class PlaybackService : MediaSessionService() {
             audioManager.abandonAudioFocus(null)
         }
         hasAudioFocus = false
+        resumeOnFocusGain = false
     }
+
+    private var resumeOnFocusGain = false
 
     private fun handleAudioFocusChange(focusChange: Int) {
         val active = mediaSession?.player ?: defaultPlayer
         when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS,
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                resumeOnFocusGain = false
+                active?.pause()
+            }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                // Strictly record if audio was playing before focus was interrupted by incoming call
+                resumeOnFocusGain = active?.isPlaying == true
                 active?.pause()
             }
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
@@ -163,7 +171,10 @@ class PlaybackService : MediaSessionService() {
             }
             AudioManager.AUDIOFOCUS_GAIN -> {
                 active?.volume = 1.0f
-                active?.play()
+                if (resumeOnFocusGain) {
+                    resumeOnFocusGain = false
+                    active?.play()
+                }
             }
         }
     }

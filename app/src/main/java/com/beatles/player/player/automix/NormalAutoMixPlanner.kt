@@ -94,14 +94,22 @@ object NormalAutoMixPlanner {
         val gainMatch = 10f.pow(((outInfo.integratedLUFS - inInfo.integratedLUFS) / 20f).coerceIn(-3f, 3f))
             .coerceIn(0.75f, 1.30f)
 
-        // 6. Select Natural Outro Boundary (ensure transition blends in the final 8-10 seconds, never cutting off mid-song)
+        // 6. Select Natural Outro Boundary (Apple Music style: extended smooth transition beyond 10s window)
         val dur = outgoingDurationMs
-        val targetDurationMs = 7_500L
+        val targetDurationMs = 12_000L // 12 seconds smooth transition length
         val effectiveLastSound = tail?.lastSoundMs ?: (dur - outInfo.trailingSilenceMs)
-        
-        // Start transition in natural outro: within final 9-11 seconds of the track
+
+        // Apple Music switches smoothly when vocals conclude (in midway / 16-28s before end)
+        // or in the natural outro window (final 12-14s) when lyrics are absent
+        val hasConfirmedLyricsOutro = outgoingLyrics.isNotEmpty() && outInfo.vocalEndMs > 0 && outInfo.vocalEndMs < dur - 10_000L
+        val minOutroStart = if (hasConfirmedLyricsOutro) {
+            max(outInfo.vocalEndMs, max(0L, dur - 28_000L))
+        } else {
+            max(0L, dur - 12_000L)
+        }
+
+        val outroWindowStart = if (hasConfirmedLyricsOutro) max(0L, dur - 28_000L) else max(0L, dur - 13_500L)
         val safeStartMs = (dur - targetDurationMs - 1_200L).coerceAtLeast(0L)
-        val minOutroStart = max(outInfo.vocalEndMs, max(0L, dur - 12_000L))
 
         // Phrase boundary aligned with outro
         val phraseAlignedStart = BeatGridMatcher.findNextPhraseBoundary(
@@ -111,13 +119,13 @@ object NormalAutoMixPlanner {
             barsPerPhrase = 4
         )
 
-        // Lock start to natural outro window so it never starts 30+ seconds early
+        // Lock start to natural outro window allowing smooth transitions
         val finalStartMs = phraseAlignedStart.coerceIn(
-            max(0L, dur - 12_000L),
-            max(0L, dur - targetDurationMs - 600L)
+            outroWindowStart,
+            max(0L, dur - 5_000L)
         ).takeIf { it > 0L } ?: safeStartMs
-        
-        val actualDurationMs = min(targetDurationMs, max(4_000L, effectiveLastSound - finalStartMs))
+
+        val actualDurationMs = min(targetDurationMs, max(5_000L, effectiveLastSound - finalStartMs))
 
         // 7. Incoming Start Offset (skip leading silence)
         val leadingSilence = head?.firstSoundMs ?: inInfo.leadingSilenceMs
@@ -140,8 +148,8 @@ object NormalAutoMixPlanner {
                 tier = AutoMixTier.TIER_1_BEAT_MATCH
             )
         } else {
-            // Equal-power crossfade fallback with generous smooth fade
-            val fallbackDuration = actualDurationMs.coerceIn(6_000L, 8_000L)
+            // Equal-power crossfade fallback with smooth blend (5.0s - 7.5s)
+            val fallbackDuration = min(7_500L, max(5_000L, effectiveLastSound - (dur - 7_500L)))
             val fallbackStart = (dur - fallbackDuration - 800L).coerceAtLeast(0L)
             TransitionPlan(
                 type = TransitionType.SHORT_CROSSFADE,

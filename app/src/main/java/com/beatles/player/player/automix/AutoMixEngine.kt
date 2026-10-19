@@ -190,7 +190,7 @@ class AutoMixEngine(
         if (incoming != null && incoming?.id != nextSong.id) resetPlanning(keepSongId = true)
 
         val remaining = durationMs - posMs
-        val prepTriggerWindow = if (durationMs < 30_000L) (durationMs * 0.5f).toLong() else 25_000L
+        val prepTriggerWindow = if (durationMs < 60_000L) (durationMs * 0.6f).toLong() else 45_000L
         if (activePlan == null && preloadJob == null && remaining <= prepTriggerWindow && remaining >= 1_200L) {
             preloadJob = scope.launch { analyzeAndPrepare(currentSong, durationMs, posMs, nextSong, lyrics, playlist) }
         }
