@@ -173,18 +173,19 @@ object LyricsProcessor {
     }
 
     /**
-     * Binary-search active line lookup over sorted start times.
+     * Binary-search active line lookup over sorted start times with anticipatory lead time.
      * Guaranteed O(log N) lookup without drift or stale cached indexing.
      * Returns -1 if position is before the first line.
      */
     fun findActiveLineIndex(lines: List<SyncedLyricLine>, positionMs: Long): Int {
-        if (lines.isEmpty() || positionMs < lines.first().timeMs) return -1
+        val effectivePos = positionMs + 160L
+        if (lines.isEmpty() || effectivePos < lines.first().timeMs) return -1
         var low = 0
         var high = lines.size - 1
         var result = -1
         while (low <= high) {
             val mid = (low + high) ushr 1
-            if (lines[mid].timeMs <= positionMs) {
+            if (lines[mid].timeMs <= effectivePos) {
                 result = mid
                 low = mid + 1
             } else {
@@ -199,16 +200,17 @@ object LyricsProcessor {
      * Smooth and continuous at all word boundaries without snaps or discontinuities.
      */
     fun calculateLineSweepProgress(line: SyncedLyricLine, positionMs: Long): Float {
+        val effectivePos = positionMs + 160L
         val words = line.words
         if (words.isEmpty()) return 0f
-        if (positionMs <= words.first().startMs) return 0f
-        if (positionMs >= words.last().endMs) return words.size.toFloat()
+        if (effectivePos <= words.first().startMs) return 0f
+        if (effectivePos >= words.last().endMs) return words.size.toFloat()
 
         for (i in words.indices) {
             val word = words[i]
-            if (positionMs in word.startMs..word.endMs) {
+            if (effectivePos in word.startMs..word.endMs) {
                 val dur = (word.endMs - word.startMs).coerceAtLeast(1L)
-                val fraction = (positionMs - word.startMs).toFloat() / dur
+                val fraction = (effectivePos - word.startMs).toFloat() / dur
                 return i.toFloat() + fraction.coerceIn(0f, 1f)
             }
         }

@@ -146,12 +146,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         if (state.isExpanded) {
             playerProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = spring(dampingRatio = 0.88f, stiffness = 380f)
+                animationSpec = spring(dampingRatio = 0.90f, stiffness = 550f)
             )
         } else {
             playerProgress.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(dampingRatio = 1.0f, stiffness = 380f)
+                animationSpec = spring(dampingRatio = 1.0f, stiffness = 550f)
             )
         }
     }
@@ -1318,6 +1318,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 .graphicsLayer {
                                                     alpha = searchExpandProgress
                                                 }
+                                                .onGloballyPositioned { coords ->
+                                                    if (coords.isAttached && isSearch && searchExpandProgress > 0.5f) {
+                                                        val b = coords.boundsInRoot()
+                                                        if (b.width > 20f && b.height > 20f) {
+                                                            activeMiniPillBounds = b
+                                                            activeMiniPillCorner = circleSize / 2
+                                                        }
+                                                    }
+                                                }
                                                 .clip(CircleShape)
                                                 .then(
                                                     if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
@@ -1334,6 +1343,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     interactionSource = remember { MutableInteractionSource() },
                                                     indication = null
                                                 ) {
+                                                    activeMiniPillCorner = circleSize / 2
                                                     viewModel.setExpanded(true)
                                                 },
                                             contentAlignment = Alignment.Center
@@ -1693,6 +1703,11 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         val curLeftPx = curLeft.roundToInt()
                         val curTopPx = curTop.roundToInt()
                         val playerBg = if (isDark) Color(0xFF0E0E10) else Color.White
+                        val containerBg = androidx.compose.ui.graphics.lerp(
+                            translucentPillBg,
+                            playerBg,
+                            (p * 1.6f).coerceIn(0f, 1f)
+                        )
 
                         Box(
                             modifier = Modifier
@@ -1709,7 +1724,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         spotColor = Color.Black.copy(alpha = 0.5f)
                                     )
                                     .clip(curCornerShape)
-                                    .background(playerBg)
+                                    .background(containerBg)
                                     .pointerInput(Unit) {
                                         detectVerticalDragGestures(
                                             onDragEnd = {
@@ -1721,7 +1736,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     scope.launch {
                                                         playerProgress.animateTo(
                                                             targetValue = 1f,
-                                                            animationSpec = spring(dampingRatio = 0.88f, stiffness = 380f)
+                                                            animationSpec = spring(dampingRatio = 0.90f, stiffness = 550f)
                                                         )
                                                     }
                                                 }
@@ -1822,75 +1837,97 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 // 2. Mini Player Pill Content (crossfades in when closing/expanding)
                                 val miniPillAlpha = if (p >= 0.35f) 0f else ((0.35f - p) / 0.35f).coerceIn(0f, 1f)
                                 if (miniPillAlpha > 0.001f) {
+                                    val isCircleMini = startBounds.width < 100f
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .graphicsLayer { alpha = miniPillAlpha }
-                                            .padding(horizontal = 8.dp),
-                                        contentAlignment = Alignment.CenterStart
+                                            .padding(horizontal = if (isCircleMini) 0.dp else 8.dp),
+                                        contentAlignment = if (isCircleMini) Alignment.Center else Alignment.CenterStart
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxSize(),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            val pillArt = if (startCorner > 24.dp) 38.dp else 32.dp
-                                            if (state.currentSong!!.coverUrl.isNotEmpty()) {
+                                        if (isCircleMini) {
+                                            val coverUrl = state.currentSong!!.coverUrl
+                                            if (coverUrl.isNotEmpty()) {
                                                 AsyncImage(
-                                                    model = state.currentSong!!.coverUrl,
+                                                    model = coverUrl,
                                                     contentDescription = null,
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier
-                                                        .size(pillArt)
+                                                        .fillMaxSize()
                                                         .clip(CircleShape)
                                                 )
                                             } else {
                                                 Box(
                                                     modifier = Modifier
-                                                        .size(pillArt)
+                                                        .fillMaxSize()
                                                         .clip(CircleShape)
                                                         .background(Color.Gray)
                                                 )
                                             }
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Column(
-                                                modifier = Modifier.weight(1f),
-                                                verticalArrangement = Arrangement.Center
+                                        } else {
+                                            Row(
+                                                modifier = Modifier.fillMaxSize(),
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Text(
-                                                    state.currentSong!!.title,
-                                                    color = Color.White,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    maxLines = 1
-                                                )
-                                                Text(
-                                                    state.currentSong!!.artist,
-                                                    color = Color.White.copy(alpha = 0.6f),
-                                                    fontSize = 10.sp,
-                                                    maxLines = 1
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = { viewModel.togglePlayPause() },
-                                                modifier = Modifier.size(34.dp)
-                                            ) {
-                                                Icon(
-                                                    if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
-                                            IconButton(
-                                                onClick = { viewModel.playNext() },
-                                                modifier = Modifier.size(34.dp)
-                                            ) {
-                                                Icon(
-                                                    Icons.Rounded.SkipNext,
-                                                    contentDescription = null,
-                                                    tint = Color.White,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
+                                                val pillArt = if (startCorner > 24.dp) 38.dp else 32.dp
+                                                if (state.currentSong!!.coverUrl.isNotEmpty()) {
+                                                    AsyncImage(
+                                                        model = state.currentSong!!.coverUrl,
+                                                        contentDescription = null,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier
+                                                            .size(pillArt)
+                                                            .clip(CircleShape)
+                                                    )
+                                                } else {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(pillArt)
+                                                            .clip(CircleShape)
+                                                            .background(Color.Gray)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Column(
+                                                    modifier = Modifier.weight(1f),
+                                                    verticalArrangement = Arrangement.Center
+                                                ) {
+                                                    Text(
+                                                        state.currentSong!!.title,
+                                                        color = Color.White,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        maxLines = 1
+                                                    )
+                                                    Text(
+                                                        state.currentSong!!.artist,
+                                                        color = Color.White.copy(alpha = 0.6f),
+                                                        fontSize = 10.sp,
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = { viewModel.togglePlayPause() },
+                                                    modifier = Modifier.size(34.dp)
+                                                 ) {
+                                                    Icon(
+                                                        if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = { viewModel.playNext() },
+                                                    modifier = Modifier.size(34.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Rounded.SkipNext,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
                                             }
                                         }
                                     }

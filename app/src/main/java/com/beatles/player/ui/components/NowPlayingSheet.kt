@@ -14,6 +14,7 @@ import com.beatles.player.ui.motion.LiquidMotion
 import com.beatles.player.ui.motion.liquidPress
 import com.beatles.player.ui.glassRefraction
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.StrokeCap
 import kotlin.math.pow
@@ -36,6 +37,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.shadow
 import android.os.SystemClock
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.FlowRow
@@ -258,10 +260,7 @@ fun NowPlayingSheet(
                 )
             }
     ) {
-        val backgroundBlurAmount by animateDpAsState(
-            targetValue = ((if (showLyrics || showNextUp) 20.dp else 16.dp) * morphProgress).coerceAtLeast(0.dp),
-            label = "bgBlur"
-        )
+        val backgroundBlurAmount = if (showLyrics || showNextUp) 24.dp else 20.dp
         val sheetBackgroundAlpha = 1f
 
         val infiniteDrift = rememberInfiniteTransition(label = "driftingAmbient")
@@ -436,7 +435,7 @@ fun NowPlayingSheet(
         val subpageTarget = if (isNextUpActive) 1f else 0f
         val subpageSlideFraction by animateFloatAsState(
             targetValue = subpageTarget,
-            animationSpec = spring(dampingRatio = 0.88f, stiffness = 380f),
+            animationSpec = spring(dampingRatio = 1.0f, stiffness = 320f),
             label = "subpageSlideFraction"
         )
         val sideStretchFactor = (1f - kotlin.math.abs(subpageSlideFraction - 0.5f) * 2f).coerceIn(0f, 1f)
@@ -699,7 +698,7 @@ fun NowPlayingSheet(
             )
         }
 
-        if (lyricsProgress > 0.001f) {
+        if (lyricsProgress > 0.001f || (isSwitchingSubpages && subpageSlideFraction < 0.995f)) {
             NowPlayingLyricsLayer(
                 lyricsProgress = lyricsProgress,
                 isSwitchingSubpages = isSwitchingSubpages,
@@ -1457,31 +1456,15 @@ fun NowPlayingSheet(
 
         // Custom Beatles Sleep Timer Modal Sheet
         if (showSleepTimerDialog) {
-            BackHandler(enabled = true) { showSleepTimerDialog = false }
             BeatlesSleepTimerSheet(
                 state = sleepTimerState,
                 currentSong = song,
                 onDismiss = { showSleepTimerDialog = false },
-                onStartMinutes = {
-                    onStartSleepTimerMinutes(it)
-                    showSleepTimerDialog = false
-                },
-                onStartSongs = {
-                    onStartSleepTimerSongs(it)
-                    showSleepTimerDialog = false
-                },
-                onStartAlbum = {
-                    onStartSleepTimerAlbum()
-                    showSleepTimerDialog = false
-                },
-                onStartEndOfTrack = {
-                    onStartSleepTimerEndOfTrack()
-                    showSleepTimerDialog = false
-                },
-                onCancelTimer = {
-                    onCancelSleepTimer()
-                    showSleepTimerDialog = false
-                },
+                onStartMinutes = { onStartSleepTimerMinutes(it) },
+                onStartSongs = { onStartSleepTimerSongs(it) },
+                onStartAlbum = { onStartSleepTimerAlbum() },
+                onStartEndOfTrack = { onStartSleepTimerEndOfTrack() },
+                onCancelTimer = { onCancelSleepTimer() },
                 onToggleExtendPopup = onSetSleepExtendPopupEnabled
             )
         }
@@ -2165,7 +2148,7 @@ fun BeatlesSleepTimerSheet(
     val view = LocalView.current
     val navCorner = 28.dp
     val sheetShape = RoundedCornerShape(topStart = navCorner, topEnd = navCorner, bottomStart = 0.dp, bottomEnd = 0.dp)
-    val sheetBg = if (isDark) Color(0xFF1E2026).copy(alpha = 0.94f) else Color.White.copy(alpha = 0.94f)
+    val sheetBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.92f)
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Time, 1: Songs, 2: 1 Track, 3: Album
     var customMinutes by remember { mutableIntStateOf(30) }
@@ -2173,40 +2156,78 @@ fun BeatlesSleepTimerSheet(
 
     val isTimerActive = state.mode != com.beatles.player.viewmodel.SleepTimerMode.NONE
 
-    BackHandler(enabled = true) {
-        onDismiss()
+    val coroutineScope = rememberCoroutineScope()
+    val sheetAnim = remember { Animatable(0f) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var isDismissing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        sheetAnim.animateTo(1f, animationSpec = spring(dampingRatio = 0.88f, stiffness = 420f))
+    }
+
+    val dismissWithAnim: () -> Unit = {
+        if (!isDismissing) {
+            isDismissing = true
+            coroutineScope.launch {
+                sheetAnim.animateTo(0f, animationSpec = tween(200, easing = FastOutSlowInEasing))
+                onDismiss()
+            }
+        }
+    }
+
+    PredictiveBackHandler(enabled = !isDismissing) { progress ->
+        try {
+            progress.collect {}
+            dismissWithAnim()
+        } catch (_: Exception) {}
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .zIndex(140f)
-            .background(Color.Black.copy(alpha = 0.60f))
+            .background(Color.Black.copy(alpha = (sheetAnim.value * 0.60f).coerceIn(0f, 0.60f)))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                 Haptics.tick(view)
-                onDismiss()
+                dismissWithAnim()
             },
         contentAlignment = Alignment.BottomCenter
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .graphicsLayer {
+                    translationY = (1f - sheetAnim.value) * 600f + dragOffsetY
+                    alpha = sheetAnim.value.coerceIn(0f, 1f)
+                }
                 .shadow(24.dp, sheetShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.25f))
                 .clip(sheetShape)
                 .background(sheetBg)
+                .glassRefraction(navCorner, isDark)
                 .drawWithContent {
                     drawContent()
                     drawLine(
-                        color = if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.08f),
+                        color = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.12f),
                         start = Offset(0f, 0f),
                         end = Offset(size.width, 0f),
                         strokeWidth = 1.dp.toPx()
                     )
                 }
                 .pointerInput(Unit) {
-                    detectVerticalDragGestures { _, dragAmount ->
-                        if (dragAmount > 25f) onDismiss()
-                    }
+                    detectVerticalDragGestures(
+                        onDragEnd = {
+                            if (dragOffsetY > 90f) {
+                                dismissWithAnim()
+                            } else {
+                                dragOffsetY = 0f
+                            }
+                        },
+                        onVerticalDrag = { _, dragAmount ->
+                            if (dragAmount > 0 || dragOffsetY > 0f) {
+                                dragOffsetY = (dragOffsetY + dragAmount).coerceAtLeast(0f)
+                            }
+                        }
+                    )
                 }
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { /* swallow touches */ }
                 .padding(horizontal = 20.dp)
@@ -2246,7 +2267,7 @@ fun BeatlesSleepTimerSheet(
                 IconButton(
                     onClick = {
                         Haptics.tick(view)
-                        onDismiss()
+                        dismissWithAnim()
                     },
                     modifier = Modifier.size(32.dp)
                 ) {
@@ -2311,6 +2332,7 @@ fun BeatlesSleepTimerSheet(
                         onClick = {
                             Haptics.confirm(view)
                             onCancelTimer()
+                            dismissWithAnim()
                         },
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF82C38)),
@@ -2409,6 +2431,7 @@ fun BeatlesSleepTimerSheet(
                         onClick = {
                             Haptics.confirm(view)
                             onStartMinutes(customMinutes)
+                            dismissWithAnim()
                         },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = RoundedCornerShape(16.dp),
@@ -2465,6 +2488,7 @@ fun BeatlesSleepTimerSheet(
                         onClick = {
                             Haptics.confirm(view)
                             onStartSongs(customSongs)
+                            dismissWithAnim()
                         },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = RoundedCornerShape(16.dp),
@@ -2495,6 +2519,7 @@ fun BeatlesSleepTimerSheet(
                         onClick = {
                             Haptics.confirm(view)
                             onStartEndOfTrack()
+                            dismissWithAnim()
                         },
                         modifier = Modifier.fillMaxWidth().height(44.dp),
                         shape = RoundedCornerShape(14.dp),
@@ -2525,6 +2550,7 @@ fun BeatlesSleepTimerSheet(
                         onClick = {
                             Haptics.confirm(view)
                             onStartAlbum()
+                            dismissWithAnim()
                         },
                         modifier = Modifier.fillMaxWidth().height(44.dp),
                         shape = RoundedCornerShape(14.dp),
@@ -2622,7 +2648,7 @@ fun NowPlayingQueueLayer(
             .graphicsLayer {
                 translationX = nextUpSlideX
                 translationY = nextUpTransY
-                alpha = if (isSwitchingSubpages) subpageSlideFraction.coerceIn(0f, 1f) else nextUpProgress.coerceIn(0f, 1f)
+                alpha = if (isSwitchingSubpages) 1f else nextUpProgress.coerceIn(0f, 1f)
             }
             .pointerInput(Unit) {
                 var totalDx = 0f
@@ -2777,19 +2803,31 @@ fun NowPlayingLyricsLayer(
     // Apple Music Synced Word-by-Word Lyrics View
     val processedLyrics = remember(lyrics, duration) { LyricsProcessor.processSyncedLyrics(lyrics, trackDurationMs = duration) }
 
-    // High-refresh (60/120fps) frame clock interpolating position from audio playback with ~35ms latency compensation
+    // High-refresh (60/120fps) continuous frame clock decoupled from 100ms polling with anticipatory vocal attack lead (+80ms)
     var livePositionMs by remember { mutableLongStateOf(currentPosition) }
-    LaunchedEffect(isPlaying, currentPosition, isLyricsActive) {
-        livePositionMs = currentPosition
-        if (isPlaying && isLyricsActive) {
-            val anchorRealtime = android.os.SystemClock.elapsedRealtime()
-            val anchorPos = currentPosition
-            while (isLyricsActive) {
-                withFrameMillis {
-                    val elapsed = android.os.SystemClock.elapsedRealtime() - anchorRealtime
-                    // Compensate for Bluetooth / speaker audio output buffer latency (~35ms)
-                    livePositionMs = (anchorPos + elapsed - 35L).coerceAtLeast(0L)
-                }
+    var anchorRealtime by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+    var anchorPos by remember { mutableLongStateOf(currentPosition) }
+
+    LaunchedEffect(currentPosition) {
+        val diff = kotlin.math.abs(livePositionMs - currentPosition)
+        if (diff > 400L || !isPlaying) {
+            anchorPos = currentPosition
+            anchorRealtime = android.os.SystemClock.elapsedRealtime()
+            livePositionMs = (currentPosition + 80L).coerceAtLeast(0L)
+        }
+    }
+
+    LaunchedEffect(isPlaying, isLyricsActive) {
+        if (!isPlaying || !isLyricsActive) {
+            livePositionMs = (currentPosition + 80L).coerceAtLeast(0L)
+            return@LaunchedEffect
+        }
+        anchorRealtime = android.os.SystemClock.elapsedRealtime()
+        anchorPos = currentPosition
+        while (isLyricsActive && isPlaying) {
+            withFrameMillis {
+                val elapsed = android.os.SystemClock.elapsedRealtime() - anchorRealtime
+                livePositionMs = (anchorPos + elapsed + 80L).coerceAtLeast(0L)
             }
         }
     }
@@ -2816,7 +2854,7 @@ fun NowPlayingLyricsLayer(
             .graphicsLayer {
                 translationX = lyricsSlideX
                 translationY = if (isSwitchingSubpages) 0f else lyrTransY
-                alpha = if (isSwitchingSubpages) (1f - subpageSlideFraction).coerceIn(0f, 1f) else lyricsProgress.coerceIn(0f, 1f)
+                alpha = if (isSwitchingSubpages) 1f else lyricsProgress.coerceIn(0f, 1f)
             }
             .pointerInput(Unit) {
                 var totalDx = 0f
