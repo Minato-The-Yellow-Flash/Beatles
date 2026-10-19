@@ -1573,19 +1573,36 @@ object MusicRepository {
 
                     var parsedSynced: List<LyricLine>? = null
                     if (syncedItems.isNotEmpty()) {
+                        // Filter out lofi, remix, cover, slowed derivatives unless query explicitly asks for them
+                        val isQueryDerivative = url.contains("lofi", ignoreCase = true) || url.contains("remix", ignoreCase = true) ||
+                                url.contains("cover", ignoreCase = true) || url.contains("slowed", ignoreCase = true)
+                        val candidatePool = if (!isQueryDerivative) {
+                            val nonDerivatives = syncedItems.filter { item ->
+                                val tName = item.get("trackName")?.takeIf { !it.isJsonNull }?.asString?.lowercase() ?: ""
+                                !tName.contains("lofi") && !tName.contains("remix") &&
+                                !tName.contains("cover") && !tName.contains("slowed") &&
+                                !tName.contains("reverb") && !tName.contains("flip") &&
+                                !tName.contains("karaoke") && !tName.contains("instrumental") &&
+                                !tName.contains("tribute")
+                            }
+                            if (nonDerivatives.isNotEmpty()) nonDerivatives else syncedItems
+                        } else {
+                            syncedItems
+                        }
+
                         val best = if (targetDur > 0) {
-                            val durationClose = syncedItems.filter {
+                            val durationClose = candidatePool.filter {
                                 val d = it.get("duration")?.asDouble ?: 0.0
-                                kotlin.math.abs(d - targetDur) <= 6.0
+                                kotlin.math.abs(d - targetDur) <= 8.0
                             }.minByOrNull {
                                 val d = it.get("duration")?.asDouble ?: 0.0
                                 kotlin.math.abs(d - targetDur)
                             }
-                            durationClose ?: syncedItems.minByOrNull {
+                            durationClose ?: candidatePool.minByOrNull {
                                 val d = it.get("duration")?.asDouble ?: 0.0
                                 kotlin.math.abs(d - targetDur)
-                            } ?: syncedItems.first()
-                        } else syncedItems.first()
+                            } ?: candidatePool.first()
+                        } else candidatePool.first()
 
                         val sStr = best.get("syncedLyrics")?.takeIf { !it.isJsonNull }?.asString
                         if (!sStr.isNullOrEmpty()) {
@@ -1656,13 +1673,14 @@ object MusicRepository {
                 
                 for (p in parts.drop(1)) {
                     val pClean = p.replace(Regex("(?i)official.*|video.*|audio.*|lyric.*|latest.*|punjabi.*|hindi.*|song.*"), "").trim()
-                    if (pClean.length in 3..29) {
+                    if (pClean.length in 3..45) {
                         queries.add("$mainTitle $pClean")
                     }
                 }
             }
             queries.add(t)
-            if (!isLabel && cleanArtist.isNotEmpty()) {
+            if (cleanArtist.isNotEmpty()) {
+                queries.add("$mainTitle $cleanArtist")
                 queries.add("$t $cleanArtist")
             }
 

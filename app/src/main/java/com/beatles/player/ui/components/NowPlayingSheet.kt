@@ -13,10 +13,15 @@ import androidx.compose.ui.graphics.asComposeRenderEffect
 import com.beatles.player.ui.motion.LiquidMotion
 import com.beatles.player.ui.motion.liquidPress
 import com.beatles.player.ui.glassRefraction
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.StrokeCap
+import kotlin.math.pow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -1452,6 +1457,7 @@ fun NowPlayingSheet(
 
         // Custom Beatles Sleep Timer Modal Sheet
         if (showSleepTimerDialog) {
+            BackHandler(enabled = true) { showSleepTimerDialog = false }
             BeatlesSleepTimerSheet(
                 state = sleepTimerState,
                 currentSong = song,
@@ -1991,6 +1997,159 @@ fun SleepExtendWarningPopup(
 }
 
 @Composable
+fun CameraLensHorizontalDial(
+    value: Int,
+    range: IntRange = 5..180,
+    step: Int = 1,
+    majorInterval: Int = 15,
+    unitLabel: String = "min",
+    onValueChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val view = LocalView.current
+    val density = LocalDensity.current
+
+    val tickSpacingDp = 12.dp
+    val tickSpacingPx = with(density) { tickSpacingDp.toPx() }
+
+    var currentFloatVal by remember(value) { mutableFloatStateOf(value.toFloat()) }
+    var lastHapticInt by remember { mutableIntStateOf(value) }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(110.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(AppTheme.fg(0.05f))
+            .pointerInput(range, step) {
+                detectHorizontalDragGestures(
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        val deltaVal = -dragAmount / tickSpacingPx * step
+                        val newVal = (currentFloatVal + deltaVal).coerceIn(range.first.toFloat(), range.last.toFloat())
+                        currentFloatVal = newVal
+                        val newInt = (Math.round(newVal / step) * step).coerceIn(range.first, range.last)
+                        if (newInt != lastHapticInt) {
+                            lastHapticInt = newInt
+                            Haptics.tick(view)
+                            onValueChange(newInt)
+                        }
+                    },
+                    onDragEnd = {
+                        val finalInt = (Math.round(currentFloatVal / step) * step).coerceIn(range.first, range.last)
+                        currentFloatVal = finalInt.toFloat()
+                        onValueChange(finalInt)
+                    }
+                )
+            }
+    ) {
+        val totalWidthPx = constraints.maxWidth.toFloat()
+        val centerXPx = totalWidthPx / 2f
+
+        // Digital display
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = "$value",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFFF82C38),
+                    letterSpacing = (-0.5).sp
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = unitLabel,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AppTheme.fg(0.7f),
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                if (unitLabel == "min" && value >= 60) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "(${value / 60}h ${value % 60}m)",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = AppTheme.fg(0.45f),
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+            }
+        }
+
+        // Camera lens marking ruler canvas
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp)
+                .align(Alignment.BottomCenter)
+        ) {
+            val canvasHeight = size.height
+            val activeVal = currentFloatVal
+
+            val totalTicksVisible = (totalWidthPx / tickSpacingPx).toInt() + 4
+            val minVisibleTick = (activeVal - totalTicksVisible / 2).toInt().coerceAtLeast(range.first)
+            val maxVisibleTick = (activeVal + totalTicksVisible / 2).toInt().coerceAtMost(range.last)
+
+            for (tickVal in minVisibleTick..maxVisibleTick step step) {
+                val tickX = centerXPx + (tickVal - activeVal) * (tickSpacingPx / step)
+                if (tickX < -20f || tickX > totalWidthPx + 20f) continue
+
+                val isMajor = tickVal % majorInterval == 0
+                val isMedium = tickVal % (majorInterval / 3).coerceAtLeast(5) == 0
+
+                val tickHeight = when {
+                    isMajor -> 26.dp.toPx()
+                    isMedium -> 18.dp.toPx()
+                    else -> 10.dp.toPx()
+                }
+
+                val distFromCenter = kotlin.math.abs(tickX - centerXPx)
+                val edgeAlpha = (1f - (distFromCenter / (totalWidthPx * 0.48f)).pow(2)).coerceIn(0f, 1f)
+                val tickColor = when {
+                    isMajor -> AppTheme.fg(0.85f * edgeAlpha)
+                    isMedium -> AppTheme.fg(0.50f * edgeAlpha)
+                    else -> AppTheme.fg(0.25f * edgeAlpha)
+                }
+
+                val strokeWidth = if (isMajor) 2.dp.toPx() else 1.2.dp.toPx()
+                val startY = canvasHeight - tickHeight - 8.dp.toPx()
+                val endY = canvasHeight - 8.dp.toPx()
+
+                drawLine(
+                    color = tickColor,
+                    start = Offset(tickX, startY),
+                    end = Offset(tickX, endY),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round
+                )
+            }
+
+            // Fixed Center Indicator Needle in AccentRed
+            val needleTop = canvasHeight - 34.dp.toPx()
+            val needleBottom = canvasHeight - 6.dp.toPx()
+            drawLine(
+                color = Color(0xFFF82C38),
+                start = Offset(centerXPx, needleTop),
+                end = Offset(centerXPx, needleBottom),
+                strokeWidth = 2.5.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            drawCircle(
+                color = Color(0xFFF82C38),
+                radius = 3.dp.toPx(),
+                center = Offset(centerXPx, needleTop - 2.dp.toPx())
+            )
+        }
+    }
+}
+
+@Composable
 fun BeatlesSleepTimerSheet(
     state: com.beatles.player.viewmodel.SleepTimerState,
     currentSong: Song,
@@ -2004,14 +2163,19 @@ fun BeatlesSleepTimerSheet(
 ) {
     val isDark = AppTheme.isDark
     val view = LocalView.current
-    val sheetBg = if (isDark) Color(0xFF1E2026) else Color(0xFFFFFFFF)
-    val sheetBorder = if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+    val navCorner = 28.dp
+    val sheetShape = RoundedCornerShape(topStart = navCorner, topEnd = navCorner, bottomStart = 0.dp, bottomEnd = 0.dp)
+    val sheetBg = if (isDark) Color(0xFF1E2026).copy(alpha = 0.94f) else Color.White.copy(alpha = 0.94f)
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Time, 1: Songs, 2: 1 Track, 3: Album
     var customMinutes by remember { mutableIntStateOf(30) }
     var customSongs by remember { mutableIntStateOf(3) }
 
     val isTimerActive = state.mode != com.beatles.player.viewmodel.SleepTimerMode.NONE
+
+    BackHandler(enabled = true) {
+        onDismiss()
+    }
 
     Box(
         modifier = Modifier
@@ -2027,10 +2191,23 @@ fun BeatlesSleepTimerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(24.dp, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.25f))
-                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .shadow(24.dp, sheetShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.25f))
+                .clip(sheetShape)
                 .background(sheetBg)
-                .border(1.dp, sheetBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .drawWithContent {
+                    drawContent()
+                    drawLine(
+                        color = if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.08f),
+                        start = Offset(0f, 0f),
+                        end = Offset(size.width, 0f),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                }
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures { _, dragAmount ->
+                        if (dragAmount > 25f) onDismiss()
+                    }
+                }
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { /* swallow touches */ }
                 .padding(horizontal = 20.dp)
                 .padding(top = 12.dp, bottom = 28.dp)
@@ -2185,196 +2362,115 @@ fun BeatlesSleepTimerSheet(
             // Tab Content
             when (selectedTab) {
                 0 -> {
-                    // Time Mode: Presets + Custom Stepper
-                    Text("Preset Duration", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    // Time Mode: Camera Lens Dial + Presets
+                    Text("Slide to Adjust Duration", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(8.dp))
+
+                    CameraLensHorizontalDial(
+                        value = customMinutes,
+                        range = 5..180,
+                        step = 1,
+                        majorInterval = 15,
+                        unitLabel = "min",
+                        onValueChange = { customMinutes = it }
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text("Quick Presets", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val minutePresets = listOf(15, 30, 45, 60, 90)
                         minutePresets.forEach { m ->
+                            val isPresetSelected = customMinutes == m
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(38.dp)
+                                    .height(36.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(AppTheme.fg(0.08f))
+                                    .background(if (isPresetSelected) Color(0xFFF82C38).copy(alpha = 0.20f) else AppTheme.fg(0.08f))
+                                    .border(1.dp, if (isPresetSelected) Color(0xFFF82C38) else Color.Transparent, RoundedCornerShape(12.dp))
                                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                        Haptics.confirm(view)
-                                        onStartMinutes(m)
+                                        Haptics.tick(view)
+                                        customMinutes = m
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("${m}m", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("${m}m", color = if (isPresetSelected) Color(0xFFF82C38) else AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Custom Duration", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Custom Stepper
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(AppTheme.fg(0.06f))
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        IconButton(
-                            onClick = {
-                                if (customMinutes > 5) {
-                                    Haptics.tick(view)
-                                    customMinutes = (customMinutes - 5).coerceAtLeast(5)
-                                }
-                            },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(AppTheme.fg(0.10f))
-                        ) {
-                            Text("-", color = AppTheme.fg(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                "$customMinutes min",
-                                color = AppTheme.fg(),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                if (customMinutes >= 60) "${customMinutes / 60}h ${customMinutes % 60}m" else "Timer",
-                                color = AppTheme.fg(0.5f),
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        IconButton(
-                            onClick = {
-                                if (customMinutes < 300) {
-                                    Haptics.tick(view)
-                                    customMinutes = (customMinutes + 5).coerceAtMost(300)
-                                }
-                            },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(AppTheme.fg(0.10f))
-                        ) {
-                            Text("+", color = AppTheme.fg(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = {
                             Haptics.confirm(view)
                             onStartMinutes(customMinutes)
                         },
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF82C38))
                     ) {
-                        Text("Start Timer ($customMinutes min)", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Start Sleep Timer ($customMinutes min)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
                 1 -> {
-                    // Songs Mode: Presets + Stepper
-                    Text("Preset Songs", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    // Songs Mode: Camera Lens Dial + Presets
+                    Text("Slide to Adjust Songs", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(8.dp))
+
+                    CameraLensHorizontalDial(
+                        value = customSongs,
+                        range = 1..30,
+                        step = 1,
+                        majorInterval = 5,
+                        unitLabel = "songs",
+                        onValueChange = { customSongs = it }
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text("Quick Presets", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val songPresets = listOf(1, 2, 3, 5, 10)
                         songPresets.forEach { count ->
+                            val isPresetSelected = customSongs == count
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(38.dp)
+                                    .height(36.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(AppTheme.fg(0.08f))
+                                    .background(if (isPresetSelected) Color(0xFFF82C38).copy(alpha = 0.20f) else AppTheme.fg(0.08f))
+                                    .border(1.dp, if (isPresetSelected) Color(0xFFF82C38) else Color.Transparent, RoundedCornerShape(12.dp))
                                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                        Haptics.confirm(view)
-                                        onStartSongs(count)
+                                        Haptics.tick(view)
+                                        customSongs = count
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("$count", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("$count", color = if (isPresetSelected) Color(0xFFF82C38) else AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Custom Song Count", color = AppTheme.fg(0.6f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(AppTheme.fg(0.06f))
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        IconButton(
-                            onClick = {
-                                if (customSongs > 1) {
-                                    Haptics.tick(view)
-                                    customSongs--
-                                }
-                            },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(AppTheme.fg(0.10f))
-                        ) {
-                            Text("-", color = AppTheme.fg(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                "$customSongs song${if (customSongs > 1) "s" else ""}",
-                                color = AppTheme.fg(),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text("Before sleep", color = AppTheme.fg(0.5f), fontSize = 11.sp)
-                        }
-
-                        IconButton(
-                            onClick = {
-                                if (customSongs < 50) {
-                                    Haptics.tick(view)
-                                    customSongs++
-                                }
-                            },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(AppTheme.fg(0.10f))
-                        ) {
-                            Text("+", color = AppTheme.fg(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = {
                             Haptics.confirm(view)
                             onStartSongs(customSongs)
                         },
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF82C38))
                     ) {
-                        Text("Start Timer ($customSongs song${if (customSongs > 1) "s" else ""})", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Start Sleep Timer ($customSongs song${if (customSongs > 1) "s" else ""})", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
                 }
                 2 -> {
@@ -2514,21 +2610,18 @@ fun NowPlayingQueueLayer(
 ) {
     val density = LocalDensity.current
     val view = LocalView.current
-    val nextUpSlideX = if (isSwitchingSubpages) (1f - subpageSlideFraction) * with(density) { 60.dp.toPx() } else 0f
-    val nextUpStretchY = 1.0f + 0.08f * (1f - nextUpProgress)
+    val config = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidthPx = with(density) { config.screenWidthDp.dp.toPx() }
+    val nextUpSlideX = if (isSwitchingSubpages) (1f - subpageSlideFraction) * screenWidthPx else 0f
     val nextUpTransY = if (isSwitchingSubpages) 0f else with(density) { 36.dp.toPx() * (1f - nextUpProgress) }
-    val sideStretch = if (isSwitchingSubpages) 1f + 0.05f * sideStretchFactor else 1f
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(bottom = 190.dp, top = 136.dp)
             .graphicsLayer {
-                scaleX = sideStretch
-                scaleY = nextUpStretchY
                 translationX = nextUpSlideX
                 translationY = nextUpTransY
-                transformOrigin = TransformOrigin(0.5f, 1.0f)
                 alpha = if (isSwitchingSubpages) subpageSlideFraction.coerceIn(0f, 1f) else nextUpProgress.coerceIn(0f, 1f)
             }
             .pointerInput(Unit) {
@@ -2712,20 +2805,18 @@ fun NowPlayingLyricsLayer(
         label = "lyricsBottomPad"
     )
 
-    val lyricsSlideX = if (isSwitchingSubpages) -subpageSlideFraction * with(density) { 60.dp.toPx() } else 0f
-    val sideStretch = if (isSwitchingSubpages) 1f + 0.05f * sideStretchFactor else 1f
+    val config = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidthPx = with(density) { config.screenWidthDp.dp.toPx() }
+    val lyricsSlideX = if (isSwitchingSubpages) -subpageSlideFraction * screenWidthPx else 0f
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(top = lyricsTopPad, bottom = lyricsBottomPad)
             .graphicsLayer {
-                scaleX = sideStretch
-                scaleY = lyrStretchY
                 translationX = lyricsSlideX
                 translationY = if (isSwitchingSubpages) 0f else lyrTransY
                 alpha = if (isSwitchingSubpages) (1f - subpageSlideFraction).coerceIn(0f, 1f) else lyricsProgress.coerceIn(0f, 1f)
-                transformOrigin = TransformOrigin(0.5f, 1.0f)
             }
             .pointerInput(Unit) {
                 var totalDx = 0f

@@ -137,6 +137,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     val hazeState = remember { HazeState() }
     val scope = rememberCoroutineScope()
     var activeMiniArtBounds by remember { mutableStateOf<Rect?>(null) }
+    var activeMiniPillBounds by remember { mutableStateOf<Rect?>(null) }
+    var activeMiniPillCorner by remember { mutableStateOf(22.dp) }
     val playerProgress = remember { Animatable(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
 
@@ -655,6 +657,24 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
+                                        .onGloballyPositioned { coords ->
+                                            if (coords.isAttached && !isSearch) {
+                                                val b = coords.boundsInRoot()
+                                                if (b.width > 20f && b.height > 20f) {
+                                                    if (compact) {
+                                                        if (morph > 0.25f) {
+                                                            activeMiniPillBounds = b
+                                                            activeMiniPillCorner = pillCorner
+                                                        }
+                                                    } else {
+                                                        if (morph <= 0.75f) {
+                                                            activeMiniPillBounds = b
+                                                            activeMiniPillCorner = pillCorner
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                         .graphicsLayer {
                                             translationX = animatedOffsetXPx
                                             scaleX = stretchX
@@ -742,6 +762,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     } else if (!isScrubbingActive) {
                                                         // Pure tap: expand player (swipes NEVER expand player)
                                                         if (kotlin.math.abs(dx) <= slop && kotlin.math.abs(dy) <= slop) {
+                                                            activeMiniPillCorner = pillCorner
                                                             viewModel.setExpanded(true)
                                                         }
                                                     }
@@ -1646,136 +1667,235 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     val p = playerProgress.value.coerceIn(0f, 1f)
 
                     if (playerProgress.value > 0.001f || state.isExpanded) {
-                        val screenHeightPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
-                        val miniTopPx = activeMiniArtBounds?.top ?: (screenHeightPx - with(density) { 145.dp.toPx() })
+                        val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
+                        val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
+                        val screenWidthPx = with(density) { screenWidthDp.toPx() }
+                        val screenHeightPx = with(density) { screenHeightDp.toPx() }
 
                         // YouTube Music style full-page morph into mini media player pill shape
-                        val upperCorner = (30.dp * (1f - p)).coerceAtLeast(0.dp)
-                        val lowerCorner = (30.dp * (1f - p)).coerceAtLeast(0.dp)
-                        val playerShape = RoundedCornerShape(
-                            topStart = upperCorner,
-                            topEnd = upperCorner,
-                            bottomStart = lowerCorner,
-                            bottomEnd = lowerCorner
+                        val startBounds = activeMiniPillBounds ?: Rect(
+                            left = with(density) { 16.dp.toPx() },
+                            top = screenHeightPx - with(density) { 145.dp.toPx() },
+                            right = screenWidthPx - with(density) { 16.dp.toPx() },
+                            bottom = screenHeightPx - with(density) { 100.dp.toPx() }
                         )
-                        val horizontalPad = (16.dp * (1f - p)).coerceAtLeast(0.dp)
-                        val morphMotionFactor = (4f * p * (1f - p)).coerceIn(0f, 1f)
-                        val sheetStretchY = 1f + 0.025f * morphMotionFactor
-                        val sheetSqueezeX = 1f - 0.015f * morphMotionFactor
-                        val sheetSlideY = 0f
+                        val startCorner = activeMiniPillCorner
+
+                        val curLeft = startBounds.left * (1f - p)
+                        val curTop = startBounds.top * (1f - p)
+                        val curWidth = startBounds.width + (screenWidthPx - startBounds.width) * p
+                        val curHeight = startBounds.height + (screenHeightPx - startBounds.height) * p
+                        val curCorner = (startCorner * (1f - p)).coerceAtLeast(0.dp)
+
+                        val curCornerShape = RoundedCornerShape(curCorner)
+                        val curWidthDp = with(density) { curWidth.toDp() }
+                        val curHeightDp = with(density) { curHeight.toDp() }
+                        val curLeftPx = curLeft.roundToInt()
+                        val curTopPx = curTop.roundToInt()
+                        val playerBg = if (isDark) Color(0xFF0E0E10) else Color.White
 
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = horizontalPad)
                                 .zIndex(100f)
-                                .graphicsLayer {
-                                    translationY = sheetSlideY
-                                    scaleX = sheetSqueezeX
-                                    scaleY = sheetStretchY
-                                    alpha = if (p < 0.01f) 0f else 1f
-                                    shape = playerShape
-                                    clip = true
-                                    shadowElevation = (16.dp * (1f - p)).toPx()
-                                }
-                                .clip(playerShape)
-                                .pointerInput(Unit) {
-                                    detectVerticalDragGestures(
-                                        onDragEnd = {
-                                            val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
-                                            if (isInSubPage) return@detectVerticalDragGestures
-                                            if (playerProgress.value < 0.85f) {
-                                                viewModel.setExpanded(false)
-                                            } else {
-                                                scope.launch {
-                                                    playerProgress.animateTo(
-                                                        targetValue = 1f,
-                                                        animationSpec = spring(dampingRatio = 0.88f, stiffness = 380f)
-                                                    )
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .offset { IntOffset(curLeftPx, curTopPx) }
+                                    .size(curWidthDp, curHeightDp)
+                                    .shadow(
+                                        elevation = (18.dp * (1f - p)).coerceAtLeast(0.dp),
+                                        shape = curCornerShape,
+                                        spotColor = Color.Black.copy(alpha = 0.5f)
+                                    )
+                                    .clip(curCornerShape)
+                                    .background(playerBg)
+                                    .pointerInput(Unit) {
+                                        detectVerticalDragGestures(
+                                            onDragEnd = {
+                                                val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
+                                                if (isInSubPage) return@detectVerticalDragGestures
+                                                if (playerProgress.value < 0.85f) {
+                                                    viewModel.setExpanded(false)
+                                                } else {
+                                                    scope.launch {
+                                                        playerProgress.animateTo(
+                                                            targetValue = 1f,
+                                                            animationSpec = spring(dampingRatio = 0.88f, stiffness = 380f)
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                            onVerticalDrag = { _, dragAmount ->
+                                                val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
+                                                if (state.isExpanded && !isInSubPage) {
+                                                    scope.launch {
+                                                        val newP = (playerProgress.value - dragAmount / 450f).coerceIn(0f, 1f)
+                                                        playerProgress.snapTo(newP)
+                                                    }
                                                 }
                                             }
-                                        },
-                                        onVerticalDrag = { _, dragAmount ->
-                                            val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
-                                            if (state.isExpanded && !isInSubPage) {
-                                                scope.launch {
-                                                    val newP = (playerProgress.value - dragAmount / 450f).coerceIn(0f, 1f)
-                                                    playerProgress.snapTo(newP)
-                                                }
+                                        )
+                                    }
+                            ) {
+                                // 1. Full Player Content (aligned to screen space so album art and components glide smoothly)
+                                val fullPlayerAlpha = if (p <= 0.08f) 0f else ((p - 0.08f) / 0.92f).coerceIn(0f, 1f)
+                                if (fullPlayerAlpha > 0.001f) {
+                                    Box(
+                                        modifier = Modifier
+                                            .requiredSize(screenWidthDp, screenHeightDp)
+                                            .offset { IntOffset(-curLeftPx, -curTopPx) }
+                                            .graphicsLayer { alpha = fullPlayerAlpha }
+                                    ) {
+                                        NowPlayingSheet(
+                                            song = state.currentSong!!,
+                                            isPlaying = state.isPlaying,
+                                            currentPosition = state.currentPosition,
+                                            duration = state.duration,
+                                            shuffleEnabled = state.shuffleModeEnabled,
+                                            repeatMode = state.repeatMode,
+                                            isFavorite = state.isFavorite,
+                                            lyrics = state.lyrics,
+                                            playlist = state.playlist,
+                                            showLyrics = state.showLyrics && state.showSeeAllSection != "next_up",
+                                            showNextUp = state.showSeeAllSection == "next_up",
+                                            playlists = state.playlists,
+                                            isLoadingStream = state.isLoadingStream,
+                                            autoMixActive = state.autoMixState.isMixing,
+                                            autoMixProgress = state.autoMixState.progress,
+                                            autoMixLabel = state.autoMixState.label,
+                                            morphProgress = p,
+                                            sourceOriginBounds = if (state.isExpanded && state.selectedSongBounds != null) {
+                                                state.selectedSongBounds
+                                            } else {
+                                                activeMiniArtBounds ?: state.selectedSongBounds
+                                            },
+                                            onClose = { viewModel.setExpanded(false) },
+                                            onTogglePlay = { viewModel.togglePlayPause() },
+                                            onNext = { viewModel.playNext() },
+                                            onPrevious = { viewModel.playPrevious() },
+                                            onSeek = { viewModel.seekTo(it) },
+                                            onToggleShuffle = { viewModel.toggleShuffle() },
+                                            onToggleRepeat = { viewModel.toggleRepeat() },
+                                            onToggleFavorite = { viewModel.toggleFavorite() },
+                                            onToggleLyrics = { viewModel.switchToLyrics() },
+                                            onToggleNextUp = { viewModel.switchToNextUp() },
+                                            onPlayFromQueue = { s -> viewModel.playSong(s, state.playlist) },
+                                            autoPlayEnabled = state.autoPlayEnabled,
+                                            onToggleAutoPlay = { viewModel.toggleAutoPlay() },
+                                            autoMixMode = state.autoMixMode,
+                                            autoMixEnabled = state.autoMixEnabled,
+                                            onToggleAutoMix = { viewModel.toggleAutoMix() },
+                                            onGoToAlbum = { s -> viewModel.openAlbumForSong(s) },
+                                            onMoveToPlayNext = { s -> viewModel.moveSongToPlayNext(s) },
+                                            onRemoveFromQueue = { sId -> viewModel.removeSongFromQueue(sId) },
+                                            onMoveInQueue = { from, to -> viewModel.moveSongInQueue(from, to) },
+                                            onDownloadSong = { s -> viewModel.downloadSongHighestQuality(s) },
+                                            downloadedSongs = state.downloadedSongs,
+                                            downloadingSongId = state.downloadingSongId,
+                                            downloadProgress = state.downloadProgress,
+                                            downloadFailedSongId = state.downloadFailedSongId,
+                                            onCancelDownload = { sId -> viewModel.cancelDownload(sId) },
+                                            onRemoveDownload = { sId -> viewModel.removeDownloadedSong(sId) },
+                                            onCreatePlaylist = { name, s -> viewModel.createPlaylist(name, s) },
+                                            onAddToPlaylist = { pId, s -> viewModel.addSongToPlaylist(pId, s) },
+                                            queueTitle = state.queueTitle,
+                                            isArtistMixLoading = state.isArtistMixLoading,
+                                            onLoadMoreUpcoming = { viewModel.loadMoreUpcoming() },
+                                            onPlayArtistMix = { viewModel.playArtistMix(it) },
+                                            sleepTimerState = state.sleepTimerState,
+                                            onStartSleepTimerMinutes = { viewModel.startSleepTimerMinutes(it) },
+                                            onStartSleepTimerSongs = { viewModel.startSleepTimerSongs(it) },
+                                            onStartSleepTimerAlbum = { viewModel.startSleepTimerAlbum() },
+                                            onStartSleepTimerEndOfTrack = { viewModel.startSleepTimerEndOfTrack() },
+                                            onExtendSleepTimerMinutes = { viewModel.extendSleepTimerMinutes(it) },
+                                            onExtendSleepTimerSongs = { viewModel.extendSleepTimerSongs(it) },
+                                            onExtendSleepTimerAlbum = { viewModel.extendSleepTimerAlbum() },
+                                            onCancelSleepTimer = { viewModel.cancelSleepTimer() },
+                                            onDismissSleepWarning = { viewModel.dismissSleepWarningPopup() },
+                                            onSetSleepExtendPopupEnabled = { viewModel.setSleepExtendPopupEnabled(it) },
+                                            autoMixTargetSongId = state.autoMixTargetSongId
+                                        )
+                                    }
+                                }
+
+                                // 2. Mini Player Pill Content (crossfades in when closing/expanding)
+                                val miniPillAlpha = if (p >= 0.35f) 0f else ((0.35f - p) / 0.35f).coerceIn(0f, 1f)
+                                if (miniPillAlpha > 0.001f) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .graphicsLayer { alpha = miniPillAlpha }
+                                            .padding(horizontal = 8.dp),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxSize(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            val pillArt = if (startCorner > 24.dp) 38.dp else 32.dp
+                                            if (state.currentSong!!.coverUrl.isNotEmpty()) {
+                                                AsyncImage(
+                                                    model = state.currentSong!!.coverUrl,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(pillArt)
+                                                        .clip(CircleShape)
+                                                )
+                                            } else {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(pillArt)
+                                                        .clip(CircleShape)
+                                                        .background(Color.Gray)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Text(
+                                                    state.currentSong!!.title,
+                                                    color = Color.White,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    maxLines = 1
+                                                )
+                                                Text(
+                                                    state.currentSong!!.artist,
+                                                    color = Color.White.copy(alpha = 0.6f),
+                                                    fontSize = 10.sp,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { viewModel.togglePlayPause() },
+                                                modifier = Modifier.size(34.dp)
+                                            ) {
+                                                Icon(
+                                                    if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { viewModel.playNext() },
+                                                modifier = Modifier.size(34.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.SkipNext,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
                                             }
                                         }
-                                    )
+                                    }
                                 }
-                        ) {
-                            NowPlayingSheet(
-                                song = state.currentSong!!,
-                                isPlaying = state.isPlaying,
-                                currentPosition = state.currentPosition,
-                                duration = state.duration,
-                                shuffleEnabled = state.shuffleModeEnabled,
-                                repeatMode = state.repeatMode,
-                                isFavorite = state.isFavorite,
-                                lyrics = state.lyrics,
-                                playlist = state.playlist,
-                                showLyrics = state.showLyrics && state.showSeeAllSection != "next_up",
-                                showNextUp = state.showSeeAllSection == "next_up",
-                                playlists = state.playlists,
-                                isLoadingStream = state.isLoadingStream,
-                                autoMixActive = state.autoMixState.isMixing,
-                                autoMixProgress = state.autoMixState.progress,
-                                autoMixLabel = state.autoMixState.label,
-                                morphProgress = p,
-                                sourceOriginBounds = if (state.isExpanded && state.selectedSongBounds != null) {
-                                    state.selectedSongBounds
-                                } else {
-                                    activeMiniArtBounds ?: state.selectedSongBounds
-                                },
-                                onClose = { viewModel.setExpanded(false) },
-                                onTogglePlay = { viewModel.togglePlayPause() },
-                                onNext = { viewModel.playNext() },
-                                onPrevious = { viewModel.playPrevious() },
-                                onSeek = { viewModel.seekTo(it) },
-                                onToggleShuffle = { viewModel.toggleShuffle() },
-                                onToggleRepeat = { viewModel.toggleRepeat() },
-                                onToggleFavorite = { viewModel.toggleFavorite() },
-                                onToggleLyrics = { viewModel.switchToLyrics() },
-                                onToggleNextUp = { viewModel.switchToNextUp() },
-                                onPlayFromQueue = { s -> viewModel.playSong(s, state.playlist) },
-                                autoPlayEnabled = state.autoPlayEnabled,
-                                onToggleAutoPlay = { viewModel.toggleAutoPlay() },
-                                autoMixMode = state.autoMixMode,
-                                autoMixEnabled = state.autoMixEnabled,
-                                onToggleAutoMix = { viewModel.toggleAutoMix() },
-                                onGoToAlbum = { s -> viewModel.openAlbumForSong(s) },
-                                onMoveToPlayNext = { s -> viewModel.moveSongToPlayNext(s) },
-                                onRemoveFromQueue = { sId -> viewModel.removeSongFromQueue(sId) },
-                                onMoveInQueue = { from, to -> viewModel.moveSongInQueue(from, to) },
-                                onDownloadSong = { s -> viewModel.downloadSongHighestQuality(s) },
-                                downloadedSongs = state.downloadedSongs,
-                                downloadingSongId = state.downloadingSongId,
-                                downloadProgress = state.downloadProgress,
-                                downloadFailedSongId = state.downloadFailedSongId,
-                                onCancelDownload = { sId -> viewModel.cancelDownload(sId) },
-                                onRemoveDownload = { sId -> viewModel.removeDownloadedSong(sId) },
-                                onCreatePlaylist = { name, s -> viewModel.createPlaylist(name, s) },
-                                onAddToPlaylist = { pId, s -> viewModel.addSongToPlaylist(pId, s) },
-                                queueTitle = state.queueTitle,
-                                isArtistMixLoading = state.isArtistMixLoading,
-                                onLoadMoreUpcoming = { viewModel.loadMoreUpcoming() },
-                                onPlayArtistMix = { viewModel.playArtistMix(it) },
-                                sleepTimerState = state.sleepTimerState,
-                                onStartSleepTimerMinutes = { viewModel.startSleepTimerMinutes(it) },
-                                onStartSleepTimerSongs = { viewModel.startSleepTimerSongs(it) },
-                                onStartSleepTimerAlbum = { viewModel.startSleepTimerAlbum() },
-                                onStartSleepTimerEndOfTrack = { viewModel.startSleepTimerEndOfTrack() },
-                                onExtendSleepTimerMinutes = { viewModel.extendSleepTimerMinutes(it) },
-                                onExtendSleepTimerSongs = { viewModel.extendSleepTimerSongs(it) },
-                                onExtendSleepTimerAlbum = { viewModel.extendSleepTimerAlbum() },
-                                onCancelSleepTimer = { viewModel.cancelSleepTimer() },
-                                onDismissSleepWarning = { viewModel.dismissSleepWarningPopup() },
-                                onSetSleepExtendPopupEnabled = { viewModel.setSleepExtendPopupEnabled(it) },
-                                autoMixTargetSongId = state.autoMixTargetSongId
-                            )
+                            }
                         }
                     }
                 }

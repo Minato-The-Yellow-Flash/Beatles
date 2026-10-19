@@ -47,9 +47,9 @@ object LyricsProcessor {
         val sortedLyrics = lyrics.sortedBy { it.timeMs }
         val result = mutableListOf<SyncedLyricLine>()
 
-        // 1. Intro Instrumental Detection (before first lyric line)
+        // 1. Intro Instrumental Detection (only for true extended intros >= 10s)
         val firstLineTime = sortedLyrics.first().timeMs
-        if (firstLineTime >= 5000L) {
+        if (firstLineTime >= 10000L) {
             result.add(
                 SyncedLyricLine(
                     timeMs = 0L,
@@ -62,7 +62,7 @@ object LyricsProcessor {
             )
         }
 
-        // 2. Process Lines and detect inter-line instrumental gaps
+        // 2. Process Lines and detect true inter-line instrumental gaps (>= 14s)
         for (idx in sortedLyrics.indices) {
             val line = sortedLyrics[idx]
             val nextLine = sortedLyrics.getOrNull(idx + 1)
@@ -93,15 +93,17 @@ object LyricsProcessor {
             val totalGap = if (nextLine != null && nextLine.timeMs > line.timeMs) {
                 nextLine.timeMs - line.timeMs
             } else {
-                (rawWords.size * 600L + 1200L).coerceIn(2500L, 8000L)
+                (rawWords.size * 650L + 1500L).coerceIn(3000L, 9000L)
             }
 
-            val hasInstrumentalBreak = totalGap >= 7000L
+            // Only insert instrumental break for true musical solos/interludes (gap >= 14 seconds)
+            val hasInstrumentalBreak = totalGap >= 14000L
             val lineDur = if (hasInstrumentalBreak) {
-                val vocalDur = (rawWords.size * 550L + 800L).coerceIn(2500L, 8500L)
-                minOf(vocalDur, totalGap - 3000L)
+                val vocalDur = (rawWords.size * 650L + 1500L).coerceIn(3000L, 10000L)
+                minOf(vocalDur, totalGap - 4000L)
             } else {
-                (totalGap - 200L).coerceAtLeast(1200L)
+                // Keep the lyric line active up to the next line arrival so lyrics never lag behind
+                (totalGap - 80L).coerceAtLeast(1000L)
             }
 
             val words = if (rawWords.isEmpty()) {
@@ -136,10 +138,10 @@ object LyricsProcessor {
                 )
             )
 
-            // Check if there is an instrumental break before the next line
+            // Only add instrumental break if the gap is truly substantial (>= 5000ms after vocal finishes)
             if (hasInstrumentalBreak && nextLine != null) {
                 val gapMs = nextLine.timeMs - lineEndMs
-                if (gapMs >= 3000L) {
+                if (gapMs >= 5000L) {
                     result.add(
                         SyncedLyricLine(
                             timeMs = lineEndMs,
@@ -151,7 +153,7 @@ object LyricsProcessor {
                         )
                     )
                 }
-            } else if (nextLine == null && trackDurationMs > 0 && (trackDurationMs - lineEndMs) >= 5000L) {
+            } else if (nextLine == null && trackDurationMs > 0 && (trackDurationMs - lineEndMs) >= 8000L) {
                 // Outro instrumental break
                 val outroDur = trackDurationMs - lineEndMs
                 result.add(
