@@ -234,6 +234,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val downloadedSongs = try { storage.getDownloadedSongs(application) } catch (_: Exception) { emptyList() }
         val initialRecs = try { repo.getRealPredictiveSongs() } catch (_: Exception) { emptyList() }
         val isSleepExtendEnabled = try { storage.isSleepExtendPopupEnabled(application) } catch (_: Exception) { true }
+
+        val restoredSong = com.beatles.player.player.PlaybackService.activeSong ?: try { storage.getLastPlayedSong(application) } catch (_: Exception) { null }
+        val restoredPlaylist = if (com.beatles.player.player.PlaybackService.activePlaylist.isNotEmpty()) {
+            com.beatles.player.player.PlaybackService.activePlaylist
+        } else {
+            try { storage.getLastPlayedPlaylist(application) } catch (_: Exception) { emptyList() }
+        }
+        val isServicePlaying = com.beatles.player.player.PlaybackService.instance?.defaultPlayer?.isPlaying == true ||
+            (autoMixEngine.currentDeck?.isPlaying == true)
+
         _uiState.update { it.copy(
             onboardStep = if (isOnboarded) 0 else 1,
             userName = userName,
@@ -250,8 +260,32 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             favoriteSongs = savedFavorites,
             recentlyPlayed = savedRecent,
             recommendations = initialRecs,
-            sleepTimerState = SleepTimerState(isExtendPopupEnabled = isSleepExtendEnabled)
+            sleepTimerState = SleepTimerState(isExtendPopupEnabled = isSleepExtendEnabled),
+            currentSong = restoredSong,
+            playlist = if (restoredPlaylist.isNotEmpty()) restoredPlaylist else (restoredSong?.let { listOf(it) } ?: emptyList()),
+            isPlaying = isServicePlaying,
+            duration = (restoredSong?.durationSeconds?.toLong()?.times(1000L)) ?: 0L
         )}
+
+        if (initialArtists.isNotEmpty()) {
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val discovered = repo.discoverPersonalizedAlbums(initialArtists.toList())
+                    if (discovered.isNotEmpty()) {
+                        storage.savePersonalizedAlbums(application, discovered)
+                        val updatedAlbums = (discovered + _uiState.value.albums).distinctBy { it.id }
+                        val updatedSets = repo.getPersonalizedAlbumSets(initialArtists, updatedAlbums, affinityMap)
+                        _uiState.update {
+                            it.copy(
+                                heroAlbum = discovered.firstOrNull() ?: it.heroAlbum,
+                                albums = updatedAlbums,
+                                albumSets = if (updatedSets.isNotEmpty()) updatedSets else it.albumSets
+                            )
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
         AudioPlayerManager.onExternalSkipNext = { playNext() }
         AudioPlayerManager.onExternalSkipPrevious = { playPrevious() }
 
@@ -1192,6 +1226,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             playlist = pl, currentPosition = 0L, duration = song.durationSeconds * 1000L,
             isFavorite = storage.isFavorite(getApplication(), song.id), lyrics = emptyList(), showLyrics = false
         )}
+        com.beatles.player.player.PlaybackService.activeSong = song
+        com.beatles.player.player.PlaybackService.activePlaylist = pl
+        storage.saveLastPlayedSong(getApplication(), song)
+        storage.saveLastPlayedPlaylist(getApplication(), pl)
         storage.addToRecentlyPlayed(getApplication(), song)
         sessionPlayedSongIds.add(song.id)
         viewModelScope.launch {
@@ -1683,6 +1721,25 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     }
                 }
             }
+        }
+    }
+
+    fun syncPlaybackWithService() {
+        val serviceSong = com.beatles.player.player.PlaybackService.activeSong ?: try { storage.getLastPlayedSong(getApplication()) } catch (_: Exception) { null }
+        val servicePl = if (com.beatles.player.player.PlaybackService.activePlaylist.isNotEmpty()) {
+            com.beatles.player.player.PlaybackService.activePlaylist
+        } else {
+            try { storage.getLastPlayedPlaylist(getApplication()) } catch (_: Exception) { emptyList() }
+        }
+        val isPlayingNow = com.beatles.player.player.PlaybackService.instance?.defaultPlayer?.isPlaying == true || (autoMixEngine.currentDeck?.isPlaying == true)
+
+        if (serviceSong != null && (_uiState.value.currentSong == null || _uiState.value.currentSong?.id != serviceSong.id || _uiState.value.isPlaying != isPlayingNow)) {
+            _uiState.update { it.copy(
+                currentSong = serviceSong,
+                playlist = if (it.playlist.isNotEmpty()) it.playlist else if (servicePl.isNotEmpty()) servicePl else listOf(serviceSong),
+                isPlaying = isPlayingNow,
+                duration = if (it.duration > 0L) it.duration else serviceSong.durationSeconds * 1000L
+            )}
         }
     }
 

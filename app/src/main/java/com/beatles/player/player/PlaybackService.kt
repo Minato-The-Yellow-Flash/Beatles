@@ -62,6 +62,8 @@ class PlaybackService : MediaSessionService() {
 
     companion object {
         var instance: PlaybackService? = null
+        var activeSong: com.beatles.player.data.Song? = null
+        var activePlaylist: List<com.beatles.player.data.Song> = emptyList()
     }
 
     private fun createPlayer(): ExoPlayer {

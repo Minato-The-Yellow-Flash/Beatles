@@ -543,6 +543,43 @@ class AutoMixEngine(
                 }
                 outG to inG
             }
+            TransitionType.ECHO_OUT -> {
+                // DJay Mac Echo Out: Dry track plays until t = 0.36, then cuts and decays into a 4-beat echo tail
+                val outG = if (t < 0.36f) {
+                    1.0f
+                } else {
+                    val tailP = ((t - 0.36f) / 0.64f).coerceIn(0f, 1f)
+                    val decay = kotlin.math.exp(-3.8f * tailP)
+                    val bounce = 0.65f + 0.35f * kotlin.math.cos(tailP * 8f * PI.toFloat())
+                    (decay * bounce).coerceIn(0f, 1f)
+                }
+                val inG = if (t < 0.36f) {
+                    (t / 0.36f) * 0.45f * gainMatch
+                } else {
+                    (0.45f + 0.55f * sin(((t - 0.36f) / 0.24f).coerceIn(0f, 1f) * halfPi)) * gainMatch
+                }
+                outG to inG
+            }
+            TransitionType.FILTER_FADE -> {
+                // DJay Mac Filter Fade: Outgoing energy thins out (lowering beats and tones)
+                val outG = (cos(t * halfPi)).let { it * it }.coerceIn(0f, 1f)
+                val inG = (sin(t * halfPi).let { kotlin.math.sqrt(it) } * gainMatch).coerceIn(0f, 1.25f)
+                outG to inG
+            }
+            TransitionType.BASS_SWAP -> {
+                // DJay Mac Bass Swap: Prevents low-end frequency clashing
+                val outG = if (t < 0.50f) {
+                    cos((t / 0.50f) * (halfPi * 0.65f))
+                } else {
+                    0.35f * cos(((t - 0.50f) / 0.50f) * halfPi)
+                }
+                val inG = if (t < 0.50f) {
+                    0.50f * sin((t / 0.50f) * halfPi) * gainMatch
+                } else {
+                    (0.50f + 0.50f * sin(((t - 0.50f) / 0.50f) * halfPi)) * gainMatch
+                }
+                outG to inG
+            }
             else -> {
                 // Standard equal-power sinusoidal crossfade
                 val o = cos(t * halfPi).coerceIn(0f, 1f)

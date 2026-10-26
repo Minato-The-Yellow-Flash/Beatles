@@ -64,4 +64,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        try {
+            viewModel.syncPlaybackWithService()
+        } catch (_: Exception) {}
+    }
 }

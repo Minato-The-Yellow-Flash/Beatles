@@ -10,7 +10,10 @@ enum class TransitionType {
     BEAT_MIX,
     PHRASE_MIX,
     INSTRUMENTAL_OVERLAP,
-    DROP_TRANSITION
+    DROP_TRANSITION,
+    ECHO_OUT,
+    FILTER_FADE,
+    BASS_SWAP
 }
 
 enum class AutoMixMode {
@@ -140,6 +143,9 @@ data class AutoMixState(
             null -> when (activePlan?.type) {
                 TransitionType.BEAT_MIX -> "Beat-matched mix"
                 TransitionType.DROP_TRANSITION -> "Beat drop mix"
+                TransitionType.ECHO_OUT -> "DJ Echo Out mix"
+                TransitionType.FILTER_FADE -> "DJ Filter Fade"
+                TransitionType.BASS_SWAP -> "DJ Bass Swap mix"
                 TransitionType.PHRASE_MIX -> "Phrase mix"
                 TransitionType.INSTRUMENTAL_OVERLAP -> "Intro overlap"
                 TransitionType.LONG_CROSSFADE -> "Outro blend"

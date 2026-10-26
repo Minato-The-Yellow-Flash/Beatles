@@ -1527,7 +1527,8 @@ object MusicRepository {
                     val secPart = match.groupValues[2].replace(':', '.')
                     val secDouble = secPart.toDoubleOrNull() ?: 0.0
                     val ms = kotlin.math.max(0L, min * 60000L + (secDouble * 1000).toLong() + offsetMs)
-                    result.add(LyricLine(ms, rawText))
+                    val romanized = IndicTransliteration.toLatin(rawText)
+                    result.add(LyricLine(ms, romanized))
                 }
             }
 
@@ -1616,7 +1617,7 @@ object MusicRepository {
                     val pStr = plainItem?.get("plainLyrics")?.takeIf { !it.isJsonNull }?.asString
                     if (!pStr.isNullOrEmpty()) {
                         parsedPlain = pStr.split("\n").filter { it.isNotBlank() }.mapIndexed { idx, line ->
-                            LyricLine(timeMs = idx * 3000L, text = line.trim())
+                            LyricLine(timeMs = idx * 3000L, text = IndicTransliteration.toLatin(line.trim()))
                         }
                     }
 
@@ -1681,6 +1682,8 @@ object MusicRepository {
             queries.add(t)
             if (cleanArtist.isNotEmpty()) {
                 queries.add("$mainTitle $cleanArtist")
+                queries.add("$mainTitle $cleanArtist romanized")
+                queries.add("$mainTitle $cleanArtist english")
                 queries.add("$t $cleanArtist")
             }
 
@@ -1705,7 +1708,46 @@ object MusicRepository {
                 return@withContext candidatePlainLyrics
             }
 
-            // Fallback: lyrics.ovh
+            // Multi-source Fallback 1: JioSaavn Lyrics API (specialized for Punjabi / Hindi / South Asian releases)
+            try {
+                val jioQuery = URLEncoder.encode("$mainTitle $cleanArtist", "UTF-8")
+                val jioSearchUrl = "https://www.jiosaavn.com/api.php?__call=search.getResults&q=$jioQuery&_format=json&ctx=web6dot0&p=1&n=5"
+                val jioReq = Request.Builder().url(jioSearchUrl).header("User-Agent", "Mozilla/5.0").build()
+                val jioBody = httpClient.newCall(jioReq).execute().body?.string()
+                if (jioBody != null) {
+                    val jioJson = gson.fromJson(jioBody, JsonObject::class.java)
+                    val results = jioJson.getAsJsonArray("results")
+                    if (results != null && results.size() > 0) {
+                        for (elem in results) {
+                            val rObj = elem.asJsonObject
+                            val hasLyrics = rObj.get("has_lyrics")?.asString == "true"
+                            val songId = rObj.get("id")?.asString
+                            if (hasLyrics && !songId.isNullOrBlank()) {
+                                val lyricUrl = "https://www.jiosaavn.com/api.php?__call=lyrics.getLyrics&lyrics_id=$songId&ctx=web6dot0&api_version=4&_format=json"
+                                val lReq = Request.Builder().url(lyricUrl).header("User-Agent", "Mozilla/5.0").build()
+                                val lBody = httpClient.newCall(lReq).execute().body?.string()
+                                if (lBody != null) {
+                                    val lJson = gson.fromJson(lBody, JsonObject::class.java)
+                                    val rawLrc = lJson.get("lyrics")?.asString
+                                    if (!rawLrc.isNullOrBlank()) {
+                                        val cleanText = rawLrc.replace("<br>", "\n").replace("<br/>", "\n").replace(Regex("<.*?>"), "")
+                                        val lines = cleanText.split("\n").map { it.trim() }.filter { it.isNotBlank() }
+                                        val parsed = lines.mapIndexed { idx, line ->
+                                            LyricLine(timeMs = idx * 3200L, text = IndicTransliteration.toLatin(line))
+                                        }
+                                        if (parsed.isNotEmpty()) {
+                                            lyricsCache[cacheKey] = parsed
+                                            return@withContext parsed
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+
+            // Fallback 2: lyrics.ovh
             if (!isLabel && cleanArtist.isNotEmpty()) {
                 val reqOvh = Request.Builder().url("https://api.lyrics.ovh/v1/${URLEncoder.encode(cleanArtist, "UTF-8")}/${URLEncoder.encode(mainTitle, "UTF-8")}").build()
                 val bodyOvh = httpClient.newCall(reqOvh).execute().body?.string()
@@ -1714,7 +1756,7 @@ object MusicRepository {
                     val ovhLyrics = ovhJson.get("lyrics")?.asString
                     if (!ovhLyrics.isNullOrEmpty()) {
                         val parsed = ovhLyrics.split("\n").filter { it.isNotBlank() }.mapIndexed { idx, line ->
-                            LyricLine(timeMs = idx * 3000L, text = line.trim())
+                            LyricLine(timeMs = idx * 3000L, text = IndicTransliteration.toLatin(line.trim()))
                         }
                         if (parsed.isNotEmpty()) {
                             lyricsCache[cacheKey] = parsed
@@ -1964,13 +2006,29 @@ object MusicRepository {
             .filter { it.isNotBlank() }
             .distinct()
 
-        val matched = baseAlbums.filter { alb ->
-            val aLower = alb.artist.lowercase().trim()
-            userArtistNames.any { aLower.contains(it) || it.contains(aLower) }
+        val matched = if (userArtistNames.isNotEmpty()) {
+            baseAlbums.filter { alb ->
+                val aLower = alb.artist.lowercase().trim()
+                userArtistNames.any { aLower.contains(it) || it.contains(aLower) }
+            }.sortedByDescending { alb ->
+                val aLower = alb.artist.lowercase().trim()
+                val score = userArtistNames.indexOfFirst { aLower.contains(it) || it.contains(aLower) }
+                if (score >= 0) 1000 - score else 0
+            }
+        } else emptyList()
+
+        val remaining = baseAlbums.filter { alb -> matched.none { it.id == alb.id } }
+        val isDesiInterest = language.equals("Punjabi", ignoreCase = true) || language.equals("Hindi", ignoreCase = true) ||
+                userArtistNames.any { it.contains("karan") || it.contains("diljit") || it.contains("sidhu") || it.contains("arijit") || it.contains("ap dhillon") || it.contains("shubh") }
+        
+        val sortedRemaining = if (isDesiInterest) {
+            remaining.sortedByDescending { it.genre.contains("Punjabi", ignoreCase = true) || it.genre.contains("Bollywood", ignoreCase = true) }
+        } else {
+            remaining
         }
 
-        val finalAlbums = if (matched.isNotEmpty()) matched else baseAlbums
-        val offset = (kotlin.math.abs(rotationSeed) % finalAlbums.size).toInt()
+        val finalAlbums = if (matched.isNotEmpty()) (matched + sortedRemaining) else sortedRemaining
+        val offset = if (matched.isNotEmpty()) 0 else (kotlin.math.abs(rotationSeed) % finalAlbums.size).toInt()
         return finalAlbums.drop(offset) + finalAlbums.take(offset)
     }
 

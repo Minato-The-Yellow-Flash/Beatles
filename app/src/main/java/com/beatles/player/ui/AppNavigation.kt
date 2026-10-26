@@ -138,6 +138,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     val scope = rememberCoroutineScope()
     var activeMiniArtBounds by remember { mutableStateOf<Rect?>(null) }
     var standardMiniPillBounds by remember { mutableStateOf<Rect?>(null) }
+    var midMiniPillBounds by remember { mutableStateOf<Rect?>(null) }
+    var openedFromMidCapsule by remember { mutableStateOf(false) }
     var activeMiniPillBounds by remember { mutableStateOf<Rect?>(null) }
     var activeMiniPillCorner by remember { mutableStateOf(22.dp) }
     val playerProgress = remember { Animatable(0f) }
@@ -150,16 +152,14 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
     LaunchedEffect(state.isExpanded) {
         if (state.isExpanded) {
-            scrolledState = false
-            headerOffsetPx = 0f
             playerProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = spring(dampingRatio = 0.90f, stiffness = 550f)
+                animationSpec = spring(dampingRatio = 0.95f, stiffness = 390f)
             )
         } else {
             playerProgress.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(dampingRatio = 1.0f, stiffness = 550f)
+                animationSpec = spring(dampingRatio = 0.98f, stiffness = 380f)
             )
         }
     }
@@ -666,6 +666,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 val b = coords.boundsInRoot()
                                                 if (b.width > 20f && b.height > 20f) {
                                                     if (compact) {
+                                                        midMiniPillBounds = b
                                                         if (morph > 0.6f && !state.isExpanded) {
                                                             activeMiniPillBounds = b
                                                             activeMiniPillCorner = pillCorner
@@ -673,8 +674,10 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     } else {
                                                         standardMiniPillBounds = b
                                                         if (!state.isExpanded || activeMiniPillBounds == null) {
-                                                            activeMiniPillBounds = b
-                                                            activeMiniPillCorner = pillCorner
+                                                            if (!openedFromMidCapsule) {
+                                                                activeMiniPillBounds = b
+                                                                activeMiniPillCorner = pillCorner
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -768,6 +771,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         // Pure tap: expand player (swipes NEVER expand player)
                                                         if (kotlin.math.abs(dx) <= slop && kotlin.math.abs(dy) <= slop) {
                                                             activeMiniPillCorner = pillCorner
+                                                            if (compact) {
+                                                                openedFromMidCapsule = true
+                                                                if (midMiniPillBounds != null) {
+                                                                    activeMiniPillBounds = midMiniPillBounds
+                                                                }
+                                                            } else {
+                                                                openedFromMidCapsule = false
+                                                                if (standardMiniPillBounds != null) {
+                                                                    activeMiniPillBounds = standardMiniPillBounds
+                                                                }
+                                                            }
                                                             viewModel.setExpanded(true)
                                                         }
                                                     }
@@ -1692,8 +1706,10 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         val isExpandingFromSongCard = state.isExpanded && playerProgress.value < 0.99f && state.selectedSongBounds != null
                         val startBounds = if (isExpandingFromSongCard) {
                             state.selectedSongBounds!!
+                        } else if (openedFromMidCapsule && midMiniPillBounds != null) {
+                            midMiniPillBounds!!
                         } else {
-                            activeMiniPillBounds ?: Rect(
+                            activeMiniPillBounds ?: standardMiniPillBounds ?: Rect(
                                 left = with(density) { 16.dp.toPx() },
                                 top = screenHeightPx - with(density) { 145.dp.toPx() },
                                 right = screenWidthPx - with(density) { 16.dp.toPx() },
@@ -1748,8 +1764,11 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
                                                 if (isInSubPage) return@detectVerticalDragGestures
                                                 if (playerProgress.value < 0.85f) {
-                                                    // Downward swipe collapse: always contract into the mini media player itself
-                                                    if (standardMiniPillBounds != null) {
+                                                    // Collapse back into the exact originating pill (mid capsule or standard bottom mini player)
+                                                    if (openedFromMidCapsule && midMiniPillBounds != null) {
+                                                        activeMiniPillBounds = midMiniPillBounds
+                                                        activeMiniPillCorner = 28.dp
+                                                    } else if (standardMiniPillBounds != null) {
                                                         activeMiniPillBounds = standardMiniPillBounds
                                                         activeMiniPillCorner = 22.dp
                                                     }
@@ -1758,7 +1777,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     scope.launch {
                                                         playerProgress.animateTo(
                                                             targetValue = 1f,
-                                                            animationSpec = spring(dampingRatio = 0.90f, stiffness = 550f)
+                                                            animationSpec = spring(dampingRatio = 0.95f, stiffness = 390f)
                                                         )
                                                     }
                                                 }
@@ -1807,7 +1826,16 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             } else {
                                                 activeMiniArtBounds ?: state.selectedSongBounds
                                             },
-                                            onClose = { viewModel.setExpanded(false) },
+                                            onClose = {
+                                                if (openedFromMidCapsule && midMiniPillBounds != null) {
+                                                    activeMiniPillBounds = midMiniPillBounds
+                                                    activeMiniPillCorner = 28.dp
+                                                } else if (standardMiniPillBounds != null) {
+                                                    activeMiniPillBounds = standardMiniPillBounds
+                                                    activeMiniPillCorner = 22.dp
+                                                }
+                                                viewModel.setExpanded(false)
+                                            },
                                             onTogglePlay = { viewModel.togglePlayPause() },
                                             onNext = { viewModel.playNext() },
                                             onPrevious = { viewModel.playPrevious() },

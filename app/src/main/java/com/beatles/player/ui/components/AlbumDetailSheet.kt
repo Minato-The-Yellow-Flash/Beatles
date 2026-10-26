@@ -10,6 +10,8 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -41,8 +43,11 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -78,6 +83,7 @@ fun FluidAlbumDetailOverlay(
 ) {
     val density = LocalDensity.current
     val config = LocalConfiguration.current
+    val view = LocalView.current
     val isDark = isDarkTheme(state.themeMode)
     val bgColor = if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
@@ -350,6 +356,25 @@ fun FluidAlbumDetailOverlay(
                         )
                     }
 
+                    // More albums by this artist
+                    val otherAlbums = remember(alb, state.albums) {
+                        state.albums.filter {
+                            it.id != alb.id && (it.artist.equals(alb.artist, ignoreCase = true) || alb.artist.contains(it.artist, ignoreCase = true))
+                        }
+                    }
+
+                    // Similar artists
+                    val similarArtists = remember(alb.artist) {
+                        val mapped = com.beatles.player.ui.screens.INSTANT_RELATED_ARTISTS[alb.artist] ?: emptyList()
+                        if (mapped.isNotEmpty()) mapped
+                        else {
+                            val currArt = com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(alb.artist, ignoreCase = true) }
+                            com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.filter {
+                                !it.name.equals(alb.artist, ignoreCase = true) && (currArt == null || it.genre == currArt.genre || it.language == currArt.language)
+                            }.take(6)
+                        }
+                    }
+
                     // 3. Scrollable Content (Header, Metadata, Action Pills, Tracklist)
                     LazyColumn(
                         state = listState,
@@ -594,6 +619,145 @@ fun FluidAlbumDetailOverlay(
                                         }
                                         if (idx < alb.songs.size - 1) {
                                             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 1. More Albums by this Artist
+                        if (otherAlbums.isNotEmpty()) {
+                            item {
+                                Spacer(modifier = Modifier.height(28.dp))
+                                Text(
+                                    "More by ${alb.artist}",
+                                    color = textPrimary,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 24.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    items(otherAlbums) { otherAlb ->
+                                        var otherBounds by remember { mutableStateOf<Rect?>(null) }
+                                        Column(
+                                            modifier = Modifier
+                                                .width(135.dp)
+                                                .clickable {
+                                                    Haptics.click(view)
+                                                    viewModel.setSelectedAlbum(otherAlb, otherBounds)
+                                                }
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(135.dp)
+                                                    .onGloballyPositioned { otherBounds = it.boundsInRoot() }
+                                                    .clip(RoundedCornerShape(14.dp))
+                                            ) {
+                                                AppleMusicGradientCover(
+                                                    title = otherAlb.title,
+                                                    artist = otherAlb.artist,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    cornerRadius = 14.dp,
+                                                    showLabel = false
+                                                )
+                                                if (otherAlb.coverUrl.isNotBlank() && otherAlb.coverUrl.startsWith("http")) {
+                                                    AsyncImage(
+                                                        model = otherAlb.coverUrl,
+                                                        contentDescription = otherAlb.title,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                otherAlb.title,
+                                                color = textPrimary,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1
+                                            )
+                                            Text(
+                                                "${otherAlb.releaseYear} • ${otherAlb.songs.size.coerceAtLeast(1)} songs",
+                                                color = textSecondary,
+                                                fontSize = 11.sp,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Similar Artists
+                        if (similarArtists.isNotEmpty()) {
+                            item {
+                                Spacer(modifier = Modifier.height(28.dp))
+                                Text(
+                                    "Similar Artists",
+                                    color = textPrimary,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 24.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    items(similarArtists) { simArt ->
+                                        var simBounds by remember { mutableStateOf<Rect?>(null) }
+                                        Column(
+                                            modifier = Modifier
+                                                .width(105.dp)
+                                                .clickable {
+                                                    Haptics.click(view)
+                                                    viewModel.setSelectedArtist(simArt.name, simBounds)
+                                                },
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(92.dp)
+                                                    .onGloballyPositioned { simBounds = it.boundsInRoot() }
+                                                    .clip(CircleShape)
+                                            ) {
+                                                AppleMusicGradientCover(
+                                                    title = simArt.name,
+                                                    artist = simArt.genre,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    cornerRadius = 46.dp,
+                                                    showLabel = false
+                                                )
+                                                if (simArt.imageUrl.isNotBlank() && simArt.imageUrl.startsWith("http")) {
+                                                    AsyncImage(
+                                                        model = simArt.imageUrl,
+                                                        contentDescription = simArt.name,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                simArt.name,
+                                                color = textPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                            )
+                                            Text(
+                                                simArt.genre,
+                                                color = textSecondary,
+                                                fontSize = 10.sp,
+                                                maxLines = 1,
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                            )
                                         }
                                     }
                                 }

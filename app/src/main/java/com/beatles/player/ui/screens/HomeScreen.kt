@@ -82,6 +82,10 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import kotlinx.coroutines.isActive
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.ui.platform.LocalView
 import com.beatles.player.ui.components.Haptics
@@ -140,6 +144,15 @@ fun HomeScreen(
             }
         }
         list
+    }
+
+    val heroAlbumsList = remember(state.heroAlbum, allFeaturedAlbums) {
+        val list = mutableListOf<Album>()
+        state.heroAlbum?.let { list.add(it) }
+        for (alb in allFeaturedAlbums) {
+            if (list.none { it.id == alb.id }) list.add(alb)
+        }
+        if (list.isEmpty()) allFeaturedAlbums else list
     }
 
     // Selected Genre Filter State
@@ -213,12 +226,13 @@ fun HomeScreen(
         }
     }
 
-    // Adaptive Artist Spotlight derived from user recommendations / listening style
-    val spotlightArtist = remember(state.selectedArtists, state.recentlyPlayed, state.favoriteSongs, allRecs) {
-        state.selectedArtists.firstOrNull { it.isNotBlank() }
-            ?: state.recentlyPlayed.firstOrNull { it.artist.isNotBlank() }?.artist
-            ?: state.favoriteSongs.firstOrNull { it.artist.isNotBlank() }?.artist
-            ?: allRecs.firstOrNull { it.artist.isNotBlank() }?.artist
+    // Adaptive Artist Spotlight derived from currently playing track or user recommendations / listening style
+    val spotlightArtist = remember(state.currentSong, state.selectedArtists, state.recentlyPlayed, state.favoriteSongs, allRecs) {
+        state.currentSong?.artist?.replace(" - Topic", "")?.trim()?.ifBlank { null }
+            ?: state.recentlyPlayed.firstOrNull { it.artist.isNotBlank() }?.artist?.replace(" - Topic", "")?.trim()
+            ?: state.selectedArtists.firstOrNull { it.isNotBlank() }
+            ?: state.favoriteSongs.firstOrNull { it.artist.isNotBlank() }?.artist?.replace(" - Topic", "")?.trim()
+            ?: allRecs.firstOrNull { it.artist.isNotBlank() }?.artist?.replace(" - Topic", "")?.trim()
             ?: "Karan Aujla"
     }
 
@@ -235,6 +249,18 @@ fun HomeScreen(
             .distinctBy { it.id }
         if (matches.isNotEmpty()) matches.take(6)
         else allRecs.take(4)
+    }
+
+    val coversAndRemixes = remember(allRecs, state.albums) {
+        val pool = allRecs + state.albums.flatMap { it.songs }
+        val matches = pool.filter { s ->
+            val t = s.title.lowercase()
+            t.contains("remix") || t.contains("cover") || t.contains("acoustic") ||
+            t.contains("lofi") || t.contains("rework") || t.contains("mashup") ||
+            t.contains("mix") || t.contains("slowed")
+        }.distinctBy { it.id }
+        if (matches.isNotEmpty()) matches.take(8)
+        else pool.takeLast(6)
     }
 
     val view = LocalView.current
@@ -418,172 +444,220 @@ fun HomeScreen(
             }
 
             // =========================================================================
-            // 1. FEATURED ALBUMS (Top Section - Hero + At least 5 Albums/Playlists)
+            // 1. FEATURED ALBUMS HERO BANNER (Top Section - Swipeable HorizontalPager, 350dp, Auto-Cycling)
             // =========================================================================
-            val heroAlbum = state.heroAlbum ?: allFeaturedAlbums.firstOrNull()
-            if (heroAlbum != null) {
-                item(key = "hero_section") {
-                    val heroGenre = (heroAlbum.genre ?: "Pop").uppercase()
-                    val heroYear = heroAlbum.releaseYear ?: "2026"
-                    val heroSongs = heroAlbum.songs ?: emptyList()
-                    val heroCover = remember(heroAlbum) {
-                        if (heroAlbum.coverUrl.isNotBlank() && heroAlbum.coverUrl.startsWith("http")) heroAlbum.coverUrl
-                        else heroAlbum.songs.firstOrNull { it.coverUrl.isNotBlank() && it.coverUrl.startsWith("http") }?.coverUrl
-                            ?: CURATED_ONBOARD_ARTISTS.find { it.name.equals(heroAlbum.artist, ignoreCase = true) }?.imageUrl
-                            ?: ""
-                    }
-                    var heroBounds by remember { mutableStateOf<Rect?>(null) }
-                    val bannerHazeState = remember { HazeState() }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
-                            .height(280.dp)
-                            .onGloballyPositioned { coords -> heroBounds = coords.boundsInRoot() }
-                            .clip(RoundedCornerShape(22.dp))
-                    ) {
-                        // Background layers with Haze blur provider
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .haze(bannerHazeState)
-                        ) {
-                            AppleMusicGradientCover(
-                                title = heroAlbum.title ?: "Featured Album",
-                                artist = heroAlbum.artist ?: "",
-                                modifier = Modifier.fillMaxSize(),
-                                cornerRadius = 22.dp
-                            )
-                            if (heroCover.isNotBlank() && heroCover.startsWith("http")) {
-                                AsyncImage(
-                                    model = heroCover,
-                                    contentDescription = heroAlbum.title ?: "",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
+            if (heroAlbumsList.isNotEmpty()) {
+                item(key = "hero_section_pager") {
+                    val pagerState = rememberPagerState(pageCount = { heroAlbumsList.size })
+
+                    // Automatically cycle every 14 seconds when user is idle
+                    LaunchedEffect(pagerState, heroAlbumsList.size) {
+                        if (heroAlbumsList.size > 1) {
+                            while (isActive) {
+                                delay(14_000L)
+                                if (!pagerState.isScrollInProgress) {
+                                    val nextPage = (pagerState.currentPage + 1) % heroAlbumsList.size
+                                    pagerState.animateScrollToPage(
+                                        nextPage,
+                                        animationSpec = tween(750, easing = FastOutSlowInEasing)
+                                    )
+                                }
                             }
+                        }
+                    }
+
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        HorizontalPager(
+                            state = pagerState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(350.dp),
+                            pageSpacing = 12.dp,
+                            contentPadding = PaddingValues(horizontal = 16.dp)
+                        ) { page ->
+                            val currentHeroAlbum = heroAlbumsList[page]
+                            val heroGenre = (currentHeroAlbum.genre ?: "Music").uppercase()
+                            val heroYear = currentHeroAlbum.releaseYear ?: "2026"
+                            val heroSongs = currentHeroAlbum.songs ?: emptyList()
+                            val heroCover = remember(currentHeroAlbum) {
+                                if (currentHeroAlbum.coverUrl.isNotBlank() && currentHeroAlbum.coverUrl.startsWith("http")) currentHeroAlbum.coverUrl
+                                else currentHeroAlbum.songs.firstOrNull { it.coverUrl.isNotBlank() && it.coverUrl.startsWith("http") }?.coverUrl
+                                    ?: CURATED_ONBOARD_ARTISTS.find { it.name.equals(currentHeroAlbum.artist, ignoreCase = true) }?.imageUrl
+                                    ?: ""
+                            }
+                            var heroBounds by remember { mutableStateOf<Rect?>(null) }
+                            val bannerHazeState = remember { HazeState() }
+
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(
-                                        Brush.verticalGradient(
-                                            listOf(
-                                                Color.Transparent,
-                                                Color.Black.copy(alpha = 0.20f),
-                                                Color.Black.copy(alpha = if (isDark) 0.88f else 0.65f)
-                                            )
-                                        )
-                                    )
-                            )
-                        }
-                        // Frosted badge
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(14.dp)
-                                .background(Color(0xFFE2E2E2).copy(alpha = 0.18f), RoundedCornerShape(50))
-                                .padding(horizontal = 12.dp, vertical = 4.dp)
-                        ) {
-                            Text("FEATURED ALBUM", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                        }
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = 16.dp, bottom = 16.dp, end = 16.dp)
-                        ) {
-                            Text(
-                                "NEW RELEASE • $heroYear • $heroGenre",
-                                color = Color.White.copy(alpha = 0.65f),
-                                fontSize = 11.sp,
-                                letterSpacing = 1.5.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(heroAlbum.title ?: "", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            Text("${heroAlbum.artist ?: ""} • ${heroSongs.size} tracks", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                val playInteraction = remember { MutableInteractionSource() }
+                                    .onGloballyPositioned { coords -> heroBounds = coords.boundsInRoot() }
+                                    .clip(RoundedCornerShape(26.dp))
+                            ) {
                                 Box(
                                     modifier = Modifier
-                                        .liquidPress(playInteraction)
-                                        .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
-                                        .clip(RoundedCornerShape(50))
-                                        .hazeChild(
-                                            state = bannerHazeState,
-                                            shape = RoundedCornerShape(50),
-                                            style = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
-                                        )
-                                        .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color.White.copy(alpha = 0.88f))
-                                        .glassRefraction(50.dp, isDark)
-                                        .clickable(
-                                            interactionSource = playInteraction,
-                                            indication = null
-                                        ) {
-                                            heroSongs.firstOrNull()?.let { onPlay(it, heroSongs, heroBounds) }
-                                        }
-                                        .padding(horizontal = 18.dp, vertical = 9.dp),
-                                    contentAlignment = Alignment.Center
+                                        .fillMaxSize()
+                                        .haze(bannerHazeState)
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            Icons.Default.PlayArrow,
-                                            contentDescription = null,
-                                            tint = if (isDark) Color.White else Color(0xFF141416),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            "Play Album",
-                                            color = if (isDark) Color.White else Color(0xFF141416),
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
+                                    AppleMusicGradientCover(
+                                        title = currentHeroAlbum.title ?: "Featured Album",
+                                        artist = currentHeroAlbum.artist ?: "",
+                                        modifier = Modifier.fillMaxSize(),
+                                        cornerRadius = 26.dp
+                                    )
+                                    if (heroCover.isNotBlank() && heroCover.startsWith("http")) {
+                                        AsyncImage(
+                                            model = heroCover,
+                                            contentDescription = currentHeroAlbum.title ?: "",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
                                         )
                                     }
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    listOf(
+                                                        Color.Transparent,
+                                                        Color.Black.copy(alpha = 0.22f),
+                                                        Color.Black.copy(alpha = if (isDark) 0.90f else 0.70f)
+                                                    )
+                                                )
+                                            )
+                                    )
                                 }
 
-                                val viewInteraction = remember { MutableInteractionSource() }
+                                // Frosted badge
                                 Box(
                                     modifier = Modifier
-                                        .liquidPress(viewInteraction)
-                                        .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
-                                        .clip(RoundedCornerShape(50))
-                                        .hazeChild(
-                                            state = bannerHazeState,
-                                            shape = RoundedCornerShape(50),
-                                            style = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
-                                        )
-                                        .background(if (isDark) Color(0xFF383842).copy(alpha = 0.28f) else Color.White.copy(alpha = 0.72f))
-                                        .glassRefraction(50.dp, isDark)
-                                        .clickable(
-                                            interactionSource = viewInteraction,
-                                            indication = null
-                                        ) {
-                                            onSelectAlbum(heroAlbum, heroBounds)
-                                        }
-                                        .padding(horizontal = 16.dp, vertical = 9.dp),
-                                    contentAlignment = Alignment.Center
+                                        .align(Alignment.TopStart)
+                                        .padding(14.dp)
+                                        .background(Color(0xFFE2E2E2).copy(alpha = 0.22f), RoundedCornerShape(50))
+                                        .padding(horizontal = 12.dp, vertical = 5.dp)
                                 ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.ArrowForward,
-                                            contentDescription = null,
-                                            tint = if (isDark) Color.White else Color(0xFF141416),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            "View Album",
-                                            color = if (isDark) Color.White else Color(0xFF141416),
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
+                                    Text("FEATURED ALBUM", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                }
+
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .padding(start = 18.dp, bottom = 18.dp, end = 18.dp)
+                                ) {
+                                    Text(
+                                        "FEATURED RELEASE • $heroYear • $heroGenre",
+                                        color = Color.White.copy(alpha = 0.70f),
+                                        fontSize = 11.sp,
+                                        letterSpacing = 1.5.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(currentHeroAlbum.title ?: "", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    Text("${currentHeroAlbum.artist ?: ""} • ${heroSongs.size} tracks", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        val playInteraction = remember { MutableInteractionSource() }
+                                        Box(
+                                            modifier = Modifier
+                                                .liquidPress(playInteraction)
+                                                .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                                                .clip(RoundedCornerShape(50))
+                                                .background(if (isDark) Color(0xFF383842).copy(alpha = 0.45f) else Color.White.copy(alpha = 0.92f))
+                                                .glassRefraction(50.dp, isDark)
+                                                .clickable(
+                                                    interactionSource = playInteraction,
+                                                    indication = null
+                                                ) {
+                                                    heroSongs.firstOrNull()?.let { onPlay(it, heroSongs, heroBounds) }
+                                                }
+                                                .padding(horizontal = 20.dp, vertical = 10.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    Icons.Default.PlayArrow,
+                                                    contentDescription = null,
+                                                    tint = if (isDark) Color.White else Color(0xFF141416),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    "Play Album",
+                                                    color = if (isDark) Color.White else Color(0xFF141416),
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+
+                                        val viewInteraction = remember { MutableInteractionSource() }
+                                        Box(
+                                            modifier = Modifier
+                                                .liquidPress(viewInteraction)
+                                                .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                                                .clip(RoundedCornerShape(50))
+                                                .background(if (isDark) Color(0xFF383842).copy(alpha = 0.32f) else Color.White.copy(alpha = 0.76f))
+                                                .glassRefraction(50.dp, isDark)
+                                                .clickable(
+                                                    interactionSource = viewInteraction,
+                                                    indication = null
+                                                ) {
+                                                    onSelectAlbum(currentHeroAlbum, heroBounds)
+                                                }
+                                                .padding(horizontal = 18.dp, vertical = 10.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    Icons.AutoMirrored.Filled.ArrowForward,
+                                                    contentDescription = null,
+                                                    tint = if (isDark) Color.White else Color(0xFF141416),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    "View Album",
+                                                    color = if (isDark) Color.White else Color(0xFF141416),
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
+
+                        // Page indicator dots
+                        if (heroAlbumsList.size > 1) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                for (i in heroAlbumsList.indices) {
+                                    val isCurrent = pagerState.currentPage == i
+                                    val dotWidth by animateDpAsState(
+                                        targetValue = if (isCurrent) 20.dp else 6.dp,
+                                        animationSpec = tween(300),
+                                        label = "dotWidth"
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .padding(horizontal = 3.dp)
+                                            .height(5.dp)
+                                            .width(dotWidth)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(if (isCurrent) AccentRed else (if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.20f)))
+                                    )
+                                }
+                            }
+                        }
                     }
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
                 }
             }
 
@@ -990,6 +1064,8 @@ fun HomeScreen(
                         .padding(18.dp)
                 ) {
                     Column {
+                        val isCurrentPlayingArtist = state.currentSong != null && state.currentSong?.artist?.isNotBlank() == true &&
+                            state.currentSong?.artist?.replace(" - Topic", "")?.trim()?.equals(spotlightArtist, ignoreCase = true) == true
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1006,14 +1082,22 @@ fun HomeScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.GraphicEq, contentDescription = null, tint = AccentRed, modifier = Modifier.size(12.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("ARTIST SPOTLIGHT", color = AccentRed, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                    Text(
+                                        if (isCurrentPlayingArtist) "NOW PLAYING ARTIST SPOTLIGHT" else "ARTIST SPOTLIGHT",
+                                        color = AccentRed,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp
+                                    )
                                 }
                             }
                             Text(
-                                "Tailored to your taste",
+                                if (isCurrentPlayingArtist) "Playing: ${state.currentSong?.title}" else "Tailored to your taste",
                                 color = textMuted,
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                modifier = Modifier.padding(start = 8.dp)
                             )
                         }
 
@@ -1314,6 +1398,93 @@ fun HomeScreen(
                                         maxLines = 1
                                     )
                                 }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(28.dp))
+                }
+            }
+
+            // =========================================================================
+            // 5.5. YOUTUBE MUSIC COVERS & REMIXES
+            // =========================================================================
+            if (coversAndRemixes.isNotEmpty()) {
+                item(key = "yt_covers_remixes_section") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(AccentRed)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Covers & Remixes", color = textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text("YouTube Music community reworks & acoustic vibes", color = textMuted, fontSize = 11.sp)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        items(coversAndRemixes.size) { idx ->
+                            val song = coversAndRemixes[idx]
+                            var cardBounds by remember { mutableStateOf<Rect?>(null) }
+                            val trackInteraction = remember { MutableInteractionSource() }
+
+                            Column(
+                                modifier = Modifier
+                                    .width(140.dp)
+                                    .liquidPress(trackInteraction)
+                                    .onGloballyPositioned { coords -> cardBounds = coords.boundsInRoot() }
+                                    .clickable(interactionSource = trackInteraction, indication = null) {
+                                        onPlay(song, coversAndRemixes, cardBounds)
+                                    }
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(140.dp)
+                                        .clip(RoundedCornerShape(18.dp))
+                                ) {
+                                    AppleMusicGradientCover(
+                                        title = song.title ?: "",
+                                        artist = song.artist ?: "",
+                                        modifier = Modifier.fillMaxSize(),
+                                        cornerRadius = 18.dp,
+                                        showLabel = false
+                                    )
+                                    if (song.coverUrl.isNotBlank() && song.coverUrl.startsWith("http")) {
+                                        AsyncImage(
+                                            model = song.coverUrl,
+                                            contentDescription = song.title ?: "",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    // YouTube Music badge pill
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomStart)
+                                            .padding(8.dp)
+                                            .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("REMIX", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(song.title ?: "", color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(song.artist ?: "", color = textSecondary, fontSize = 11.sp, maxLines = 1)
                             }
                         }
                     }

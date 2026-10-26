@@ -456,11 +456,41 @@ fun NowPlayingSheet(
         val config = LocalConfiguration.current
         val screenWidth = config.screenWidthDp.dp
         val screenHeight = config.screenHeightDp.dp
-        val defaultCoverSize = (screenWidth - 72.dp).coerceAtMost(300.dp)
+        val defaultCoverSize = (screenWidth - 36.dp).coerceAtMost(360.dp)
         val defaultCoverLeft = (screenWidth - defaultCoverSize) / 2
-        val defaultCoverTop = 84.dp
+        val defaultCoverTop = 64.dp
 
         val isCompactCover = isCompactTarget
+
+        // Apple Music-style Live Ambient Breathing Artwork Motion
+        val liveInfiniteTransition = rememberInfiniteTransition(label = "liveAlbumArtMotion")
+        val liveArtScaleAnim by liveInfiniteTransition.animateFloat(
+            initialValue = 1.0f,
+            targetValue = if (isPlaying && !isCompactTarget) 1.040f else 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 6500, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "liveArtScale"
+        )
+        val liveArtRotAnim by liveInfiniteTransition.animateFloat(
+            initialValue = -0.5f,
+            targetValue = if (isPlaying && !isCompactTarget) 0.5f else 0.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 8500, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "liveArtRot"
+        )
+
+        var showSameArtistPrompt by remember { mutableStateOf(false) }
+        var promptArtistName by remember { mutableStateOf("") }
+        LaunchedEffect(showSameArtistPrompt) {
+            if (showSameArtistPrompt) {
+                delay(4500L)
+                showSameArtistPrompt = false
+            }
+        }
 
         var lastLyricsInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
         var controlsVisible by remember { mutableStateOf(true) }
@@ -552,20 +582,47 @@ fun NowPlayingSheet(
                         clip = true
                     }
             ) {
-                if (currentCoverUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = currentCoverUrl,
-                        contentDescription = song.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    AppleMusicGradientCover(
-                        title = song.title,
-                        artist = song.artist,
-                        cornerRadius = coverCorner,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                val liveArtScale = if (isPlaying && !isCompactTarget) liveArtScaleAnim else 1.0f
+                val liveArtRot = if (isPlaying && !isCompactTarget) liveArtRotAnim else 0.0f
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = liveArtScale
+                            scaleY = liveArtScale
+                            rotationZ = liveArtRot
+                        }
+                ) {
+                    if (currentCoverUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = currentCoverUrl,
+                            contentDescription = song.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        AppleMusicGradientCover(
+                            title = song.title,
+                            artist = song.artist,
+                            cornerRadius = coverCorner,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    if (isPlaying && !isCompactTarget) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(
+                                            Color.White.copy(alpha = 0.08f),
+                                            Color.Transparent,
+                                            Color.White.copy(alpha = 0.04f)
+                                        )
+                                    )
+                                )
+                        )
+                    }
                 }
             }
         }
@@ -658,6 +715,8 @@ fun NowPlayingSheet(
                                     spillDirection = 1
                                     if (canGoNext) {
                                         Haptics.confirm(view)
+                                        promptArtistName = song.artist.replace(" - Topic", "").trim()
+                                        showSameArtistPrompt = true
                                         onNext()
                                     }
                                 } else if (dragOffsetX > 110f) {
@@ -700,7 +759,8 @@ fun NowPlayingSheet(
                 onRemoveFromQueue = onRemoveFromQueue,
                 onMoveInQueue = onMoveInQueue,
                 autoMixTargetSongId = autoMixTargetSongId,
-                onToggleNextUp = onToggleNextUp
+                onToggleNextUp = onToggleNextUp,
+                onPlayArtistMix = onPlayArtistMix
             )
         }
 
@@ -752,12 +812,11 @@ fun NowPlayingSheet(
                             translationY = -20f * (1f - songInfoProgress)
                         }
                 ) {
-                    // Song title + artist + Language & Genre badge (shifted 6px up)
+                    // Song title + artist + Language & Genre badge (harmonious vertical cadence)
                     Column(
                         modifier = Modifier
-                            .offset(y = (-6).dp)
+                            .fillMaxWidth()
                             .padding(horizontal = 24.dp)
-                            .padding(top = 10.dp)
                     ) {
                     Text(song.title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     Spacer(modifier = Modifier.height(4.dp))
@@ -781,14 +840,13 @@ fun NowPlayingSheet(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Download + Heart + AutoMix Toggle + 3-dots mini menu row (matching Lyrics & Next Up button background settings)
+                // Download + Heart + AutoMix Toggle + 3-dots mini menu row (equal 14dp spacing)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .offset(y = (-5).dp),
+                        .padding(horizontal = 20.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val isLocalTrack = song.streamUrl?.startsWith("content://") == true ||
@@ -1221,6 +1279,51 @@ fun NowPlayingSheet(
             }
         }
 
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showSameArtistPrompt && promptArtistName.isNotBlank(),
+                enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
+                exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(bottom = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .shadow(3.dp, RoundedCornerShape(50), spotColor = Color.Black.copy(alpha = 0.35f))
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xFF24242A).copy(alpha = 0.88f))
+                            .glassRefraction(50.dp, isDark = true)
+                            .clickable {
+                                showSameArtistPrompt = false
+                                onPlayArtistMix(promptArtistName)
+                            }
+                            .padding(horizontal = 16.dp, vertical = 7.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Radio, contentDescription = null, tint = AccentRed, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Listen to more from $promptArtistName?",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Play Mix",
+                                color = AccentRed,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
             // Controls Row (Mathematically and optically centered across all screens)
             Row(
                 modifier = Modifier
@@ -1327,6 +1430,8 @@ fun NowPlayingSheet(
                         onClick = {
                             spillDirection = 1
                             Haptics.click(view)
+                            promptArtistName = song.artist.replace(" - Topic", "").trim()
+                            showSameArtistPrompt = true
                             onNext()
                         },
                         modifier = Modifier.size(56.dp)
@@ -2638,7 +2743,8 @@ fun NowPlayingQueueLayer(
     onRemoveFromQueue: (String) -> Unit,
     onMoveInQueue: (Int, Int) -> Unit,
     autoMixTargetSongId: String?,
-    onToggleNextUp: () -> Unit
+    onToggleNextUp: () -> Unit,
+    onPlayArtistMix: (String) -> Unit = {}
 ) {
     val density = LocalDensity.current
     val view = LocalView.current
@@ -2760,6 +2866,37 @@ fun NowPlayingQueueLayer(
                             onToggleAutoPlay = onToggleAutoPlay,
                             isDark = isDark
                         )
+                    }
+                    item {
+                        val cleanArtist = song.artist.replace(" - Topic", "").trim()
+                        val sameArtistInteraction = remember { MutableInteractionSource() }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 6.dp)
+                                .liquidPress(sameArtistInteraction)
+                                .shadow(2.dp, RoundedCornerShape(12.dp), spotColor = Color.Black.copy(alpha = 0.25f))
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .clickable(interactionSource = sameArtistInteraction, indication = null) {
+                                    Haptics.confirm(view)
+                                    onPlayArtistMix(cleanArtist)
+                                }
+                                .padding(horizontal = 14.dp, vertical = 9.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Radio, contentDescription = null, tint = AccentRed, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "Listen to more from $cleanArtist",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+                            }
+                        }
                     }
                     itemsIndexed(upcoming, key = { _, s -> s.id }) { idx, s ->
                         if (idx >= upcoming.size - 4) {

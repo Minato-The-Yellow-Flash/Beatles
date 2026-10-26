@@ -236,7 +236,7 @@ object TransitionPlanner {
                 }
 
                 // -------------------------------------------------------------
-                // STYLE 3: LONG_CROSSFADE (Melodic Dissolve / Harmonic Blend)
+                // STYLE 3: LONG_CROSSFADE & FILTER_FADE (Melodic Dissolve / Harmonic Blend)
                 // Used for acoustic, vocal, ambient, or melodic tracks.
                 // -------------------------------------------------------------
                 if (!outInfo.isBassHeavy || !inInfo.isBassHeavy) {
@@ -248,22 +248,64 @@ object TransitionPlanner {
 
                         evaluatedCandidates.add(
                             MixCandidate(
-                                type = TransitionType.LONG_CROSSFADE,
+                                type = TransitionType.FILTER_FADE,
                                 startPositionMs = outStart,
                                 durationMs = blendLen,
                                 incomingStartOffsetMs = inOffset,
                                 tempoRatio = 1.0f,
                                 outgoingTempoRatio = 1.0f,
                                 echoDelayMs = 400,
-                                score = blendScore,
-                                description = "Melodic outro dissolve (${outInfo.keyTonic} to ${inInfo.keyTonic})"
+                                score = blendScore + 10f,
+                                description = "DJ Filter Fade sweep (${outInfo.keyTonic} to ${inInfo.keyTonic})"
                             )
                         )
                     }
                 }
 
                 // -------------------------------------------------------------
-                // STYLE 4: INSTRUMENTAL_OVERLAP (Intro Groove Blend)
+                // STYLE 4: DJ BASS SWAP (for Bass-Heavy / Electronic / Hip-Hop)
+                // -------------------------------------------------------------
+                if (outInfo.isBassHeavy && inInfo.isBassHeavy) {
+                    val swapLen = 7_000L
+                    if (outStart + swapLen <= dur - 1_000L) {
+                        evaluatedCandidates.add(
+                            MixCandidate(
+                                type = TransitionType.BASS_SWAP,
+                                startPositionMs = outStart,
+                                durationMs = swapLen,
+                                incomingStartOffsetMs = inOffset,
+                                tempoRatio = 1.0f,
+                                outgoingTempoRatio = 1.0f,
+                                echoDelayMs = 360,
+                                score = 92f,
+                                description = "DJ Bass Swap low-end crossover"
+                            )
+                        )
+                    }
+                }
+
+                // -------------------------------------------------------------
+                // STYLE 5: DJ ECHO OUT (Rhythmic Echo Tail Transition)
+                // -------------------------------------------------------------
+                val echoLen = 6_500L
+                if (outStart + echoLen <= dur - 1_000L && (bpmDiffPct > 0.15f || outSinging)) {
+                    evaluatedCandidates.add(
+                        MixCandidate(
+                            type = TransitionType.ECHO_OUT,
+                            startPositionMs = outStart,
+                            durationMs = echoLen,
+                            incomingStartOffsetMs = inOffset,
+                            tempoRatio = 1.0f,
+                            outgoingTempoRatio = 1.0f,
+                            echoDelayMs = (outBeat * 0.75f).toInt().coerceIn(220, 480),
+                            score = 88f,
+                            description = "DJ Echo Out decaying tail drop"
+                        )
+                    )
+                }
+
+                // -------------------------------------------------------------
+                // STYLE 6: INSTRUMENTAL_OVERLAP (Intro Groove Blend)
                 // -------------------------------------------------------------
                 if (inInfo.introDurationMs >= 6_000L && inOffset == 0L) {
                     val overlapLen = minOf(inInfo.introDurationMs, 10_000L)
@@ -296,7 +338,7 @@ object TransitionPlanner {
         val best = evaluatedCandidates.maxByOrNull { it.score }
         if (best != null && best.score > 0f) {
             val planTier = when (best.type) {
-                TransitionType.BEAT_MIX, TransitionType.DROP_TRANSITION -> AutoMixTier.TIER_1_BEAT_MATCH
+                TransitionType.BEAT_MIX, TransitionType.DROP_TRANSITION, TransitionType.BASS_SWAP, TransitionType.ECHO_OUT, TransitionType.FILTER_FADE -> AutoMixTier.TIER_1_BEAT_MATCH
                 TransitionType.NO_TRANSITION -> AutoMixTier.TIER_3_GAPLESS_MICROFADE
                 else -> AutoMixTier.TIER_2_EQUAL_POWER_CROSSFADE
             }

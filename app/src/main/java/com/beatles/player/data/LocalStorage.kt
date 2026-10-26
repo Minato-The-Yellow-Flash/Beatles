@@ -360,6 +360,25 @@ object LocalStorage {
         )
     }
 
+    fun getLastPlayedSong(ctx: Context): Song? {
+        val json = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("last_played_song_json", null) ?: return null
+        return try {
+            gson.fromJson(json, Song::class.java)
+        } catch (_: Exception) { null }
+    }
+
+    fun saveLastPlayedSong(ctx: Context, song: Song) {
+        try {
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString("last_played_song_json", gson.toJson(song))
+                .apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getLastPlayedPlaylist(ctx: Context): List<Song> = getList(ctx, "last_played_playlist", Song::class.java)
+
+    fun saveLastPlayedPlaylist(ctx: Context, songs: List<Song>) = saveList(ctx, "last_played_playlist", songs)
+
     // ═══ APP UPDATE DISMISSAL & INSTALLATION STATE ═══
 
     fun getDismissedUpdateVersion(ctx: Context): String {

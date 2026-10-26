@@ -343,6 +343,22 @@ fun FluidArtistDetailOverlay(
                         )
                     }
 
+                    // Similar Artists / Fans Also Like Section
+                    val similarArtists = remember(artist) {
+                        if (artist == null) emptyList()
+                        else {
+                            val mapped = com.beatles.player.ui.screens.INSTANT_RELATED_ARTISTS[artist] ?: emptyList()
+                            if (mapped.isNotEmpty()) mapped
+                            else {
+                                val currArt = com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(artist, ignoreCase = true) }
+                                val sameGenre = com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.filter {
+                                    !it.name.equals(artist, ignoreCase = true) && (currArt == null || it.genre == currArt.genre || it.language == currArt.language)
+                                }
+                                sameGenre.take(6)
+                            }
+                        }
+                    }
+
                     // 3. Scrollable Content (Header, Actions, Tracklist, Albums/EPs)
                     LazyColumn(
                         state = listState,
@@ -658,6 +674,79 @@ fun FluidArtistDetailOverlay(
                                                 "${album.releaseYear} · ${album.songs.size.coerceAtLeast(1)} tracks",
                                                 color = textMuted,
                                                 fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Similar Artists / Fans Also Like Section
+                        if (similarArtists.isNotEmpty()) {
+                            item {
+                                Spacer(modifier = Modifier.height(28.dp))
+                                Text(
+                                    "Fans Also Like",
+                                    color = textPrimary,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 24.dp)
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    items(similarArtists) { simArt ->
+                                        var simBounds by remember { mutableStateOf<Rect?>(null) }
+                                        Column(
+                                            modifier = Modifier
+                                                .width(105.dp)
+                                                .clickable {
+                                                    Haptics.click(view)
+                                                    viewModel.setSelectedArtist(simArt.name, simBounds)
+                                                },
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(92.dp)
+                                                    .onGloballyPositioned { coordinates ->
+                                                        simBounds = coordinates.boundsInRoot()
+                                                    }
+                                                    .clip(CircleShape)
+                                            ) {
+                                                AppleMusicGradientCover(
+                                                    title = simArt.name,
+                                                    artist = simArt.genre,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    cornerRadius = 46.dp,
+                                                    showLabel = false
+                                                )
+                                                if (simArt.imageUrl.isNotBlank() && simArt.imageUrl.startsWith("http")) {
+                                                    AsyncImage(
+                                                        model = simArt.imageUrl,
+                                                        contentDescription = simArt.name,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                simArt.name,
+                                                color = textPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                            )
+                                            Text(
+                                                simArt.genre,
+                                                color = textMuted,
+                                                fontSize = 10.sp,
+                                                maxLines = 1,
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                             )
                                         }
                                     }
