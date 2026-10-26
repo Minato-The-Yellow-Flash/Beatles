@@ -1528,7 +1528,8 @@ object MusicRepository {
                     val secDouble = secPart.toDoubleOrNull() ?: 0.0
                     val ms = kotlin.math.max(0L, min * 60000L + (secDouble * 1000).toLong() + offsetMs)
                     val romanized = IndicTransliteration.toLatin(rawText)
-                    result.add(LyricLine(ms, romanized))
+                    val isSec = IndicTransliteration.isSecondaryArtistLine(romanized)
+                    result.add(LyricLine(ms, romanized, isSecondaryArtist = isSec))
                 }
             }
 
@@ -1617,7 +1618,8 @@ object MusicRepository {
                     val pStr = plainItem?.get("plainLyrics")?.takeIf { !it.isJsonNull }?.asString
                     if (!pStr.isNullOrEmpty()) {
                         parsedPlain = pStr.split("\n").filter { it.isNotBlank() }.mapIndexed { idx, line ->
-                            LyricLine(timeMs = idx * 3000L, text = IndicTransliteration.toLatin(line.trim()))
+                            val rom = IndicTransliteration.toLatin(line.trim())
+                            LyricLine(timeMs = idx * 3000L, text = rom, isSecondaryArtist = IndicTransliteration.isSecondaryArtistLine(rom))
                         }
                     }
 
@@ -1733,7 +1735,8 @@ object MusicRepository {
                                         val cleanText = rawLrc.replace("<br>", "\n").replace("<br/>", "\n").replace(Regex("<.*?>"), "")
                                         val lines = cleanText.split("\n").map { it.trim() }.filter { it.isNotBlank() }
                                         val parsed = lines.mapIndexed { idx, line ->
-                                            LyricLine(timeMs = idx * 3200L, text = IndicTransliteration.toLatin(line))
+                                            val rom = IndicTransliteration.toLatin(line)
+                                            LyricLine(timeMs = idx * 3200L, text = rom, isSecondaryArtist = IndicTransliteration.isSecondaryArtistLine(rom))
                                         }
                                         if (parsed.isNotEmpty()) {
                                             lyricsCache[cacheKey] = parsed
@@ -1756,7 +1759,8 @@ object MusicRepository {
                     val ovhLyrics = ovhJson.get("lyrics")?.asString
                     if (!ovhLyrics.isNullOrEmpty()) {
                         val parsed = ovhLyrics.split("\n").filter { it.isNotBlank() }.mapIndexed { idx, line ->
-                            LyricLine(timeMs = idx * 3000L, text = IndicTransliteration.toLatin(line.trim()))
+                            val rom = IndicTransliteration.toLatin(line.trim())
+                            LyricLine(timeMs = idx * 3000L, text = rom, isSecondaryArtist = IndicTransliteration.isSecondaryArtistLine(rom))
                         }
                         if (parsed.isNotEmpty()) {
                             lyricsCache[cacheKey] = parsed

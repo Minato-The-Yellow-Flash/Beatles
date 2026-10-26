@@ -136,6 +136,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     var searchFocusRequested by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
     val scope = rememberCoroutineScope()
+    var topMiniArtBounds by remember { mutableStateOf<Rect?>(null) }
+    var midMiniArtBounds by remember { mutableStateOf<Rect?>(null) }
     var activeMiniArtBounds by remember { mutableStateOf<Rect?>(null) }
     var standardMiniPillBounds by remember { mutableStateOf<Rect?>(null) }
     var midMiniPillBounds by remember { mutableStateOf<Rect?>(null) }
@@ -154,12 +156,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         if (state.isExpanded) {
             playerProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = spring(dampingRatio = 0.95f, stiffness = 390f)
+                animationSpec = spring(dampingRatio = 0.94f, stiffness = 320f)
             )
         } else {
             playerProgress.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(dampingRatio = 0.98f, stiffness = 380f)
+                animationSpec = spring(dampingRatio = 0.96f, stiffness = 320f)
             )
         }
     }
@@ -244,7 +246,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
     // 3. Player collapse: if the player is expanded on its main view, collapse it back to the mini player
     PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && state.isExpanded && !state.showLyrics && state.showSeeAllSection != "next_up") { progress ->
-        try { progress.collect {}; viewModel.setExpanded(false) } catch (_: Exception) {}
+        try {
+            progress.collect {}
+            if (openedFromMidCapsule && midMiniPillBounds != null) {
+                activeMiniPillBounds = midMiniPillBounds
+                activeMiniPillCorner = 28.dp
+            } else if (standardMiniPillBounds != null) {
+                activeMiniPillBounds = standardMiniPillBounds
+                activeMiniPillCorner = 22.dp
+            }
+            viewModel.setExpanded(false)
+        } catch (_: Exception) {}
     }
 
     // 4. Detail screens: album detail takes precedence over artist detail
@@ -667,17 +679,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 if (b.width > 20f && b.height > 20f) {
                                                     if (compact) {
                                                         midMiniPillBounds = b
-                                                        if (morph > 0.6f && !state.isExpanded) {
+                                                        if (openedFromMidCapsule || (morph > 0.6f && !state.isExpanded)) {
                                                             activeMiniPillBounds = b
                                                             activeMiniPillCorner = pillCorner
                                                         }
                                                     } else {
                                                         standardMiniPillBounds = b
-                                                        if (!state.isExpanded || activeMiniPillBounds == null) {
-                                                            if (!openedFromMidCapsule) {
-                                                                activeMiniPillBounds = b
-                                                                activeMiniPillCorner = pillCorner
-                                                            }
+                                                        if (!openedFromMidCapsule && (!state.isExpanded || activeMiniPillBounds == null)) {
+                                                            activeMiniPillBounds = b
+                                                            activeMiniPillCorner = pillCorner
                                                         }
                                                     }
                                                 }
@@ -776,10 +786,16 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                                 if (midMiniPillBounds != null) {
                                                                     activeMiniPillBounds = midMiniPillBounds
                                                                 }
+                                                                if (midMiniArtBounds != null) {
+                                                                    activeMiniArtBounds = midMiniArtBounds
+                                                                }
                                                             } else {
                                                                 openedFromMidCapsule = false
                                                                 if (standardMiniPillBounds != null) {
                                                                     activeMiniPillBounds = standardMiniPillBounds
+                                                                }
+                                                                if (topMiniArtBounds != null) {
+                                                                    activeMiniArtBounds = topMiniArtBounds
                                                                 }
                                                             }
                                                             viewModel.setExpanded(true)
@@ -816,7 +832,14 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         .clip(CircleShape)
                                                         .onGloballyPositioned { coords ->
                                                             if (coords.isAttached && !isSearch) {
-                                                                activeMiniArtBounds = coords.boundsInRoot()
+                                                                val artB = coords.boundsInRoot()
+                                                                if (compact) {
+                                                                    midMiniArtBounds = artB
+                                                                    if (openedFromMidCapsule) activeMiniArtBounds = artB
+                                                                } else {
+                                                                    topMiniArtBounds = artB
+                                                                    if (!openedFromMidCapsule) activeMiniArtBounds = artB
+                                                                }
                                                             }
                                                         }
                                                 )
@@ -828,7 +851,14 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         .background(Color.Gray)
                                                         .onGloballyPositioned { coords ->
                                                             if (coords.isAttached && !isSearch) {
-                                                                activeMiniArtBounds = coords.boundsInRoot()
+                                                                val artB = coords.boundsInRoot()
+                                                                if (compact) {
+                                                                    midMiniArtBounds = artB
+                                                                    if (openedFromMidCapsule) activeMiniArtBounds = artB
+                                                                } else {
+                                                                    topMiniArtBounds = artB
+                                                                    if (!openedFromMidCapsule) activeMiniArtBounds = artB
+                                                                }
                                                             }
                                                         }
                                                 )
@@ -929,7 +959,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     val isPlayerMorphing = playerProgress.value > 0.001f || state.isExpanded
                     val topMorphScale = (1f - morph).coerceIn(0f, 1f)
                     val topPlayerAlpha = if (isPlayerMorphing) 0f else (1f - combined * 2.5f).coerceIn(0f, 1f)
-                    if (hasSong && topPlayerAlpha > 0.01f && topMorphScale > 0.01f) {
+                    if (hasSong && topMorphScale > 0.01f) {
                         val animatedTopHeight = 45.dp * topMorphScale
                         val animatedTopPad = 4.dp * topMorphScale
                         Box(
@@ -1704,6 +1734,14 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
                         // Full-page morph from song card (search) or mini media player pill shape
                         val isExpandingFromSongCard = state.isExpanded && playerProgress.value < 0.99f && state.selectedSongBounds != null
+                        val songCardArtBounds = remember(state.selectedSongBounds) {
+                            state.selectedSongBounds?.let { b ->
+                                val artLeft = b.left + with(density) { 12.dp.toPx() }
+                                val artTop = b.top + with(density) { 8.dp.toPx() }
+                                val artSize = with(density) { 52.dp.toPx() }
+                                Rect(artLeft, artTop, artLeft + artSize, artTop + artSize)
+                            }
+                        }
                         val startBounds = if (isExpandingFromSongCard) {
                             state.selectedSongBounds!!
                         } else if (openedFromMidCapsule && midMiniPillBounds != null) {
@@ -1711,9 +1749,9 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         } else {
                             activeMiniPillBounds ?: standardMiniPillBounds ?: Rect(
                                 left = with(density) { 16.dp.toPx() },
-                                top = screenHeightPx - with(density) { 145.dp.toPx() },
+                                top = with(density) { 60.dp.toPx() },
                                 right = screenWidthPx - with(density) { 16.dp.toPx() },
-                                bottom = screenHeightPx - with(density) { 100.dp.toPx() }
+                                bottom = with(density) { 110.dp.toPx() }
                             )
                         }
                         val startCorner = if (isExpandingFromSongCard) 16.dp else activeMiniPillCorner
@@ -1721,6 +1759,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         LaunchedEffect(playerProgress.value) {
                             if (playerProgress.value >= 0.99f && state.selectedSongBounds != null) {
                                 viewModel.clearSelectedSongBounds()
+                            }
+                        }
+
+                        LaunchedEffect(state.isExpanded, p) {
+                            if (!state.isExpanded && p <= 0.001f) {
+                                openedFromMidCapsule = false
                             }
                         }
 
@@ -1742,6 +1786,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                             (p * 1.6f).coerceIn(0f, 1f)
                         )
 
+                        val morphContainerAlpha = if (p < 0.06f) (p / 0.06f).coerceIn(0f, 1f) else 1f
+
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -1751,6 +1797,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 modifier = Modifier
                                     .offset { IntOffset(curLeftPx, curTopPx) }
                                     .size(curWidthDp, curHeightDp)
+                                    .graphicsLayer { alpha = morphContainerAlpha }
                                     .shadow(
                                         elevation = (16.dp * p).coerceAtLeast(0.dp),
                                         shape = curCornerShape,
@@ -1821,10 +1868,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             autoMixProgress = state.autoMixState.progress,
                                             autoMixLabel = state.autoMixState.label,
                                             morphProgress = p,
-                                            sourceOriginBounds = if (state.isExpanded && state.selectedSongBounds != null) {
-                                                state.selectedSongBounds
+                                            sourceOriginBounds = if (isExpandingFromSongCard && songCardArtBounds != null) {
+                                                songCardArtBounds
+                                            } else if (openedFromMidCapsule && midMiniArtBounds != null) {
+                                                midMiniArtBounds
                                             } else {
-                                                activeMiniArtBounds ?: state.selectedSongBounds
+                                                activeMiniArtBounds ?: topMiniArtBounds
                                             },
                                             onClose = {
                                                 if (openedFromMidCapsule && midMiniPillBounds != null) {
@@ -1888,7 +1937,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 val miniPillAlpha = if (p >= 0.35f) 0f else ((0.35f - p) / 0.35f).coerceIn(0f, 1f)
                                 if (miniPillAlpha > 0.001f) {
                                     val isCircleMini = startBounds.width < 100f
-                                    val isMidCompact = !isCircleMini && !isExpandingFromSongCard && (startBounds.width < screenWidthPx * 0.72f)
+                                    val isMidCompact = !isCircleMini && !isExpandingFromSongCard && (openedFromMidCapsule || activeMiniPillBounds == midMiniPillBounds || startBounds.width < screenWidthPx * 0.85f)
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()

@@ -70,6 +70,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
@@ -456,9 +457,11 @@ fun NowPlayingSheet(
         val config = LocalConfiguration.current
         val screenWidth = config.screenWidthDp.dp
         val screenHeight = config.screenHeightDp.dp
-        val defaultCoverSize = (screenWidth - 36.dp).coerceAtMost(360.dp)
-        val defaultCoverLeft = (screenWidth - defaultCoverSize) / 2
-        val defaultCoverTop = 64.dp
+        val defaultCoverWidth = screenWidth
+        val defaultCoverHeight = (screenHeight * 0.54f).coerceIn(360.dp, 520.dp)
+        val defaultCoverLeft = 0.dp
+        val defaultCoverTop = 0.dp
+        val defaultCoverCorner = 0.dp
 
         val isCompactCover = isCompactTarget
 
@@ -466,7 +469,7 @@ fun NowPlayingSheet(
         val liveInfiniteTransition = rememberInfiniteTransition(label = "liveAlbumArtMotion")
         val liveArtScaleAnim by liveInfiniteTransition.animateFloat(
             initialValue = 1.0f,
-            targetValue = if (isPlaying && !isCompactTarget) 1.040f else 1.0f,
+            targetValue = if (isPlaying && !isCompactTarget) 1.035f else 1.0f,
             animationSpec = infiniteRepeatable(
                 animation = tween(durationMillis = 6500, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
@@ -474,23 +477,14 @@ fun NowPlayingSheet(
             label = "liveArtScale"
         )
         val liveArtRotAnim by liveInfiniteTransition.animateFloat(
-            initialValue = -0.5f,
-            targetValue = if (isPlaying && !isCompactTarget) 0.5f else 0.0f,
+            initialValue = -0.4f,
+            targetValue = if (isPlaying && !isCompactTarget) 0.4f else 0.0f,
             animationSpec = infiniteRepeatable(
                 animation = tween(durationMillis = 8500, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse
             ),
             label = "liveArtRot"
         )
-
-        var showSameArtistPrompt by remember { mutableStateOf(false) }
-        var promptArtistName by remember { mutableStateOf("") }
-        LaunchedEffect(showSameArtistPrompt) {
-            if (showSameArtistPrompt) {
-                delay(4500L)
-                showSameArtistPrompt = false
-            }
-        }
 
         var lastLyricsInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
         var controlsVisible by remember { mutableStateOf(true) }
@@ -517,10 +511,11 @@ fun NowPlayingSheet(
             animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 360f),
             label = "compactProgress"
         )
-        val coverSize = defaultCoverSize + (68.dp - defaultCoverSize) * compactProgress
+        val coverWidth = defaultCoverWidth + (68.dp - defaultCoverWidth) * compactProgress
+        val coverHeight = defaultCoverHeight + (68.dp - defaultCoverHeight) * compactProgress
         val coverLeft = defaultCoverLeft + (24.dp - defaultCoverLeft) * compactProgress
         val coverTop = defaultCoverTop + (54.dp - defaultCoverTop) * compactProgress
-        val coverCorner = 22.dp + (14.dp - 22.dp) * compactProgress
+        val coverCorner = defaultCoverCorner + (14.dp - defaultCoverCorner) * compactProgress
         val coverAlpha by animateFloatAsState(
             targetValue = 1f,
             animationSpec = tween(220),
@@ -547,38 +542,28 @@ fun NowPlayingSheet(
 
         val currentCoverLeft = originArtLeft + (coverLeft - originArtLeft) * morphProgress
         val currentCoverTop = originArtTop + (coverTop - originArtTop) * morphProgress
-        val currentCoverSize = originArtSize + (coverSize - originArtSize) * morphProgress
+        val currentCoverWidth = originArtSize + (coverWidth - originArtSize) * morphProgress
+        val currentCoverHeight = originArtSize + (coverHeight - originArtSize) * morphProgress
         val currentCoverCorner = originArtCorner + (coverCorner - originArtCorner) * morphProgress
-        val morphMotionFactor = (4f * morphProgress * (1f - morphProgress)).coerceIn(0f, 1f)
-        val artStretchY = 1f + (0.09f * morphMotionFactor)
-        val artSqueezeX = 1f - (0.04f * morphMotionFactor)
 
-        val baseCoverSize = defaultCoverSize.coerceAtLeast(100.dp)
-        val coverScale = (currentCoverSize / baseCoverSize).coerceAtLeast(0.01f)
-        val effectiveCoverCorner = currentCoverCorner / coverScale.coerceAtLeast(0.01f)
-
-        // Apple Music-Style Interactive Foreground Album Artwork (glides to top-left when Next Up or Lyrics is active, morphs to mini player when closing)
+        // Apple Music-Style Full-Screen Animated Album Artwork (glides to top-left thumbnail when Next Up or Lyrics is active, morphs continuously to mini player when closing)
         if (coverAlpha > 0.01f && morphProgress > 0.0001f) {
             Box(
                 modifier = Modifier
                     .offset { IntOffset(with(density) { currentCoverLeft.roundToPx() }, with(density) { currentCoverTop.roundToPx() }) }
-                    .size(baseCoverSize)
+                    .size(
+                        width = currentCoverWidth.coerceAtLeast(1.dp),
+                        height = currentCoverHeight.coerceAtLeast(1.dp)
+                    )
                     .graphicsLayer {
                         val effectiveCoverAlpha = if (isLyricsActive) coverAlpha * controlsAlpha else coverAlpha
                         alpha = effectiveCoverAlpha
-                        transformOrigin = TransformOrigin(0f, 0f)
                         if (compactProgress <= 0.001f && morphProgress >= 0.98f) {
-                            val dampScale = 1f - (kotlin.math.abs(animatedDragX) / 3000f).coerceIn(0f, 0.05f)
-                            scaleX = coverScale * dampScale
-                            scaleY = coverScale * dampScale
                             translationX = animatedDragX
-                        } else {
-                            scaleX = coverScale * artSqueezeX
-                            scaleY = coverScale * artStretchY
                         }
                         val baseElevation = lerp(16.dp, 4.dp, compactProgress)
-                        shadowElevation = (baseElevation.toPx() * morphProgress)
-                        shape = RoundedCornerShape(effectiveCoverCorner)
+                        shadowElevation = (baseElevation.toPx() * morphProgress * compactProgress)
+                        shape = RoundedCornerShape(currentCoverCorner)
                         clip = true
                     }
             ) {
@@ -604,7 +589,7 @@ fun NowPlayingSheet(
                         AppleMusicGradientCover(
                             title = song.title,
                             artist = song.artist,
-                            cornerRadius = coverCorner,
+                            cornerRadius = currentCoverCorner,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -621,6 +606,48 @@ fun NowPlayingSheet(
                                         )
                                     )
                                 )
+                        )
+                    }
+                }
+
+                // Apple Music bottom gradient fade melting full-screen artwork into controls
+                if (compactProgress < 0.8f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { alpha = ((1f - compactProgress) * morphProgress).coerceIn(0f, 1f) }
+                            .background(
+                                Brush.verticalGradient(
+                                    0.0f to Color.Transparent,
+                                    0.42f to Color.Transparent,
+                                    0.78f to Color(0xFF0E0E10).copy(alpha = 0.85f),
+                                    1.0f to Color(0xFF0E0E10)
+                                )
+                            )
+                    )
+                }
+
+                // Apple Music top drag handle indicator
+                if (compactProgress < 0.2f && morphProgress >= 0.8f) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 10.dp)
+                            .size(width = 48.dp, height = 24.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                Haptics.confirm(view)
+                                onClose()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 38.dp, height = 4.5.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(Color.White.copy(alpha = 0.40f))
                         )
                     }
                 }
@@ -715,8 +742,6 @@ fun NowPlayingSheet(
                                     spillDirection = 1
                                     if (canGoNext) {
                                         Haptics.confirm(view)
-                                        promptArtistName = song.artist.replace(" - Topic", "").trim()
-                                        showSameArtistPrompt = true
                                         onNext()
                                     }
                                 } else if (dragOffsetX > 110f) {
@@ -812,35 +837,101 @@ fun NowPlayingSheet(
                             translationY = -20f * (1f - songInfoProgress)
                         }
                 ) {
-                    // Song title + artist + Language & Genre badge (harmonious vertical cadence)
-                    Column(
+                    // Song title + artist + Favorite Star & 3-Dots More Options (Apple Music Image 2 layout)
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 24.dp)
+                            .padding(horizontal = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                    Text(song.title, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(song.artist, color = Color.White.copy(alpha = 0.7f), fontSize = 16.sp, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
-                        val playingLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
-                        val playingGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(song.title, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    song.artist,
+                                    color = Color.White.copy(alpha = 0.70f),
+                                    fontSize = 16.sp,
+                                    maxLines = 1,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                val playingLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
+                                val playingGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.White.copy(alpha = 0.20f))
+                                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        "$playingLang • $playingGenre",
+                                        color = Color.White.copy(alpha = 0.90f),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        // Favorite / Star button (Apple Music Image 2 style)
+                        val heartBg = if (isFavorite) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.14f)
+                        val heartTint = if (isFavorite) AccentRed else Color.White
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.White.copy(alpha = 0.22f))
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(heartBg)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    Haptics.confirm(view)
+                                    onToggleFavorite()
+                                    isHeartAnimating = true
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                "$playingLang • $playingGenre",
-                                color = Color.White.copy(alpha = 0.90f),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
+                            Icon(
+                                if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                                contentDescription = "Favorite",
+                                tint = heartTint,
+                                modifier = Modifier.size(20.dp).scale(heartScale)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        // Three-Dots More Options Menu Button
+                        Box(
+                            modifier = Modifier
+                                .onGloballyPositioned { coords ->
+                                    threeDotButtonBounds = coords.boundsInRoot()
+                                }
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.14f))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    Haptics.click(view)
+                                    showMiniMenu = !showMiniMenu
+                                    showSavePlaylistView = false
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.MoreHoriz,
+                                contentDescription = "More Options",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
-                }
-                Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                 // Download + Heart + AutoMix Toggle + 3-dots mini menu row (equal 14dp spacing)
                 Row(
@@ -1019,105 +1110,70 @@ fun NowPlayingSheet(
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
-                    val heartBg = if (isFavorite) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
-                    val heartTint = if (isFavorite) AccentRed else Color.White
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(heartBg)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                Haptics.confirm(view)
-                                onToggleFavorite()
-                                isHeartAnimating = true
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                            contentDescription = "Favorite",
-                            tint = heartTint,
-                            modifier = Modifier.size(20.dp).scale(heartScale)
-                        )
-                    }
+                        Spacer(modifier = Modifier.width(10.dp))
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                        // AutoMix Toggle Pill
+                        val autoMixLabel = "AutoMix"
+                        val isAutoMixActive = autoMixMode == com.beatles.player.player.automix.AutoMixMode.ON
+                        val autoMixBg = if (isAutoMixActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.14f)
+                        val autoMixContentTint = if (isAutoMixActive) Color(0xFF151515) else Color.White
 
-                    // AutoMix Toggle (Classic smooth AutoMix; clean ON/OFF, no Pro or Inactive text)
-                    val autoMixLabel = "AutoMix"
-                    val isAutoMixActive = autoMixMode == com.beatles.player.player.automix.AutoMixMode.ON
-                    val autoMixBg = if (isAutoMixActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
-                    val autoMixContentTint = if (isAutoMixActive) Color(0xFF151515) else Color.White
-
-                    Box(
-                        modifier = Modifier
-                            .height(38.dp)
-                            .clip(RoundedCornerShape(19.dp))
-                            .background(autoMixBg)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                Haptics.confirm(view)
-                                onToggleAutoMix()
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(19.dp))
+                                .background(autoMixBg)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    Haptics.confirm(view)
+                                    onToggleAutoMix()
+                                }
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.GraphicEq,
+                                    contentDescription = autoMixLabel,
+                                    tint = autoMixContentTint,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    autoMixLabel,
+                                    color = autoMixContentTint,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
-                            .padding(horizontal = 14.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.GraphicEq,
-                                contentDescription = autoMixLabel,
-                                tint = autoMixContentTint,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                autoMixLabel,
-                                color = autoMixContentTint,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
                         }
-                    }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
 
-                    Box(
-                        modifier = Modifier
-                            .onGloballyPositioned { coords ->
-                                threeDotButtonBounds = coords.boundsInRoot()
+                        // Lossless Quality Pill Badge (Apple Music Image 2 layout)
+                        Box(
+                            modifier = Modifier
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(19.dp))
+                                .background(Color.White.copy(alpha = 0.14f))
+                                .padding(horizontal = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.GraphicEq, contentDescription = null, tint = Color.White.copy(alpha = 0.70f), modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text("Lossless", color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             }
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.20f))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                Haptics.click(view)
-                                showMiniMenu = !showMiniMenu
-                                showSavePlaylistView = false
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Default.MoreHoriz,
-                            contentDescription = "More Options",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                        }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Custom Canvas Seekbar (no vertical thumb bar, no active glow while moving, starry white glow during AutoMix)
-                Column(modifier = Modifier.padding(horizontal = 20.dp)) {
+                // Luminous Expanding Frosted Seekbar (Glows brighter & expands on tap/drag with blur element)
+                Column(modifier = Modifier.padding(horizontal = 24.dp)) {
                     var isDraggingSlider by remember { mutableStateOf(false) }
                     var sliderPos by remember { mutableFloatStateOf(currentPosition.toFloat()) }
                     var pendingSeek by remember { mutableStateOf(false) }
@@ -1130,9 +1186,14 @@ fun NowPlayingSheet(
                     }
 
                     val trackAnimHeight by animateDpAsState(
-                        targetValue = 8.dp, // same thickness whether or not AutoMix is mixing
-                        animationSpec = tween(200),
+                        targetValue = if (isDraggingSlider) 10.dp else 4.5.dp,
+                        animationSpec = spring(dampingRatio = 0.75f, stiffness = 420f),
                         label = "trackAnimHeight"
+                    )
+                    val inactiveAnimHeight by animateDpAsState(
+                        targetValue = if (isDraggingSlider) 8.dp else 4.5.dp,
+                        animationSpec = spring(dampingRatio = 0.75f, stiffness = 420f),
+                        label = "inactiveAnimHeight"
                     )
 
                     val infiniteTransition = rememberInfiniteTransition(label = "automixGlow")
@@ -1146,14 +1207,19 @@ fun NowPlayingSheet(
                         label = "automixPulse"
                     )
 
-                    var lastHapticSec by remember { mutableLongStateOf(-1L) }
+                    val scrubGlowAlpha by animateFloatAsState(
+                        targetValue = if (isDraggingSlider) 1.0f else if (autoMixActive) automixPulse else 0.0f,
+                        animationSpec = tween(180),
+                        label = "scrubGlowAlpha"
+                    )
 
+                    var lastHapticSec by remember { mutableLongStateOf(-1L) }
                     val effectiveDuration = if (duration > 0L) duration else ((song.durationSeconds.toLong() * 1000L).takeIf { it > 0L } ?: 1L)
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(28.dp)
+                            .height(32.dp)
                             .pointerInput(effectiveDuration) {
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -1191,63 +1257,86 @@ fun NowPlayingSheet(
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxWidth().height(20.dp)) {
+                        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxWidth().height(26.dp)) {
                             val maxDur = effectiveDuration.toFloat()
                             val currentFraction = (sliderPos / maxDur).coerceIn(0f, 1f)
                             val w = size.width
                             val h = trackAnimHeight.toPx()
+                            val inactH = inactiveAnimHeight.toPx()
                             val centerY = size.height / 2f
                             val activeWidth = w * currentFraction
                             val corner = CornerRadius(h / 2f, h / 2f)
+                            val inactCorner = CornerRadius(inactH / 2f, inactH / 2f)
 
-                            // Subtle starry white blurry glow halo behind active seekbar during AutoMix (does NOT increase bar thickness)
-                            if (autoMixActive && activeWidth > 0f) {
-                                drawRoundRect(
-                                    color = Color.White.copy(alpha = 0.28f * automixPulse),
-                                    topLeft = Offset(0f, centerY - h / 2f),
-                                    size = Size(activeWidth, h),
-                                    cornerRadius = corner
-                                )
-                            }
-
-                            // Inactive track (smooth pill)
+                            // 1. Inactive Track (translucent frosted bar)
                             drawRoundRect(
-                                color = Color.White.copy(alpha = 0.22f),
-                                topLeft = Offset(0f, centerY - h / 2f),
-                                size = Size(w, h),
-                                cornerRadius = corner
+                                color = Color.White.copy(alpha = 0.20f),
+                                topLeft = Offset(0f, centerY - inactH / 2f),
+                                size = Size(w, inactH),
+                                cornerRadius = inactCorner
                             )
 
-
                             if (activeWidth > 0f) {
-                                // Clip active track inside the EXACT pill shape of the inactive track so rounded corners match 100%
+                                // 2. Wide radiant outer glow halo (when scrubbing or AutoMix pulse)
+                                if (scrubGlowAlpha > 0.01f) {
+                                    val glowPadH = 10.dp.toPx()
+                                    val glowH = h + glowPadH
+                                    drawRoundRect(
+                                        brush = Brush.horizontalGradient(
+                                            listOf(
+                                                Color.White.copy(alpha = 0.38f * scrubGlowAlpha),
+                                                Color(0xFFE2E8FF).copy(alpha = 0.52f * scrubGlowAlpha)
+                                            )
+                                        ),
+                                        topLeft = Offset(-2f, centerY - glowH / 2f),
+                                        size = Size(activeWidth + 4f, glowH),
+                                        cornerRadius = CornerRadius(glowH / 2f, glowH / 2f)
+                                    )
+                                }
+
+                                // 3. Core Active Track (Frosted translucent gradient with soft blur element)
                                 val inactiveTrackPath = androidx.compose.ui.graphics.Path().apply {
                                     addRoundRect(
                                         androidx.compose.ui.geometry.RoundRect(
                                             left = 0f,
-                                            top = centerY - h / 2f,
+                                            top = centerY - inactH / 2f,
                                             right = w,
-                                            bottom = centerY + h / 2f,
-                                            radiusX = h / 2f,
-                                            radiusY = h / 2f
+                                            bottom = centerY + inactH / 2f,
+                                            radiusX = inactH / 2f,
+                                            radiusY = inactH / 2f
                                         )
                                     )
                                 }
                                 clipPath(inactiveTrackPath) {
-                                    // 85% white active track with blur
                                     drawRoundRect(
-                                        color = Color.White.copy(alpha = 0.85f),
+                                        brush = Brush.horizontalGradient(
+                                            listOf(
+                                                Color.White.copy(alpha = 0.90f),
+                                                Color(0xFFF0F4FC)
+                                            )
+                                        ),
                                         topLeft = Offset(0f, centerY - h / 2f),
                                         size = Size(activeWidth, h),
                                         cornerRadius = corner
+                                    )
+                                }
+
+                                // 4. Luminous Scrub Head Thumb on active seeking
+                                if (isDraggingSlider) {
+                                    val thumbRadius = h * 0.85f
+                                    drawCircle(
+                                        color = Color.White,
+                                        radius = thumbRadius,
+                                        center = Offset(activeWidth.coerceIn(thumbRadius, w - thumbRadius), centerY)
                                     )
                                 }
                             }
                         }
                     }
 
+                    // Timestamps Row with Dolby Atmos badge in center (Apple Music Image 2 layout)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1259,10 +1348,10 @@ fun NowPlayingSheet(
                             color = Color.White.copy(alpha = 0.6f),
                             fontSize = 12.sp
                         )
-                        if (autoMixActive && autoMixLabel != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                autoMixLabel,
-                                color = Color.White.copy(alpha = 0.85f),
+                                if (autoMixActive && autoMixLabel != null) autoMixLabel else "Dolby Atmos",
+                                color = Color.White.copy(alpha = 0.75f),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -1278,51 +1367,6 @@ fun NowPlayingSheet(
                 Spacer(modifier = Modifier.height(18.dp))
             }
         }
-
-            androidx.compose.animation.AnimatedVisibility(
-                visible = showSameArtistPrompt && promptArtistName.isNotBlank(),
-                enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
-                exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp)
-                        .padding(bottom = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .shadow(3.dp, RoundedCornerShape(50), spotColor = Color.Black.copy(alpha = 0.35f))
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0xFF24242A).copy(alpha = 0.88f))
-                            .glassRefraction(50.dp, isDark = true)
-                            .clickable {
-                                showSameArtistPrompt = false
-                                onPlayArtistMix(promptArtistName)
-                            }
-                            .padding(horizontal = 16.dp, vertical = 7.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Radio, contentDescription = null, tint = AccentRed, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "Listen to more from $promptArtistName?",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "Play Mix",
-                                color = AccentRed,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
 
             // Controls Row (Mathematically and optically centered across all screens)
             Row(
@@ -1430,8 +1474,6 @@ fun NowPlayingSheet(
                         onClick = {
                             spillDirection = 1
                             Haptics.click(view)
-                            promptArtistName = song.artist.replace(" - Topic", "").trim()
-                            showSameArtistPrompt = true
                             onNext()
                         },
                         modifier = Modifier.size(56.dp)
@@ -2959,13 +3001,13 @@ fun NowPlayingLyricsLayer(
         if (diff > 400L || !isPlaying) {
             anchorPos = currentPosition
             anchorRealtime = android.os.SystemClock.elapsedRealtime()
-            livePositionMs = (currentPosition + 80L).coerceAtLeast(0L)
+            livePositionMs = (currentPosition + 220L).coerceAtLeast(0L)
         }
     }
 
     LaunchedEffect(isPlaying, isLyricsActive) {
         if (!isPlaying || !isLyricsActive) {
-            livePositionMs = (currentPosition + 80L).coerceAtLeast(0L)
+            livePositionMs = (currentPosition + 220L).coerceAtLeast(0L)
             return@LaunchedEffect
         }
         anchorRealtime = android.os.SystemClock.elapsedRealtime()
@@ -2973,7 +3015,7 @@ fun NowPlayingLyricsLayer(
         while (isLyricsActive && isPlaying) {
             withFrameMillis {
                 val elapsed = android.os.SystemClock.elapsedRealtime() - anchorRealtime
-                livePositionMs = (anchorPos + elapsed + 80L).coerceAtLeast(0L)
+                livePositionMs = (anchorPos + elapsed + 220L).coerceAtLeast(0L)
             }
         }
     }
@@ -3129,6 +3171,7 @@ fun NowPlayingLyricsLayer(
                 ) {
                     itemsIndexed(processedLyrics, key = { idx, line -> "lyric_${line.timeMs}_$idx" }) { idx, line ->
                         val isActive = idx == currentIdx
+                        val isRightAligned = line.isSecondaryArtist
                         val distance = if (currentIdx >= 0) kotlin.math.abs(idx - currentIdx) else 1
                         val cappedDistance = distance.coerceAtMost(4)
 
@@ -3167,6 +3210,8 @@ fun NowPlayingLyricsLayer(
                             label = "lineBlur_$idx"
                         )
 
+                        val alignOrigin = if (isRightAligned) TransformOrigin(1f, 0.5f) else TransformOrigin(0f, 0.5f)
+
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -3175,7 +3220,7 @@ fun NowPlayingLyricsLayer(
                                     scaleX = lineScale
                                     scaleY = lineScale
                                     alpha = lineAlpha
-                                    transformOrigin = TransformOrigin(0f, 0.5f)
+                                    transformOrigin = alignOrigin
                                     if (lineBlur > 0.dp) {
                                         compositingStrategy = CompositingStrategy.Offscreen
                                     }
@@ -3188,7 +3233,8 @@ fun NowPlayingLyricsLayer(
                                 ) {
                                     manualScrolled = false
                                     onSeek(line.timeMs)
-                                }
+                                },
+                            contentAlignment = if (isRightAligned) Alignment.CenterEnd else Alignment.CenterStart
                         ) {
                             if (line.isInstrumental) {
                                 // Animated Instrumental Interlude: "♪" + 3 dots filling in across the duration
@@ -3235,7 +3281,7 @@ fun NowPlayingLyricsLayer(
                             } else if (line.words.isNotEmpty()) {
                                 val lineSweep = if (isActive) LyricsProcessor.calculateLineSweepProgress(line, livePositionMs) else 0f
                                 FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    horizontalArrangement = if (isRightAligned) Arrangement.spacedBy(8.dp, Alignment.End) else Arrangement.spacedBy(8.dp, Alignment.Start),
                                     verticalArrangement = Arrangement.spacedBy(4.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -3265,6 +3311,8 @@ fun NowPlayingLyricsLayer(
                                     fontSize = 29.sp,
                                     fontWeight = FontWeight.Bold,
                                     lineHeight = 37.sp,
+                                    textAlign = if (isRightAligned) TextAlign.End else TextAlign.Start,
+                                    modifier = Modifier.fillMaxWidth(),
                                     color = if (isActive) Color.White else Color.White.copy(alpha = 0.40f)
                                 )
                             }

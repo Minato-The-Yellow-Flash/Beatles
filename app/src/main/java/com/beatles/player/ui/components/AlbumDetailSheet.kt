@@ -157,16 +157,17 @@ fun FluidAlbumDetailOverlay(
         val screenWpx = with(density) { config.screenWidthDp.dp.toPx() }
         val screenHpx = with(density) { config.screenHeightDp.dp.toPx() }
 
-        val targetArtworkSize = 200.dp
-        val targetArtworkSizePx = with(density) { targetArtworkSize.toPx() }
-        val targetLeftPx = (screenWpx - targetArtworkSizePx) / 2f
-        val targetTopPx = with(density) { 88.dp.toPx() }
+        val targetArtworkWidthPx = screenWpx
+        val targetArtworkHeightDp = (config.screenHeightDp * 0.44f).dp.coerceIn(310.dp, 390.dp)
+        val targetArtworkHeightPx = with(density) { targetArtworkHeightDp.toPx() }
+        val targetLeftPx = 0f
+        val targetTopPx = 0f
 
         val origin = currentOriginBounds ?: Rect(
-            screenWpx / 2f - targetArtworkSizePx / 4f,
-            screenHpx / 2f - targetArtworkSizePx / 4f,
-            screenWpx / 2f + targetArtworkSizePx / 4f,
-            screenHpx / 2f + targetArtworkSizePx / 4f
+            screenWpx / 2f - 100f,
+            screenHpx / 2f - 100f,
+            screenWpx / 2f + 100f,
+            screenHpx / 2f + 100f
         )
 
 
@@ -227,10 +228,10 @@ fun FluidAlbumDetailOverlay(
         } else {
             listState.firstVisibleItemScrollOffset.toFloat() + 800f
         }
-        val artTranslateY = (-scrollOffset * 0.75f).coerceAtLeast(-targetTopPx - 200f) * p
-        val artBlur = ((scrollOffset / 14f) * p).coerceIn(0f, 24f).dp
-        val artScale = (1f - (scrollOffset / 1400f) * p).coerceIn(0.72f, 1f)
-        val artAlpha = (1f - (scrollOffset / 260f) * p).coerceIn(0f, 1f)
+        val artTranslateY = (-scrollOffset * 0.55f).coerceAtLeast(-targetArtworkHeightPx) * p
+        val artBlur = ((scrollOffset / 20f) * p).coerceIn(0f, 18f).dp
+        val artScale = (1f - (scrollOffset / 2200f) * p).coerceIn(0.85f, 1f)
+        val artAlpha = (1f - (scrollOffset / 340f) * p).coerceIn(0f, 1f)
         val originCardWidth = origin.width.coerceAtLeast(10f)
         val originCardHeight = origin.height.coerceAtLeast(10f)
         val originCornerPx = if (originCardWidth <= with(density) { 72.dp.toPx() }) originCardWidth / 2f else with(density) { 18.dp.toPx() }
@@ -238,6 +239,12 @@ fun FluidAlbumDetailOverlay(
         val clampedP = p.coerceIn(0f, 1f)
         val sheetAlpha = clampedP.coerceIn(0f, 1f)
         val sheetSlideY = (1f - clampedP) * with(density) { 36.dp.toPx() } + dragY
+
+        val curArtLeft = origin.left + (targetLeftPx - origin.left) * clampedP
+        val curArtTop = origin.top + (targetTopPx + artTranslateY - origin.top) * clampedP + dragY
+        val curArtWidth = originCardWidth + (targetArtworkWidthPx - originCardWidth) * clampedP
+        val curArtHeight = originCardHeight + (targetArtworkHeightPx - originCardHeight) * clampedP
+        val curArtCorner = originCornerPx * (1f - clampedP)
 
         Box(
             modifier = Modifier
@@ -298,89 +305,112 @@ fun FluidAlbumDetailOverlay(
                         showLabel = false
                     )
                 }
+            }
 
-                // 2. Parallax Video Motion Banner at top
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(340.dp)
-                            .graphicsLayer {
-                                compositingStrategy = CompositingStrategy.Offscreen
+            // 2. Shared Morph Hero Artwork: glides seamlessly from tapped origin card to edge-to-edge full width hero
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(curArtLeft.roundToInt(), curArtTop.roundToInt()) }
+                    .size(
+                        width = with(density) { curArtWidth.toDp() },
+                        height = with(density) { curArtHeight.toDp() }
+                    )
+                    .graphicsLayer {
+                        scaleX = if (clampedP >= 0.95f) artScale else 1f
+                        scaleY = if (clampedP >= 0.95f) artScale else 1f
+                        alpha = if (clampedP >= 0.95f) artAlpha.coerceIn(0f, 1f) else 1f
+                    }
+                    .then(if (artBlur > 0.dp && clampedP >= 0.95f && artAlpha > 0.01f) Modifier.blur(artBlur) else Modifier)
+                    .clip(
+                        RoundedCornerShape(
+                            bottomStart = with(density) { curArtCorner.toDp() },
+                            bottomEnd = with(density) { curArtCorner.toDp() },
+                            topStart = with(density) { (curArtCorner * (1f - clampedP)).toDp() },
+                            topEnd = with(density) { (curArtCorner * (1f - clampedP)).toDp() }
+                        )
+                    )
+                    .shadow(elevation = (14.dp * clampedP * artAlpha).coerceAtLeast(0.dp), shape = RoundedCornerShape(with(density) { curArtCorner.toDp() }))
+            ) {
+                // Live breathing animated cover
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            if (clampedP >= 0.9f) {
+                                scaleX = bannerScale
+                                scaleY = bannerScale
+                                translationY = bannerShiftY
                             }
-                            .drawWithContent {
-                                drawContent()
-                                drawRect(
-                                    brush = Brush.verticalGradient(
-                                        0.0f to Color.Black,
-                                        0.65f to Color.Black.copy(alpha = 0.80f),
-                                        1.0f to Color.Transparent
-                                    ),
-                                    blendMode = BlendMode.DstIn
-                                )
-                            }
-                    ) {
-                        if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
-                            AsyncImage(
-                                model = resolvedCover,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .scale(bannerScale)
-                                    .offset { IntOffset(0, bannerShiftY.roundToInt()) }
-                                    .blur(20.dp)
-                            )
-                        } else {
-                            AppleMusicGradientCover(
-                                title = alb.title,
-                                artist = alb.artist,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .scale(bannerScale)
-                                    .offset { IntOffset(0, bannerShiftY.roundToInt()) }
-                                    .blur(20.dp),
-                                showLabel = false
-                            )
                         }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            Color.Black.copy(alpha = 0.30f),
-                                            Color.Black.copy(alpha = if (isDark) 0.85f else 0.60f)
-                                        )
-                                    )
-                                )
+                ) {
+                    AppleMusicGradientCover(
+                        title = alb.title,
+                        artist = alb.artist,
+                        cornerRadius = with(density) { curArtCorner.toDp() },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
+                        AsyncImage(
+                            model = resolvedCover,
+                            contentDescription = alb.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
                         )
                     }
+                }
 
-                    // More albums by this artist
-                    val otherAlbums = remember(alb, state.albums) {
-                        state.albums.filter {
-                            it.id != alb.id && (it.artist.equals(alb.artist, ignoreCase = true) || alb.artist.contains(it.artist, ignoreCase = true))
-                        }
+                // Smooth multi-stop bottom gradient fade to seamlessly melt into the sheet content area
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.Transparent,
+                                    albumPageBg.copy(alpha = 0.35f),
+                                    albumPageBg.copy(alpha = 0.80f),
+                                    albumPageBg
+                                )
+                            )
+                        )
+                )
+            }
+
+            // 3. Scrollable Content Layer (Metadata, Action Pills, Tracklist & Pinned Nav Bar)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = sheetAlpha
+                        translationY = sheetSlideY
                     }
-
-                    // Similar artists
-                    val similarArtists = remember(alb.artist) {
-                        val mapped = com.beatles.player.ui.screens.INSTANT_RELATED_ARTISTS[alb.artist] ?: emptyList()
-                        if (mapped.isNotEmpty()) mapped
-                        else {
-                            val currArt = com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(alb.artist, ignoreCase = true) }
-                            com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.filter {
-                                !it.name.equals(alb.artist, ignoreCase = true) && (currArt == null || it.genre == currArt.genre || it.language == currArt.language)
-                            }.take(6)
-                        }
+            ) {
+                // More albums by this artist
+                val otherAlbums = remember(alb, state.albums) {
+                    state.albums.filter {
+                        it.id != alb.id && (it.artist.equals(alb.artist, ignoreCase = true) || alb.artist.contains(it.artist, ignoreCase = true))
                     }
+                }
 
-                    // 3. Scrollable Content (Header, Metadata, Action Pills, Tracklist)
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = targetArtworkSize + 110.dp, bottom = LocalDynamicBottomPadding.current)
-                    ) {
+                // Similar artists
+                val similarArtists = remember(alb.artist) {
+                    val mapped = com.beatles.player.ui.screens.INSTANT_RELATED_ARTISTS[alb.artist] ?: emptyList()
+                    if (mapped.isNotEmpty()) mapped
+                    else {
+                        val currArt = com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(alb.artist, ignoreCase = true) }
+                        com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.filter {
+                            !it.name.equals(alb.artist, ignoreCase = true) && (currArt == null || it.genre == currArt.genre || it.language == currArt.language)
+                        }.take(6)
+                    }
+                }
+
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = targetArtworkHeightDp - 25.dp, bottom = LocalDynamicBottomPadding.current)
+                ) {
                         // Metadata card & Titles
                         item {
                             val heroAlpha = (1f - (scrollOffset / 260f) * p).coerceIn(0f, 1f)
@@ -836,46 +866,6 @@ fun FluidAlbumDetailOverlay(
                             )
                         }
                     }
-            }
-
-            // 5. Shared Morph Hero Artwork: glides seamlessly from tapped origin card to centered hero position
-            val curArtLeft = origin.left + (targetLeftPx - origin.left) * clampedP
-            val curArtTop = origin.top + (targetTopPx + artTranslateY - origin.top) * clampedP + dragY
-            val curArtWidth = originCardWidth + (targetArtworkSizePx - originCardWidth) * clampedP
-            val curArtHeight = originCardHeight + (targetArtworkSizePx - originCardHeight) * clampedP
-            val curArtCorner = originCornerPx + (with(density) { 22.dp.toPx() } - originCornerPx) * clampedP
-
-            Box(
-                modifier = Modifier
-                    .offset { IntOffset(curArtLeft.roundToInt(), curArtTop.roundToInt()) }
-                    .size(
-                        width = with(density) { curArtWidth.toDp() },
-                        height = with(density) { curArtHeight.toDp() }
-                    )
-                    .graphicsLayer {
-                        scaleX = if (clampedP >= 0.95f) artScale else 1f
-                        scaleY = if (clampedP >= 0.95f) artScale else 1f
-                        alpha = if (clampedP >= 0.95f) artAlpha.coerceIn(0f, 1f) else 1f
-                    }
-                    .then(if (artBlur > 0.dp && clampedP >= 0.95f && artAlpha > 0.01f) Modifier.blur(artBlur) else Modifier)
-                    .clip(RoundedCornerShape(with(density) { curArtCorner.toDp() }))
-                    .shadow(elevation = (12.dp * clampedP * artAlpha).coerceAtLeast(0.dp), shape = RoundedCornerShape(with(density) { curArtCorner.toDp() }))
-            ) {
-                // Live gradient cover as robust foundation
-                AppleMusicGradientCover(
-                    title = alb.title,
-                    artist = alb.artist,
-                    cornerRadius = with(density) { curArtCorner.toDp() },
-                    modifier = Modifier.fillMaxSize()
-                )
-                if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
-                    AsyncImage(
-                        model = resolvedCover,
-                        contentDescription = alb.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
             }
         }
 

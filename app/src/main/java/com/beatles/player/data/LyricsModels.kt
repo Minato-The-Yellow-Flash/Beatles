@@ -12,7 +12,8 @@ data class SyncedLyricLine(
     val words: List<SyncedWord>,
     val durationMs: Long = 4000L,
     val isInstrumental: Boolean = false,
-    val instrumentalDurationMs: Long = 0L
+    val instrumentalDurationMs: Long = 0L,
+    val isSecondaryArtist: Boolean = false
 )
 
 object LyricsProcessor {
@@ -89,7 +90,9 @@ object LyricsProcessor {
                 continue
             }
 
-            val rawWords = line.text.trim().split("\\s+".toRegex()).filter { it.isNotEmpty() }
+            val polishedText = IndicTransliteration.polishAndFormat(line.text)
+            val isSec = line.isSecondaryArtist || IndicTransliteration.isSecondaryArtistLine(line.text)
+            val rawWords = polishedText.trim().split("\\s+".toRegex()).filter { it.isNotEmpty() }
             val totalGap = if (nextLine != null && nextLine.timeMs > line.timeMs) {
                 nextLine.timeMs - line.timeMs
             } else {
@@ -131,10 +134,11 @@ object LyricsProcessor {
             result.add(
                 SyncedLyricLine(
                     timeMs = line.timeMs,
-                    text = line.text,
+                    text = polishedText,
                     words = words,
                     durationMs = lineDur,
-                    isInstrumental = false
+                    isInstrumental = false,
+                    isSecondaryArtist = isSec
                 )
             )
 

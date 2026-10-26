@@ -14,7 +14,8 @@ data class Song(
 
 data class LyricLine(
     val timeMs: Long,
-    val text: String
+    val text: String,
+    val isSecondaryArtist: Boolean = false
 )
 
 enum class UserRole { LISTENER, ARTIST, ADMIN }

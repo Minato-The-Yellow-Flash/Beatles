@@ -299,7 +299,57 @@ object IndicTransliteration {
             i++
         }
 
-        return postProcess(sb.toString())
+        return polishAndFormat(postProcess(sb.toString()))
+    }
+
+    /**
+     * Polishes lyrics with proper sentence capitalization, punctuation fixes,
+     * English pronoun capitalization ("I", "I'm", etc.), and clean vocal cues.
+     */
+    fun polishAndFormat(line: String): String {
+        if (line.isBlank()) return line
+        var clean = line.trim()
+            .replace(Regex("\\s+"), " ")
+            .replace(Regex(",([A-Za-z])"), ", $1") // Ensure space after comma
+
+        // Capitalize standalone "i" and contractions
+        clean = clean.replace(Regex("(?<=\\s|^)i(?=\\s|\$|[.,!?;:])"), "I")
+            .replace(Regex("(?<=\\s|^)i'm(?=\\s|\$|[.,!?;:])"), "I'm")
+            .replace(Regex("(?<=\\s|^)i'll(?=\\s|\$|[.,!?;:])"), "I'll")
+            .replace(Regex("(?<=\\s|^)i've(?=\\s|\$|[.,!?;:])"), "I've")
+            .replace(Regex("(?<=\\s|^)i'd(?=\\s|\$|[.,!?;:])"), "I'd")
+
+        // Capitalize first letter of line (or after open parenthesis/bracket/quote)
+        val chars = clean.toCharArray()
+        var capitalizeNext = true
+        for (idx in chars.indices) {
+            val ch = chars[idx]
+            if (capitalizeNext && ch.isLetter()) {
+                chars[idx] = ch.uppercaseChar()
+                capitalizeNext = false
+            } else if (ch in ".!?\"'([") {
+                capitalizeNext = true
+            } else if (ch.isLetterOrDigit()) {
+                capitalizeNext = false
+            }
+        }
+        return String(chars)
+    }
+
+    /**
+     * Determines if a lyric line corresponds to a secondary artist, backing response, or duet part.
+     */
+    fun isSecondaryArtistLine(text: String): Boolean {
+        val t = text.trim()
+        if (t.startsWith("(") && t.endsWith(")")) return true
+        if (t.startsWith("[") && t.endsWith("]")) return true
+        val lower = t.lowercase()
+        return lower.contains("[artist 2") || lower.contains("(artist 2") ||
+               lower.contains("[singer 2") || lower.contains("(singer 2") ||
+               lower.contains("(female)") || lower.contains("[female]") ||
+               lower.contains("(male)") || lower.contains("[male]") ||
+               lower.contains("(backing)") || lower.contains("(chorus)") ||
+               lower.contains("[chorus]") || lower.contains("feat.")
     }
 
     /**
