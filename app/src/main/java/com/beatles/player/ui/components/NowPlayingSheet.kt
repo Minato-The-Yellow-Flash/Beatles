@@ -2,6 +2,7 @@ package com.beatles.player.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.runtime.CompositionLocalProvider
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
@@ -680,6 +681,7 @@ fun NowPlayingSheet(
         Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = subpageOverlayAlpha)))
         }
 
+        CompositionLocalProvider(LocalHazeState provides sheetHaze) {
         val isLyricsActive = showLyrics && !showNextUp
         val isNextUpActive = showNextUp
         val isCompactTarget = isLyricsActive || isNextUpActive
@@ -1649,6 +1651,7 @@ fun NowPlayingSheet(
                 onCancelTimer = { onCancelSleepTimer() },
                 onToggleExtendPopup = onSetSleepExtendPopupEnabled
             )
+        }
         }
 
     }

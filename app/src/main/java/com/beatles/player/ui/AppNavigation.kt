@@ -104,12 +104,10 @@ import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
 import com.beatles.player.ui.components.LocalLiquidGlassEnabled
-import com.beatles.player.ui.components.LocalAppBackdrop
+import com.beatles.player.ui.components.LocalHazeState
 import com.beatles.player.ui.components.liquidGlass
 import com.beatles.player.ui.components.lightweightLiquidGlass
 import com.beatles.player.ui.components.liquidGlassRim
-import com.beatles.player.ui.components.backdrop.backdrops.rememberLayerBackdrop
-import com.beatles.player.ui.components.backdrop.backdrops.layerBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -441,18 +439,10 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 label = "dynamicBottomPadding"
             )
 
-            val paintBackdrop: androidx.compose.ui.graphics.drawscope.ContentDrawScope.() -> Unit = remember(appBg) {
-                {
-                    drawRect(appBg)
-                    drawContent()
-                }
-            }
-            val appBackdrop = rememberLayerBackdrop(onDraw = paintBackdrop)
-
             CompositionLocalProvider(
                 LocalDynamicBottomPadding provides animatedBottomPadding,
                 LocalLiquidGlassEnabled provides true,
-                LocalAppBackdrop provides appBackdrop
+                LocalHazeState provides hazeState
             ) {
             Box(
                 modifier = Modifier
@@ -469,7 +459,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .layerBackdrop(appBackdrop)
                         .haze(state = hazeState)
                         .graphicsLayer {
                             scaleX = contentBehindScale

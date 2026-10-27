@@ -3,8 +3,10 @@ package com.beatles.player.data
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableLongState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import kotlin.math.abs
 
@@ -245,6 +247,15 @@ fun rememberLyricClock(
     val clock = remember { mutableLongStateOf(positionMs) }
     val engine = remember { LyricClock(positionMs) }
 
+    var lastReportedPos by remember { mutableLongStateOf(positionMs) }
+    var discontinuityCounter by remember { mutableLongStateOf(0L) }
+
+    val delta = abs(positionMs - lastReportedPos)
+    if (delta > 1500L) {
+        discontinuityCounter++
+    }
+    lastReportedPos = positionMs
+
     LaunchedEffect(isPlaying, positionMs) {
         if (!isPlaying) {
             engine.hold(positionMs, nanosToMs(System.nanoTime()))
@@ -267,7 +278,7 @@ fun rememberLyricClock(
                     nowMs = nanosToMs(now),
                     reportedMs = positionMs,
                     sampledAtMs = nanosToMs(system),
-                    discontinuity = positionMs
+                    discontinuity = discontinuityCounter
                 )
             }
         }
