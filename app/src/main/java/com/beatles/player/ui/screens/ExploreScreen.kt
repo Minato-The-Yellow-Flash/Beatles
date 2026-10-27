@@ -25,6 +25,8 @@ import kotlinx.coroutines.async
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.draw.shadow
+import com.beatles.player.ui.components.liquidGlass
+import com.beatles.player.ui.components.liquidGlassRim
 import com.beatles.player.ui.glassRefraction
 import com.beatles.player.ui.motion.liquidPress
 import androidx.compose.ui.Alignment
@@ -86,6 +88,22 @@ val GENRE_PALETTES = listOf(
 )
 
 val GENRES = GENRE_PALETTES.map { it.name to it.primaryColor }
+
+data class MoodActivity(
+    val title: String,
+    val subtitle: String,
+    val color: Color,
+    val searchTag: String
+)
+
+val MOODS_AND_ACTIVITIES = listOf(
+    MoodActivity("Workout", "High energy, gym hype", Color(0xFFFF416C), "workout hype"),
+    MoodActivity("Chill", "Acoustic, relaxing vibes", Color(0xFF00B4DB), "chill acoustic"),
+    MoodActivity("Focus", "Instrumental, deep work", Color(0xFF8E2DE2), "focus instrumental"),
+    MoodActivity("Party", "Dance, celebration hits", Color(0xFFF7971E), "party dance club"),
+    MoodActivity("Late Night", "Moody midnight beats", Color(0xFF2C3E50), "late night moody"),
+    MoodActivity("Romance", "Love ballads, acoustic", Color(0xFFE91E63), "romantic love songs")
+)
 
 @Composable
 fun LiveMorphingGradientCard(
@@ -300,6 +318,64 @@ fun ExploreScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // Moods & Activities Rich Recommendations Section
+            item {
+                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Text(
+                        text = "Moods & Activities",
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isDark) Color.White else Color(0xFF141416),
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
+                        items(MOODS_AND_ACTIVITIES) { mood ->
+                            val moodInteraction = remember { MutableInteractionSource() }
+                            var moodCardBounds by remember { mutableStateOf<Rect?>(null) }
+                            Box(
+                                modifier = Modifier
+                                    .width(150.dp)
+                                    .height(84.dp)
+                                    .liquidPress(moodInteraction)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .onGloballyPositioned { moodCardBounds = it.boundsInRoot() }
+                                    .background(
+                                        Brush.linearGradient(
+                                            listOf(mood.color.copy(alpha = 0.85f), mood.color.copy(alpha = 0.40f)),
+                                            start = Offset.Zero,
+                                            end = Offset(200f, 200f)
+                                        )
+                                    )
+                                    .liquidGlassRim(RoundedCornerShape(16.dp))
+                                    .clickable(interactionSource = moodInteraction, indication = null) {
+                                        selectedGenreOriginBounds = moodCardBounds
+                                        selectedGenreForDetail = mood.title
+                                    }
+                                    .padding(12.dp)
+                            ) {
+                                Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                                    Text(
+                                        text = mood.title,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    )
+                                    Text(
+                                        text = mood.subtitle,
+                                        color = Color.White.copy(alpha = 0.80f),
+                                        fontSize = 11.sp,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // All Genres 2-Column Grid
@@ -573,6 +649,9 @@ fun FluidGenreDetailOverlay(
 
     var genreTracks by remember { mutableStateOf<List<Song>>(emptyList()) }
     var isGenreLoading by remember { mutableStateOf(false) }
+    val textPrimary = if (isDark) Color.White else Color(0xFF141416)
+    val subcategories = remember { listOf("Top Hits", "Party Mix", "Chill & Relax", "Classics", "Trending Viral") }
+    var selectedSubcategory by remember(currentGenre) { mutableStateOf<String?>("Top Hits") }
 
     LaunchedEffect(genre) {
         if (genre != null) {
@@ -790,7 +869,6 @@ fun FluidGenreDetailOverlay(
                             horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val buttonBg = if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f)
                             val buttonIconTint = if (isDark) Color.White else Color(0xFF141416)
                             val playBtnBg = if (isDark) Color.White else Color(0xFF141416)
                             val playBtnIconTint = if (isDark) Color.Black else Color.White
@@ -803,8 +881,8 @@ fun FluidGenreDetailOverlay(
                                     .liquidPress(shuffleInteraction)
                                     .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                     .clip(CircleShape)
-                                    .background(buttonBg)
-                                    .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                    .liquidGlass(CircleShape)
+                                    .liquidGlassRim(CircleShape)
                                     .clickable(
                                         interactionSource = shuffleInteraction,
                                         indication = null
@@ -832,8 +910,8 @@ fun FluidGenreDetailOverlay(
                                     .liquidPress(playInteraction)
                                     .shadow(4.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.18f))
                                     .clip(CircleShape)
-                                    .background(playBtnBg)
-                                    .glassRefraction(32.dp, isDark = isDark, isCircle = true)
+                                    .liquidGlass(CircleShape, surfaceTint = playBtnBg)
+                                    .liquidGlassRim(CircleShape)
                                     .clickable(
                                         interactionSource = playInteraction,
                                         indication = null
@@ -860,8 +938,8 @@ fun FluidGenreDetailOverlay(
                                     .liquidPress(saveInteraction)
                                     .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                     .clip(CircleShape)
-                                    .background(buttonBg)
-                                    .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                    .liquidGlass(CircleShape)
+                                    .liquidGlassRim(CircleShape)
                                     .clickable(
                                         interactionSource = saveInteraction,
                                         indication = null
@@ -886,6 +964,59 @@ fun FluidGenreDetailOverlay(
                                 )
                             }
                         }
+                    }
+
+                    // Rich Options-within-Options Subcategory Filter Chips Row
+                    item {
+                        LazyRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(subcategories) { sub ->
+                                val isSelected = selectedSubcategory == sub
+                                val subInteraction = remember { MutableInteractionSource() }
+                                val chipShape = RoundedCornerShape(50)
+                                Box(
+                                    modifier = Modifier
+                                        .liquidPress(subInteraction)
+                                        .clip(chipShape)
+                                        .then(
+                                            if (isSelected) {
+                                                Modifier.background(AccentRed)
+                                            } else {
+                                                Modifier.liquidGlass(chipShape)
+                                            }
+                                        )
+                                        .liquidGlassRim(chipShape)
+                                        .clickable(interactionSource = subInteraction, indication = null) {
+                                            selectedSubcategory = sub
+                                            isGenreLoading = true
+                                            scope.launch {
+                                                try {
+                                                    val query = "$curGenre ${sub.lowercase()}"
+                                                    val results = MusicRepository.search(query)
+                                                    if (results.isNotEmpty()) {
+                                                        genreTracks = results.distinctBy { it.id }
+                                                    }
+                                                } catch (_: Exception) {}
+                                                isGenreLoading = false
+                                            }
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = sub,
+                                        color = if (isSelected) Color.White else textPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
                     }
 
                     // Tracklist (matching AlbumDetailSheet styling)
@@ -956,8 +1087,8 @@ fun FluidGenreDetailOverlay(
                     .liquidPress(backInteraction)
                     .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                     .clip(CircleShape)
-                    .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
-                    .glassRefraction(20.dp, isDark = isDark, isCircle = true)
+                    .liquidGlass(CircleShape)
+                    .liquidGlassRim(CircleShape)
                     .clickable(interactionSource = backInteraction, indication = null) { handleClose() },
                 contentAlignment = Alignment.Center
             ) {

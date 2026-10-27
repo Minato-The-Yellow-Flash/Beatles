@@ -6,6 +6,7 @@ import androidx.compose.runtime.MutableLongState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import kotlin.math.abs
@@ -63,8 +64,7 @@ internal class LyricClock(startMs: Long) {
             if (lastDiscontinuity != null && !firstOfRun) jumpPending = true
             lastDiscontinuity = discontinuity
         }
-        val isNew = reportedMs != lastReportMs ||
-            (!sampledAtMs.isNaN() && sampledAtMs != lastSampledAtMs)
+        val isNew = reportedMs != lastReportMs || jumpPending
         lastReportMs = reportedMs
         lastSampledAtMs = sampledAtMs
 
@@ -223,15 +223,15 @@ internal class LyricClock(startMs: Long) {
         private const val HISTORY = 16
         private const val MIN_PAIR_SPAN_MS = 300.0
         private const val PAIR_LEARNING = 0.5
-        private const val MIN_RATE = 0.25
-        private const val MAX_RATE = 4.0
+        private const val MIN_RATE = 0.85
+        private const val MAX_RATE = 1.15
         private const val CORRECTION_MS = 600.0
         private const val MAX_SLEW = 0.25
         private const val MAX_SLOW = 0.5
         private const val GLIDE_FROM_MS = 300.0
         private const val GLIDE_MS = 260.0
-        private const val GLIDE_MAX_MS = 2_000.0
-        private const val LOST_MS = 3_000.0
+        private const val GLIDE_MAX_MS = 1_500.0
+        private const val LOST_MS = 1_500.0
         private const val SAME_CLOCK_NANOS = 250_000_000L
     }
 }
@@ -247,36 +247,48 @@ fun rememberLyricClock(
     val clock = remember { mutableLongStateOf(positionMs) }
     val engine = remember { LyricClock(positionMs) }
 
+    val currentPos by rememberUpdatedState(positionMs)
+    val currentPlaying by rememberUpdatedState(isPlaying)
+    val currentActive by rememberUpdatedState(isActive)
+
     var lastReportedPos by remember { mutableLongStateOf(positionMs) }
     var discontinuityCounter by remember { mutableLongStateOf(0L) }
 
-    val delta = abs(positionMs - lastReportedPos)
-    if (delta > 1500L) {
-        discontinuityCounter++
+    LaunchedEffect(positionMs) {
+        val delta = abs(positionMs - lastReportedPos)
+        if (delta > 1500L) {
+            discontinuityCounter++
+        }
+        lastReportedPos = positionMs
     }
-    lastReportedPos = positionMs
 
     LaunchedEffect(isPlaying, positionMs) {
         if (!isPlaying) {
             engine.hold(positionMs, nanosToMs(System.nanoTime()))
             clock.longValue = positionMs
+        } else {
+            val drift = abs(positionMs - clock.longValue)
+            if (drift > 1500L) {
+                engine.hold(positionMs, nanosToMs(System.nanoTime()))
+                clock.longValue = positionMs
+            }
         }
     }
 
     LaunchedEffect(isPlaying, isActive) {
         if (!isPlaying || !isActive) {
-            engine.hold(positionMs, nanosToMs(System.nanoTime()))
-            clock.longValue = positionMs
+            engine.hold(currentPos, nanosToMs(System.nanoTime()))
+            clock.longValue = currentPos
             return@LaunchedEffect
         }
         engine.restart()
-        while (isPlaying && isActive) {
+        while (currentPlaying && currentActive) {
             withFrameNanos { frameNanos ->
                 val system = System.nanoTime()
                 val now = if (abs(system - frameNanos) < 250_000_000L) frameNanos else system
                 clock.longValue = engine.frame(
                     nowMs = nanosToMs(now),
-                    reportedMs = positionMs,
+                    reportedMs = currentPos,
                     sampledAtMs = nanosToMs(system),
                     discontinuity = discontinuityCounter
                 )

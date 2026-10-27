@@ -265,14 +265,28 @@ fun AppleMusicLiveCover(
                     }
                     else -> android.net.Uri.parse(videoUrl)
                 }
+                val bandwidthMeter = androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.Builder(context)
+                    .setInitialBitrateEstimate(50_000_000L)
+                    .build()
                 val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
                     com.beatles.player.player.BeatlesMediaCache.createDataSourceFactory(context)
                 )
                 val fastLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(250, 2000, 50, 150)
+                    .setBufferDurationsMs(250, 4000, 100, 200)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
+                val trackSelector = androidx.media3.exoplayer.trackselection.DefaultTrackSelector(context).apply {
+                    setParameters(
+                        buildUponParameters()
+                            .setForceHighestSupportedBitrate(true)
+                            .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                            .setAllowVideoNonSeamlessAdaptiveness(true)
+                            .build()
+                    )
+                }
                 ExoPlayer.Builder(context)
+                    .setBandwidthMeter(bandwidthMeter)
+                    .setTrackSelector(trackSelector)
                     .setMediaSourceFactory(mediaSourceFactory)
                     .setLoadControl(fastLoadControl)
                     .build().apply {
@@ -1546,43 +1560,6 @@ fun NowPlayingSheet(
         val isDownloading = downloadingSongId == song.id
         val isDownloadFailed = downloadFailedSongId == song.id
 
-        // 3-Dots iOS 27 Mini Submenu (rendered at top layer zIndex 500f so no album art, ambient blur, or specular effects overlap)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(500f)
-        ) {
-            NowPlayingThreeDotsMenu(
-                showMiniMenu = showMiniMenu,
-                onDismissMiniMenu = {
-                    showMiniMenu = false
-                    showSavePlaylistView = false
-                },
-                showSavePlaylistView = showSavePlaylistView,
-                onSetShowSavePlaylistView = { showSavePlaylistView = it },
-                sheetRootBounds = sheetRootBounds,
-                threeDotButtonBounds = threeDotButtonBounds,
-                song = song,
-                onGoToAlbum = onGoToAlbum,
-                onGoToArtist = onGoToArtist,
-                onPlayArtistMix = onPlayArtistMix,
-                autoMixEnabled = autoMixEnabled,
-                onToggleAutoMix = onToggleAutoMix,
-                sleepTimerState = sleepTimerState,
-                onOpenSleepTimerDialog = { showSleepTimerDialog = true },
-                playlists = playlists,
-                onCreatePlaylist = onCreatePlaylist,
-                onAddToPlaylist = onAddToPlaylist,
-                onDownloadSong = onDownloadSong,
-                onCancelDownload = onCancelDownload,
-                onRemoveDownload = onRemoveDownload,
-                isDownloaded = isDownloaded,
-                isDownloading = isDownloading,
-                downloadProgress = downloadProgress,
-                isDownloadFailed = isDownloadFailed
-            )
-        }
-
         // Top Status Bar Protection: Soft gradient and blur layer so system icons (clock, battery, Wi-Fi) stay clearly visible
         val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
         val scrimHeight = (statusBarTopPadding + 58.dp).coerceAtLeast(96.dp)
@@ -1650,6 +1627,43 @@ fun NowPlayingSheet(
                 onStartEndOfTrack = { onStartSleepTimerEndOfTrack() },
                 onCancelTimer = { onCancelSleepTimer() },
                 onToggleExtendPopup = onSetSleepExtendPopupEnabled
+            )
+        }
+
+        // 3-Dots iOS 27 Mini Submenu: Placed at the absolute topmost layer with zIndex 999f so no album art, ambient blur, scrim, or specular effects can ever overlap it
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(999f)
+        ) {
+            NowPlayingThreeDotsMenu(
+                showMiniMenu = showMiniMenu,
+                onDismissMiniMenu = {
+                    showMiniMenu = false
+                    showSavePlaylistView = false
+                },
+                showSavePlaylistView = showSavePlaylistView,
+                onSetShowSavePlaylistView = { showSavePlaylistView = it },
+                sheetRootBounds = sheetRootBounds,
+                threeDotButtonBounds = threeDotButtonBounds,
+                song = song,
+                onGoToAlbum = onGoToAlbum,
+                onGoToArtist = onGoToArtist,
+                onPlayArtistMix = onPlayArtistMix,
+                autoMixEnabled = autoMixEnabled,
+                onToggleAutoMix = onToggleAutoMix,
+                sleepTimerState = sleepTimerState,
+                onOpenSleepTimerDialog = { showSleepTimerDialog = true },
+                playlists = playlists,
+                onCreatePlaylist = onCreatePlaylist,
+                onAddToPlaylist = onAddToPlaylist,
+                onDownloadSong = onDownloadSong,
+                onCancelDownload = onCancelDownload,
+                onRemoveDownload = onRemoveDownload,
+                isDownloaded = isDownloaded,
+                isDownloading = isDownloading,
+                downloadProgress = downloadProgress,
+                isDownloadFailed = isDownloadFailed
             )
         }
         }
@@ -3136,7 +3150,7 @@ fun NowPlayingLyricsLayer(
             )
             val currentIdx by remember(processedLyrics) {
                 derivedStateOf {
-                    LyricsProcessor.findActiveLineIndex(processedLyrics, livePositionMs)
+                    LyricsProcessor.findActiveLineIndex(processedLyrics, lyricClock.longValue)
                 }
             }
 
@@ -3352,7 +3366,8 @@ fun NowPlayingLyricsLayer(
                         ) {
                             if (line.isInstrumental) {
                                 // Animated Instrumental Interlude: "♪" + 3 dots filling in across the duration
-                                val breakElapsed = (livePositionMs - line.timeMs).coerceIn(0L, line.durationMs)
+                                val clockMs = lyricClock.longValue
+                                val breakElapsed = (clockMs - line.timeMs).coerceIn(0L, line.durationMs)
                                 val breakProgress = if (line.durationMs > 0) (breakElapsed.toFloat() / line.durationMs).coerceIn(0f, 1f) else 0f
                                 val breathScale = if (isActive) (1.0f + 0.012f * kotlin.math.sin(breakElapsed / 700.0).toFloat()) else 1.0f
 
@@ -3393,7 +3408,8 @@ fun NowPlayingLyricsLayer(
                                     }
                                 }
                             } else if (line.words.isNotEmpty()) {
-                                val lineSweep = if (isActive) LyricsProcessor.calculateLineSweepProgress(line, livePositionMs) else 0f
+                                val clockMs = lyricClock.longValue
+                                val lineSweep = if (isActive) LyricsProcessor.calculateLineSweepProgress(line, clockMs) else 0f
                                 FlowRow(
                                     horizontalArrangement = if (isRightAligned) Arrangement.spacedBy(8.dp, Alignment.End) else Arrangement.spacedBy(8.dp, Alignment.Start),
                                     verticalArrangement = Arrangement.spacedBy(4.dp),

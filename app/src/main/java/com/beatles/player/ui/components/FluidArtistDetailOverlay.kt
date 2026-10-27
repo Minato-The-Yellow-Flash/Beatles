@@ -75,7 +75,10 @@ import com.beatles.player.viewmodel.PlayerUiState
 import com.beatles.player.viewmodel.PlayerViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
+import com.beatles.player.ui.components.liquidGlass
+import com.beatles.player.ui.components.liquidGlassRim
 import kotlin.math.roundToInt
 
 private val AccentRed = Color(0xFFF82C38)
@@ -136,30 +139,47 @@ fun FluidArtistDetailOverlay(
         if (artist != null) {
             try { listState.scrollToItem(0) } catch (_: Exception) {}
             currentArtist = artist
-            if (sourceBounds != null) {
-                currentOriginBounds = sourceBounds
-            }
+            currentOriginBounds = sourceBounds
             isClosing = false
 
             // 1. Immediate local tracks
             val localTracks = (state.favoriteSongs + state.recentlyPlayed + state.downloadedSongs +
                     state.albums.flatMap { it.songs } + state.recommendations)
-                .filter { ArtistMixEngine.isArtistMatch(it, artist) }
+                .filter { s ->
+                    ArtistMixEngine.isArtistMatch(s, artist) ||
+                    s.artist.contains(artist, ignoreCase = true) ||
+                    artist.contains(s.artist, ignoreCase = true)
+                }
                 .distinctBy { it.id }
             artistTracks = localTracks
 
             // 2. Local albums
-            val localAlbums = state.albums.filter { ArtistMixEngine.isArtistMatch(Song(it.id, it.title, it.artist, it.title, "", 0), artist) }
+            val localAlbums = state.albums.filter { alb ->
+                ArtistMixEngine.isArtistMatch(Song(alb.id, alb.title, alb.artist, alb.title, "", 0), artist) ||
+                alb.artist.contains(artist, ignoreCase = true) ||
+                artist.contains(alb.artist, ignoreCase = true)
+            }
             realArtistAlbums = localAlbums
 
             isTracksLoading = true
             scope.launch {
                 try {
                     val fetched = withContext(Dispatchers.IO) {
-                        MusicRepository.search("$artist best songs")
-                            .filter { ArtistMixEngine.isArtistMatch(it, artist) }
+                        val s1 = async { MusicRepository.search("$artist best songs") }
+                        val s2 = async { MusicRepository.search(artist) }
+                        val raw = (s1.await() + s2.await()).distinctBy { it.id }
+                        val matched = raw.filter { ArtistMixEngine.isArtistMatch(it, artist) }
+                        if (matched.isNotEmpty()) matched
+                        else raw.filter { s ->
+                            s.artist.contains(artist, ignoreCase = true) ||
+                            artist.contains(s.artist, ignoreCase = true) ||
+                            s.title.contains(artist, ignoreCase = true)
+                        }.ifEmpty { raw.take(25) }
                     }
-                    artistTracks = (localTracks + fetched).distinctBy { it.id }
+                    val combined = (localTracks + fetched).distinctBy { it.id }
+                    if (combined.isNotEmpty()) {
+                        artistTracks = combined
+                    }
                 } catch (_: Exception) {}
                 isTracksLoading = false
             }
@@ -458,7 +478,6 @@ fun FluidArtistDetailOverlay(
                                     horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val buttonBg = if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f)
                                     val buttonIconTint = if (isDark) Color.White else Color(0xFF141416)
                                     val playBtnBg = if (isDark) Color.White else Color(0xFF141416)
                                     val playBtnIconTint = if (isDark) Color.Black else Color.White
@@ -471,8 +490,8 @@ fun FluidArtistDetailOverlay(
                                             .liquidPress(shuffleInteraction)
                                             .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                             .clip(CircleShape)
-                                            .background(buttonBg)
-                                            .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                            .liquidGlass(CircleShape)
+                                            .liquidGlassRim(CircleShape)
                                             .clickable(
                                                 interactionSource = shuffleInteraction,
                                                 indication = null
@@ -500,8 +519,8 @@ fun FluidArtistDetailOverlay(
                                             .liquidPress(playInteraction)
                                             .shadow(4.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.18f))
                                             .clip(CircleShape)
-                                            .background(playBtnBg)
-                                            .glassRefraction(32.dp, isDark = isDark, isCircle = true)
+                                            .liquidGlass(CircleShape, surfaceTint = playBtnBg)
+                                            .liquidGlassRim(CircleShape)
                                             .clickable(
                                                 interactionSource = playInteraction,
                                                 indication = null
@@ -528,8 +547,8 @@ fun FluidArtistDetailOverlay(
                                             .liquidPress(mixInteraction)
                                             .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                             .clip(CircleShape)
-                                            .background(buttonBg)
-                                            .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                            .liquidGlass(CircleShape)
+                                            .liquidGlassRim(CircleShape)
                                             .clickable(
                                                 interactionSource = mixInteraction,
                                                 indication = null
@@ -667,6 +686,43 @@ fun FluidArtistDetailOverlay(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     CircularProgressIndicator(color = AccentRed, strokeWidth = 2.5.dp, modifier = Modifier.size(32.dp))
+                                }
+                            }
+                        } else {
+                            item {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 32.dp, horizontal = 24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        "No local tracks found for $curArtist",
+                                        color = textSecondary,
+                                        fontSize = 14.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .liquidGlass(RoundedCornerShape(50))
+                                            .liquidGlassRim(RoundedCornerShape(50))
+                                            .clickable {
+                                                Haptics.confirm(view)
+                                                onPlayArtistMix(curArtist)
+                                                scope.launch {
+                                                    progress.animateTo(0f, tween(200))
+                                                    onClose()
+                                                }
+                                            }
+                                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = AccentRed, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Play $curArtist Mix", color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -811,8 +867,8 @@ fun FluidArtistDetailOverlay(
                             .liquidPress(backInteraction)
                             .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                             .clip(CircleShape)
-                            .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
-                            .glassRefraction(20.dp, isDark = isDark, isCircle = true)
+                            .liquidGlass(CircleShape)
+                            .liquidGlassRim(CircleShape)
                             .clickable(interactionSource = backInteraction, indication = null) {
                                 Haptics.click(view)
                                 handleClose()

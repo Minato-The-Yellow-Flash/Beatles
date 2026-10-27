@@ -35,7 +35,7 @@ object ArtistMixEngine {
             .replace(Regex("(?i)[\\(\\[].*?(feat|ft|featuring|with|prod).*?[\\)\\]]"), "")
             .replace(Regex("(?i)\\b(feat|ft|featuring|with|prod|and)\\b.*"), "")
             .replace(Regex("(?i)\\s+(&|x)\\s+.*"), "")
-            .replace(Regex("[^a-zA-Z0-9\\s]"), " ")
+            .replace(Regex("[^\\p{L}\\p{Nd}\\s]"), " ")
             .trim()
             .lowercase(Locale.ROOT)
             .replace(Regex("\\s+"), " ")

@@ -377,7 +377,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val tags = repo.getDynamicTrendingSearches()
             _uiState.update { it.copy(trendingTags = tags) }
         }
-        player.onSongTransition = { mediaId ->
+        player.onSongTransition = onTransition@ { mediaId ->
             val stState = _uiState.value.sleepTimerState
             if (stState.mode == SleepTimerMode.END_OF_TRACK) {
                 executeSleepTimerShutdown()
@@ -398,20 +398,25 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val now = System.currentTimeMillis()
             // Strictly guard against stale media events from cleared or inactive decks post-AutoMix
             if (!autoMixEngine.isBusy && !autoMixEngine.isHandingOff) {
-                val activeMediaId = autoMixEngine.currentDeck?.currentMediaItem?.mediaId
-                val isStaleTransition = (activeMediaId != null && activeMediaId != mediaId) ||
-                    (lastHandoffSongId != null && mediaId != lastHandoffSongId && (now - lastAutoMixHandoffTime < 90_000L))
-                if (!isStaleTransition && (now - lastAutoMixHandoffTime >= 15_000L)) {
-                    val s = _uiState.value.playlist.find { it.id == mediaId }
-                    if (s != null && s.id != _uiState.value.currentSong?.id) {
-                        _uiState.update { it.copy(currentSong = s, isFavorite = storage.isFavorite(getApplication(), s.id), lyrics = emptyList()) }
-                        storage.addToRecentlyPlayed(getApplication(), s)
-                        sessionPlayedSongIds.add(s.id)
-                        _uiState.update { it.copy(recentlyPlayed = storage.getRecentlyPlayed(getApplication())) }
-                        fetchLyrics(s)
-                        enhanceCoverArt(s)
-                        triggerCandidatePrecomputation(s)
-                    }
+                val activeDeckPlayer = autoMixEngine.currentDeck
+                val activeMediaId = activeDeckPlayer?.currentMediaItem?.mediaId
+                // If active deck is playing a specific media item and mediaId differs, ignore ghost transition
+                if (activeMediaId != null && activeMediaId != mediaId) {
+                    return@onTransition
+                }
+                // If recent AutoMix handoff occurred, ignore transitions for anything other than the handoff song
+                if (lastHandoffSongId != null && mediaId != lastHandoffSongId && (now - lastAutoMixHandoffTime < 180_000L)) {
+                    return@onTransition
+                }
+                val s = _uiState.value.playlist.find { it.id == mediaId }
+                if (s != null && s.id != _uiState.value.currentSong?.id) {
+                    _uiState.update { it.copy(currentSong = s, isFavorite = storage.isFavorite(getApplication(), s.id), lyrics = emptyList()) }
+                    storage.addToRecentlyPlayed(getApplication(), s)
+                    sessionPlayedSongIds.add(s.id)
+                    _uiState.update { it.copy(recentlyPlayed = storage.getRecentlyPlayed(getApplication())) }
+                    fetchLyrics(s)
+                    enhanceCoverArt(s)
+                    triggerCandidatePrecomputation(s)
                 }
             }
         }
@@ -725,8 +730,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val clean = artistName.replace(" - Topic", "").trim()
             .split(",", "&", "feat.", "ft.", "/").firstOrNull()?.trim()
             ?.ifBlank { artistName.trim() } ?: artistName.trim()
-        setSelectedArtist(clean, bounds)
-        _uiState.update { it.copy(isExpanded = false, selectedAlbum = null) }
+        _uiState.update { it.copy(selectedArtist = clean, selectedArtistBounds = bounds, isExpanded = false, selectedAlbum = null) }
     }
 
     fun setSelectedGenre(genre: String?, bounds: Rect? = null) {
@@ -1839,7 +1843,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
         if (serviceSong != null) {
             val now = System.currentTimeMillis()
-            val isRecentAutoMix = (lastHandoffSongId != null && now - lastAutoMixHandoffTime < 90_000L)
+            val isRecentAutoMix = (lastHandoffSongId != null && (now - lastAutoMixHandoffTime < 180_000L || _uiState.value.currentSong?.id == lastHandoffSongId))
             val needsSongUpdate = _uiState.value.currentSong == null || (_uiState.value.currentSong?.id != serviceSong.id && isPlayingNow && !isRecentAutoMix)
             if (needsSongUpdate || _uiState.value.isPlaying != isPlayingNow) {
                 _uiState.update { it.copy(

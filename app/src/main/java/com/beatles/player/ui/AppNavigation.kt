@@ -176,7 +176,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 morphState = PlayerMorphState.EXPANDING
                 playerProgress.animateTo(
                     targetValue = 1f,
-                    animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
+                    animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
                 )
                 morphState = PlayerMorphState.EXPANDED
             }
@@ -185,7 +185,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 morphState = PlayerMorphState.COLLAPSING
                 playerProgress.animateTo(
                     targetValue = 0f,
-                    animationSpec = spring(dampingRatio = 1.0f, stiffness = 380f)
+                    animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
                 )
                 morphState = PlayerMorphState.COLLAPSED
                 dragOffsetXPx = 0f
@@ -290,7 +290,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
             viewModel.setExpanded(false)
             playerProgress.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(dampingRatio = 1.0f, stiffness = 380f)
+                animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
             )
             morphState = PlayerMorphState.COLLAPSED
             dragOffsetXPx = 0f
@@ -298,7 +298,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
             morphState = PlayerMorphState.EXPANDING
             playerProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
+                animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
             )
             morphState = PlayerMorphState.EXPANDED
             dragOffsetXPx = 0f
@@ -604,8 +604,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     .liquidPress(profileInteraction)
                                     .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                     .clip(CircleShape)
-                                    .background(if (isDark) Color(0xFF383842).copy(alpha = 0.45f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
-                                    .glassRefraction(19.dp, isDark = isDark, isCircle = true)
+                                    .liquidGlass(CircleShape)
+                                    .liquidGlassRim(CircleShape)
                                     .clickable(interactionSource = profileInteraction, indication = null) { viewModel.setProfileOpen(true) },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -653,12 +653,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     state.selectedAlbumSet != null ||
                     state.showProfilePage
 
-                val playerFade = (1f - playerProgress.value * 1.25f).coerceIn(0f, 1f)
+                val morphP = playerProgress.value.coerceIn(0f, 1f)
+                val navBarScale = 1f - 0.14f * morphP
+                val navBarTranslationY = with(density) { 36.dp.toPx() * morphP }
+                val playerFade = (1f - morphP * 1.6f).coerceIn(0f, 1f)
                 val targetBottomAlpha = if (isOverlayActive) 0f else playerFade
 
                 val bottomBarAlpha by animateFloatAsState(
                     targetValue = targetBottomAlpha,
-                    animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing),
+                    animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f),
                     label = "bottomBarAlpha"
                 )
 
@@ -672,7 +675,9 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                             .imePadding()
                             .graphicsLayer {
                                 alpha = bottomBarAlpha
-                                translationY = (1f - bottomBarAlpha) * 12f
+                                scaleX = navBarScale
+                                scaleY = navBarScale
+                                translationY = navBarTranslationY + (1f - bottomBarAlpha) * 12f
                             }
                             .pointerInput(bottomBarAlpha) {
                                 if (bottomBarAlpha > 0.01f) {
@@ -767,7 +772,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                 Modifier.liquidGlass(
                                                     shape = RoundedCornerShape(pillCorner),
-                                                    surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
+                                                    surfaceTint = Color.White.copy(alpha = 0.10f)
                                                 )
                                             } else {
                                                 Modifier.background(translucentPillBg)
@@ -867,7 +872,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                             scope.launch {
                                                                 playerProgress.animateTo(
                                                                     targetValue = 1f,
-                                                                    animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
+                                                                    animationSpec = spring(dampingRatio = 0.85f, stiffness = 210f)
                                                                 )
                                                                 morphState = PlayerMorphState.EXPANDED
                                                             }
@@ -1123,7 +1128,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                     Modifier.liquidGlass(
                                                         shape = barShape,
-                                                        surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
+                                                        surfaceTint = Color.White.copy(alpha = 0.10f)
                                                     )
                                                 } else {
                                                     Modifier.background(translucentBarBg)
@@ -1339,7 +1344,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                     Modifier.liquidGlass(
                                                         shape = searchPillShape,
-                                                        surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
+                                                        surfaceTint = Color.White.copy(alpha = 0.10f)
                                                     )
                                                 } else {
                                                     Modifier.background(translucentBarBg)
@@ -1454,7 +1459,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                         Modifier.liquidGlass(
                                                             shape = CircleShape,
-                                                            surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
+                                                            surfaceTint = Color.White.copy(alpha = 0.10f)
                                                         )
                                                     } else {
                                                         Modifier.background(translucentBarBg)
@@ -1542,7 +1547,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                 Modifier.liquidGlass(
                                                     shape = RoundedCornerShape(barCorner),
-                                                    surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
+                                                    surfaceTint = Color.White.copy(alpha = 0.10f)
                                                 )
                                             } else {
                                                 Modifier.background(translucentBarBg)
@@ -1596,7 +1601,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                 Modifier.liquidGlass(
                                                     shape = CircleShape,
-                                                    surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
+                                                    surfaceTint = Color.White.copy(alpha = 0.10f)
                                                 )
                                             } else {
                                                 Modifier.background(translucentBarBg)
@@ -1639,7 +1644,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                 Modifier.liquidGlass(
                                                     shape = RoundedCornerShape(barCorner),
-                                                    surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
+                                                    surfaceTint = Color.White.copy(alpha = 0.10f)
                                                 )
                                             } else {
                                                 Modifier.background(translucentBarBg)
@@ -1695,7 +1700,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                 Modifier.liquidGlass(
                                                     shape = CircleShape,
-                                                    surfaceTint = if (state.adminTab == AdminTab.SETTINGS) AccentBlue.copy(alpha = 0.8f) else if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
+                                                    surfaceTint = if (state.adminTab == AdminTab.SETTINGS) AccentBlue.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.10f)
                                                 )
                                             } else {
                                                 Modifier.background(if (state.adminTab == AdminTab.SETTINGS) AccentBlue else translucentBarBg)
@@ -1920,13 +1925,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         launch {
                                                             androidx.compose.animation.core.Animatable(dragOffsetXPx).animateTo(
                                                                 targetValue = 0f,
-                                                                animationSpec = spring(dampingRatio = 1.0f, stiffness = 380f)
+                                                                animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
                                                             ) { dragOffsetXPx = value }
                                                         }
                                                         playerProgress.animateTo(
                                                             targetValue = 0f,
                                                             initialVelocity = (-vy / screenHeightPx.toFloat()).coerceIn(-15f, 0f),
-                                                            animationSpec = spring(dampingRatio = 1.0f, stiffness = 380f)
+                                                            animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
                                                         )
                                                         morphState = PlayerMorphState.COLLAPSED
                                                         dragOffsetXPx = 0f
@@ -1937,13 +1942,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         launch {
                                                             androidx.compose.animation.core.Animatable(dragOffsetXPx).animateTo(
                                                                 targetValue = 0f,
-                                                                animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
+                                                                animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
                                                             ) { dragOffsetXPx = value }
                                                         }
                                                         playerProgress.animateTo(
                                                             targetValue = 1f,
                                                             initialVelocity = (-vy / screenHeightPx.toFloat()).coerceIn(0f, 15f),
-                                                            animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
+                                                            animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
                                                         )
                                                         morphState = PlayerMorphState.EXPANDED
                                                         dragOffsetXPx = 0f
@@ -1955,7 +1960,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 scope.launch {
                                                     playerProgress.animateTo(
                                                         targetValue = 1f,
-                                                        animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
+                                                        animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
                                                     )
                                                     morphState = PlayerMorphState.EXPANDED
                                                     dragOffsetXPx = 0f

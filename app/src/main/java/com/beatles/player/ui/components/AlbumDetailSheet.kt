@@ -447,14 +447,28 @@ fun FluidAlbumDetailOverlay(
                                 }
                                 else -> android.net.Uri.parse(albumVideoUrl)
                             }
+                            val bandwidthMeter = androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.Builder(ctx)
+                                .setInitialBitrateEstimate(50_000_000L)
+                                .build()
                             val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
                                 com.beatles.player.player.BeatlesMediaCache.createDataSourceFactory(ctx)
                             )
                             val fastLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                                .setBufferDurationsMs(250, 2000, 50, 150)
+                                .setBufferDurationsMs(250, 4000, 100, 200)
                                 .setPrioritizeTimeOverSizeThresholds(true)
                                 .build()
+                            val trackSelector = androidx.media3.exoplayer.trackselection.DefaultTrackSelector(ctx).apply {
+                                setParameters(
+                                    buildUponParameters()
+                                        .setForceHighestSupportedBitrate(true)
+                                        .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                                        .setAllowVideoNonSeamlessAdaptiveness(true)
+                                        .build()
+                                )
+                            }
                             ExoPlayer.Builder(ctx)
+                                .setBandwidthMeter(bandwidthMeter)
+                                .setTrackSelector(trackSelector)
                                 .setMediaSourceFactory(mediaSourceFactory)
                                 .setLoadControl(fastLoadControl)
                                 .build().apply {
@@ -971,7 +985,7 @@ fun FluidAlbumDetailOverlay(
                                 .liquidPress(backInteraction)
                                 .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                 .clip(CircleShape)
-                                .liquidGlass(CircleShape, surfaceTint = if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
+                                .liquidGlass(CircleShape)
                                 .liquidGlassRim(CircleShape)
                                 .clickable(interactionSource = backInteraction, indication = null) { handleClose() },
                             contentAlignment = Alignment.Center
@@ -1008,7 +1022,7 @@ fun FluidAlbumDetailOverlay(
                                 .liquidPress(infoInteraction)
                                 .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                 .clip(CircleShape)
-                                .liquidGlass(CircleShape, surfaceTint = if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
+                                .liquidGlass(CircleShape)
                                 .liquidGlassRim(CircleShape)
                                 .clickable(interactionSource = infoInteraction, indication = null) { showInfoDialog = true },
                             contentAlignment = Alignment.Center
