@@ -101,13 +101,11 @@ fun FluidAlbumDetailOverlay(
     var currentOriginBounds by remember { mutableStateOf<Rect?>(null) }
     val progress = remember { Animatable(0f) }
     var isClosing by remember { mutableStateOf(false) }
-    var isVideoPlaying by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun handleClose() {
         if (isClosing) return
         isClosing = true
-        isVideoPlaying = false
         scope.launch {
             progress.animateTo(
                 targetValue = 0f,
@@ -149,12 +147,35 @@ fun FluidAlbumDetailOverlay(
         handleClose()
     }
 
-    val resolvedCover = remember(alb) {
+    val initialCover = remember(alb.id) {
         val raw = if (alb.coverUrl.isNotBlank() && alb.coverUrl.startsWith("http")) alb.coverUrl
         else alb.songs.firstOrNull { it.coverUrl.isNotBlank() && it.coverUrl.startsWith("http") }?.coverUrl
             ?: com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(alb.artist, ignoreCase = true) }?.imageUrl
             ?: ""
-        com.beatles.player.data.MusicRepository.getHighestQualityCover(raw)
+        raw
+    }
+    val highResCover = remember(alb.id) {
+        if (initialCover.isNotBlank()) com.beatles.player.data.MusicRepository.getHighestQualityCover(initialCover) else ""
+    }
+    val resolvedCover = initialCover.ifBlank { highResCover }
+
+    // Pre-cache high-resolution artwork and live video in background for zero-latency loading
+    val sheetCtx = LocalContext.current
+    LaunchedEffect(highResCover) {
+        if (highResCover.isNotBlank() && highResCover.startsWith("http")) {
+            val req = coil.request.ImageRequest.Builder(sheetCtx)
+                .data(highResCover)
+                .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                .build()
+            coil.Coil.imageLoader(sheetCtx).enqueue(req)
+        }
+    }
+    val sheetVideoUrl = alb.videoUrl ?: alb.songs.firstOrNull()?.videoUrl
+    LaunchedEffect(sheetVideoUrl) {
+        if (!sheetVideoUrl.isNullOrBlank() && sheetVideoUrl.startsWith("http")) {
+            com.beatles.player.player.BeatlesMediaCache.preload(sheetCtx, sheetVideoUrl)
+        }
     }
 
     if (p > 0f) {
@@ -167,14 +188,12 @@ fun FluidAlbumDetailOverlay(
         val screenWpx = with(density) { config.screenWidthDp.dp.toPx() }
         val screenHpx = with(density) { config.screenHeightDp.dp.toPx() }
 
-        val targetArtworkSizeDp = 240.dp
-        val targetArtworkSizePx = with(density) { targetArtworkSizeDp.toPx() }
-        val targetArtworkWidthPx = targetArtworkSizePx
-        val targetArtworkHeightDp = targetArtworkSizeDp
-        val targetArtworkHeightPx = targetArtworkSizePx
-        val targetLeftPx = (screenWpx - targetArtworkSizePx) / 2f
-        val targetTopPx = with(density) { 68.dp.toPx() }
-        val targetCornerPx = with(density) { 20.dp.toPx() }
+        val targetArtworkWidthPx = screenWpx
+        val targetArtworkHeightDp = (config.screenHeightDp * 0.44f).dp.coerceIn(310.dp, 390.dp)
+        val targetArtworkHeightPx = with(density) { targetArtworkHeightDp.toPx() }
+        val targetLeftPx = 0f
+        val targetTopPx = 0f
+        val targetCornerPx = 0f
 
         val origin = currentOriginBounds ?: Rect(
             screenWpx / 2f - 100f,
@@ -258,7 +277,7 @@ fun FluidAlbumDetailOverlay(
         val curArtTop = origin.top + (targetTopPx + artTranslateY - origin.top) * smoothP + dragY
         val curArtWidth = originCardWidth + (targetArtworkWidthPx - originCardWidth) * smoothP
         val curArtHeight = originCardHeight + (targetArtworkHeightPx - originCardHeight) * smoothP
-        val curArtCorner = originCornerPx + (targetCornerPx - originCornerPx) * smoothP
+        val curArtCorner = originCornerPx * (1f - smoothP)
 
         Box(
             modifier = Modifier
@@ -322,7 +341,7 @@ fun FluidAlbumDetailOverlay(
                 }
             }
 
-            // 2. Shared Morph Hero Artwork: glides seamlessly from tapped origin card to centered hero card
+            // 2. Shared Morph Hero Artwork: glides seamlessly from tapped origin card to edge-to-edge full width hero
             val albumVideoUrl = alb.videoUrl ?: alb.songs.firstOrNull()?.videoUrl
             val hasVideo = !albumVideoUrl.isNullOrBlank()
 
@@ -337,151 +356,167 @@ fun FluidAlbumDetailOverlay(
                         scaleX = 1f
                         scaleY = 1f
                         alpha = if (clampedP >= 0.95f) artAlpha.coerceIn(0f, 1f) else 1f
+                        compositingStrategy = CompositingStrategy.Offscreen
                     }
-                    .shadow(
-                        elevation = (16.dp * clampedP * artAlpha).coerceAtLeast(0.dp),
-                        shape = RoundedCornerShape(with(density) { curArtCorner.toDp() })
-                    )
-                    .clip(RoundedCornerShape(with(density) { curArtCorner.toDp() }))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        if (hasVideo && clampedP >= 0.95f) {
-                            Haptics.click(view)
-                            isVideoPlaying = !isVideoPlaying
+                    .drawWithContent {
+                        drawContent()
+                        if (clampedP >= 0.85f) {
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    0.00f to Color.Black,
+                                    0.46f to Color.Black,
+                                    0.66f to Color.Black.copy(alpha = 0.85f),
+                                    0.80f to Color.Black.copy(alpha = 0.48f),
+                                    0.92f to Color.Black.copy(alpha = 0.12f),
+                                    1.00f to Color.Transparent
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
                         }
                     }
+                    .clip(
+                        RoundedCornerShape(
+                            bottomStart = with(density) { curArtCorner.toDp() },
+                            bottomEnd = with(density) { curArtCorner.toDp() },
+                            topStart = with(density) { (curArtCorner * (1f - clampedP)).toDp() },
+                            topEnd = with(density) { (curArtCorner * (1f - clampedP)).toDp() }
+                        )
+                    )
+                    .shadow(elevation = (14.dp * clampedP * artAlpha).coerceAtLeast(0.dp), shape = RoundedCornerShape(with(density) { curArtCorner.toDp() }))
             ) {
-                // Base Art
-                AppleMusicGradientCover(
-                    title = alb.title,
-                    artist = alb.artist,
-                    cornerRadius = with(density) { curArtCorner.toDp() },
-                    modifier = Modifier.fillMaxSize()
-                )
-                if (resolvedCover.isNotBlank() && resolvedCover.startsWith("http")) {
-                    AsyncImage(
-                        model = resolvedCover,
-                        contentDescription = alb.title,
-                        contentScale = ContentScale.Crop,
-                        alignment = Alignment.TopCenter,
+                // Live breathing animated cover (anchored to top)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(if (artBlur > 0.dp && clampedP >= 0.95f && artAlpha > 0.01f) Modifier.blur(artBlur) else Modifier)
+                        .graphicsLayer {
+                            if (clampedP >= 0.9f) {
+                                scaleX = bannerScale
+                                scaleY = bannerScale
+                                transformOrigin = TransformOrigin(0.5f, 0.0f)
+                                translationY = 0f
+                            }
+                        }
+                ) {
+                    AppleMusicGradientCover(
+                        title = alb.title,
+                        artist = alb.artist,
+                        cornerRadius = with(density) { curArtCorner.toDp() },
                         modifier = Modifier.fillMaxSize()
                     )
-                }
+                    // Initial cached cover (immediate 0ms display, matching origin card precisely)
+                    if (initialCover.isNotBlank() && initialCover.startsWith("http")) {
+                        AsyncImage(
+                            model = initialCover,
+                            contentDescription = alb.title,
+                            contentScale = ContentScale.Crop,
+                            alignment = Alignment.TopCenter,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    // High-resolution crisp upgrade (rendered silently on top without any glitch or reload)
+                    if (highResCover.isNotBlank() && highResCover != initialCover && highResCover.startsWith("http")) {
+                        AsyncImage(
+                            model = highResCover,
+                            contentDescription = alb.title,
+                            contentScale = ContentScale.Crop,
+                            alignment = Alignment.TopCenter,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
 
-                // Controlled Video Playback: Only mounts when tapped & sheet fully open (zero expansion jitter)
-                if (hasVideo && isVideoPlaying && clampedP >= 0.95f) {
-                    val ctx = LocalContext.current
-                    var isAlbumVideoReady by remember(albumVideoUrl) { mutableStateOf(false) }
-                    var albVideoWidth by remember(albumVideoUrl) { mutableFloatStateOf(1f) }
-                    var albVideoHeight by remember(albumVideoUrl) { mutableFloatStateOf(1f) }
-                    var albTvRef by remember(albumVideoUrl) { mutableStateOf<TextureView?>(null) }
-                    val exoPlayer = remember(albumVideoUrl) {
-                        val uri = when {
-                            albumVideoUrl!!.startsWith("raw://") -> {
-                                val resName = albumVideoUrl.removePrefix("raw://")
-                                val resId = ctx.resources.getIdentifier(resName, "raw", ctx.packageName)
-                                if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
-                                else android.net.Uri.parse("android.resource://${ctx.packageName}/raw/$resName")
-                            }
-                            albumVideoUrl.startsWith("android.resource://") -> {
-                                val parts = albumVideoUrl.split("/")
-                                val resName = parts.lastOrNull() ?: ""
-                                val resId = if (resName.isNotEmpty()) ctx.resources.getIdentifier(resName, "raw", ctx.packageName) else 0
-                                if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
-                                else android.net.Uri.parse(albumVideoUrl)
-                            }
-                            else -> android.net.Uri.parse(albumVideoUrl)
-                        }
-                        ExoPlayer.Builder(ctx).build().apply {
-                            setMediaItem(MediaItem.fromUri(uri))
-                            repeatMode = Player.REPEAT_MODE_ALL
-                            volume = 0f
-                            addListener(object : Player.Listener {
-                                override fun onRenderedFirstFrame() {
-                                    isAlbumVideoReady = true
-                                    albTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, albVideoWidth, albVideoHeight) } }
+                    // Motion Video Layer: Autoplays seamlessly by default (no button required!)
+                    if (hasVideo) {
+                        val ctx = LocalContext.current
+                        var isAlbumVideoReady by remember(albumVideoUrl) { mutableStateOf(false) }
+                        var albVideoWidth by remember(albumVideoUrl) { mutableFloatStateOf(1f) }
+                        var albVideoHeight by remember(albumVideoUrl) { mutableFloatStateOf(1f) }
+                        var albTvRef by remember(albumVideoUrl) { mutableStateOf<TextureView?>(null) }
+                        val exoPlayer = remember(albumVideoUrl) {
+                            val uri = when {
+                                albumVideoUrl!!.startsWith("raw://") -> {
+                                    val resName = albumVideoUrl.removePrefix("raw://")
+                                    val resId = ctx.resources.getIdentifier(resName, "raw", ctx.packageName)
+                                    if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
+                                    else android.net.Uri.parse("android.resource://${ctx.packageName}/raw/$resName")
                                 }
-                                override fun onPlaybackStateChanged(state: Int) {
-                                    if (state == Player.STATE_READY) {
+                                albumVideoUrl.startsWith("android.resource://") -> {
+                                    val parts = albumVideoUrl.split("/")
+                                    val resName = parts.lastOrNull() ?: ""
+                                    val resId = if (resName.isNotEmpty()) ctx.resources.getIdentifier(resName, "raw", ctx.packageName) else 0
+                                    if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
+                                    else android.net.Uri.parse(albumVideoUrl)
+                                }
+                                else -> android.net.Uri.parse(albumVideoUrl)
+                            }
+                            val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                                com.beatles.player.player.BeatlesMediaCache.createDataSourceFactory(ctx)
+                            )
+                            val fastLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                                .setBufferDurationsMs(500, 3000, 200, 500)
+                                .build()
+                            ExoPlayer.Builder(ctx)
+                                .setMediaSourceFactory(mediaSourceFactory)
+                                .setLoadControl(fastLoadControl)
+                                .build().apply {
+                                setMediaItem(MediaItem.fromUri(uri))
+                                repeatMode = Player.REPEAT_MODE_ALL
+                                volume = 0f
+                                addListener(object : Player.Listener {
+                                    override fun onRenderedFirstFrame() {
                                         isAlbumVideoReady = true
                                         albTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, albVideoWidth, albVideoHeight) } }
                                     }
-                                }
-                                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                    if (videoSize.width > 0 && videoSize.height > 0) {
-                                        albVideoWidth = videoSize.width.toFloat()
-                                        albVideoHeight = videoSize.height.toFloat()
-                                        albTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, albVideoWidth, albVideoHeight) } }
+                                    override fun onPlaybackStateChanged(state: Int) {
+                                        if (state == Player.STATE_READY) {
+                                            isAlbumVideoReady = true
+                                            albTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, albVideoWidth, albVideoHeight) } }
+                                        }
+                                    }
+                                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                        if (videoSize.width > 0 && videoSize.height > 0) {
+                                            albVideoWidth = videoSize.width.toFloat()
+                                            albVideoHeight = videoSize.height.toFloat()
+                                            albTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, albVideoWidth, albVideoHeight) } }
+                                        }
+                                    }
+                                })
+                                prepare()
+                                playWhenReady = true
+                            }
+                        }
+                        DisposableEffect(exoPlayer) {
+                            onDispose { exoPlayer.release() }
+                        }
+                        val albumVideoAlpha by animateFloatAsState(
+                            targetValue = if (isAlbumVideoReady && clampedP >= 0.70f) 1f else 0f,
+                            animationSpec = tween(350),
+                            label = "albumVideoAlpha"
+                        )
+                        AndroidView(
+                            factory = { c ->
+                                TextureView(c).apply {
+                                    albTvRef = this
+                                    exoPlayer.setVideoTextureView(this)
+                                    addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                                        if ((right - left) != (oldRight - oldLeft) || (bottom - top) != (oldBottom - oldTop)) {
+                                            applyTopCenterCropMatrix(this, albVideoWidth, albVideoHeight)
+                                        }
                                     }
                                 }
-                            })
-                            prepare()
-                            playWhenReady = true
-                        }
-                    }
-                    DisposableEffect(exoPlayer) {
-                        onDispose { exoPlayer.release() }
-                    }
-                    val albumVideoAlpha by animateFloatAsState(
-                        targetValue = if (isAlbumVideoReady) 1f else 0f,
-                        animationSpec = tween(300),
-                        label = "albumVideoAlpha"
-                    )
-                    AndroidView(
-                        factory = { c ->
-                            TextureView(c).apply {
-                                albTvRef = this
-                                exoPlayer.setVideoTextureView(this)
-                                addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
-                                    if ((right - left) != (oldRight - oldLeft) || (bottom - top) != (oldBottom - oldTop)) {
-                                        applyTopCenterCropMatrix(this, albVideoWidth, albVideoHeight)
-                                    }
+                            },
+                            update = { tv ->
+                                albTvRef = tv
+                                exoPlayer.setVideoTextureView(tv)
+                                tv.post { applyTopCenterCropMatrix(tv, albVideoWidth, albVideoHeight) }
+                            },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    alpha = albumVideoAlpha
+                                    transformOrigin = TransformOrigin(0.5f, 0.0f)
                                 }
-                            }
-                        },
-                        update = { tv ->
-                            albTvRef = tv
-                            exoPlayer.setVideoTextureView(tv)
-                            tv.post { applyTopCenterCropMatrix(tv, albVideoWidth, albVideoHeight) }
-                        },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                alpha = albumVideoAlpha
-                            }
-                    )
-                }
-
-                // Apple Music Motion badge pill overlay at bottom-end
-                if (hasVideo && clampedP >= 0.95f) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(10.dp)
-                            .shadow(3.dp, RoundedCornerShape(12.dp))
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                if (isVideoPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (isVideoPlaying) "MOTION" else "PLAY LIVE",
-                                color = Color.White,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.6.sp
-                            )
-                        }
+                        )
                     }
                 }
             }
@@ -517,7 +552,7 @@ fun FluidAlbumDetailOverlay(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = with(density) { targetTopPx.toDp() } + targetArtworkHeightDp + 24.dp, bottom = LocalDynamicBottomPadding.current)
+                    contentPadding = PaddingValues(top = targetArtworkHeightDp - 25.dp, bottom = LocalDynamicBottomPadding.current)
                 ) {
                         // Metadata card & Titles
                         item {

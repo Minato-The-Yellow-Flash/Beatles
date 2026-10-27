@@ -44,6 +44,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clipToBounds
 import android.os.SystemClock
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -191,7 +192,24 @@ fun AppleMusicLiveCover(
                     translationY = 0f
                 }
         ) {
-            if (coverUrl.isNotBlank()) {
+            AppleMusicGradientCover(
+                title = song.title,
+                artist = song.artist,
+                cornerRadius = cornerRadius,
+                modifier = Modifier.fillMaxSize()
+            )
+            // Instant cached image (0ms latency from tapped/active track)
+            if (song.coverUrl.isNotBlank() && song.coverUrl.startsWith("http")) {
+                AsyncImage(
+                    model = song.coverUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            // Crisp high-resolution image overlay
+            if (coverUrl.isNotBlank() && coverUrl != song.coverUrl && coverUrl.startsWith("http")) {
                 AsyncImage(
                     model = coverUrl,
                     contentDescription = song.title,
@@ -199,13 +217,24 @@ fun AppleMusicLiveCover(
                     alignment = Alignment.TopCenter,
                     modifier = Modifier.fillMaxSize()
                 )
-            } else {
-                AppleMusicGradientCover(
-                    title = song.title,
-                    artist = song.artist,
-                    cornerRadius = cornerRadius,
-                    modifier = Modifier.fillMaxSize()
-                )
+            }
+        }
+
+        // Fast pre-caching for next/current track artwork & video
+        LaunchedEffect(coverUrl) {
+            if (coverUrl.isNotBlank() && coverUrl.startsWith("http")) {
+                val req = coil.request.ImageRequest.Builder(context)
+                    .data(coverUrl)
+                    .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                    .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                    .build()
+                coil.Coil.imageLoader(context).enqueue(req)
+            }
+        }
+        val songVideoUrl = song.videoUrl
+        LaunchedEffect(songVideoUrl) {
+            if (!songVideoUrl.isNullOrBlank() && songVideoUrl.startsWith("http")) {
+                com.beatles.player.player.BeatlesMediaCache.preload(context, songVideoUrl)
             }
         }
 
@@ -234,7 +263,16 @@ fun AppleMusicLiveCover(
                     }
                     else -> android.net.Uri.parse(videoUrl)
                 }
-                ExoPlayer.Builder(context).build().apply {
+                val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                    com.beatles.player.player.BeatlesMediaCache.createDataSourceFactory(context)
+                )
+                val fastLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(500, 3000, 200, 500)
+                    .build()
+                ExoPlayer.Builder(context)
+                    .setMediaSourceFactory(mediaSourceFactory)
+                    .setLoadControl(fastLoadControl)
+                    .build().apply {
                     setMediaItem(MediaItem.fromUri(uri))
                     repeatMode = Player.REPEAT_MODE_ALL
                     volume = 0f
@@ -755,6 +793,7 @@ fun NowPlayingSheet(
         if (coverAlpha > 0.01f && morphProgress > 0.0001f) {
             Box(
                 modifier = Modifier
+                    .zIndex(25f)
                     .offset { IntOffset(with(density) { currentCoverLeft.roundToPx() }, with(density) { currentCoverTop.roundToPx() }) }
                     .size(
                         width = currentCoverWidth.coerceAtLeast(1.dp),
@@ -829,6 +868,7 @@ fun NowPlayingSheet(
         if (compactHeaderAlpha > 0.01f) {
             Row(
                 modifier = Modifier
+                    .zIndex(25f)
                     .fillMaxWidth()
                     .padding(start = 104.dp, end = 20.dp, top = 54.dp)
                     .graphicsLayer { alpha = if (isLyricsActive) compactHeaderAlpha * controlsAlpha else compactHeaderAlpha },
@@ -2753,15 +2793,14 @@ fun NowPlayingQueueLayer(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(bottom = 190.dp, top = 136.dp)
+            .padding(bottom = 190.dp, top = 140.dp)
+            .clipToBounds()
             .graphicsLayer {
-                val smoothSlide = (subpageSlideFraction * subpageSlideFraction * (3f - 2f * subpageSlideFraction)).coerceIn(0f, 1f)
-                val slideX = (1f - smoothSlide) * screenWidthPx
-                // Pure 90° horizontal slide when switching between subpages
-                val transY = if (isSwitchingSubpages || subpageSlideFraction < 0.99f) 0f else with(density) { 36.dp.toPx() * (1f - nextUpProgress) }
-                translationX = slideX
-                translationY = transY
-                alpha = if (isSwitchingSubpages) 1f else nextUpProgress.coerceIn(0f, 1f)
+                translationX = 0f
+                translationY = with(density) { 36.dp.toPx() * (1f - nextUpProgress) }
+                scaleY = 0.94f + 0.06f * nextUpProgress
+                transformOrigin = TransformOrigin(0.5f, 1.0f)
+                alpha = nextUpProgress.coerceIn(0f, 1f)
             }
             .pointerInput(Unit) {
                 var totalDx = 0f
@@ -2981,12 +3020,12 @@ fun NowPlayingLyricsLayer(
     }
 
     val lyricsTopPad by animateDpAsState(
-        targetValue = if (isLyricsFullScreen) 36.dp else if (controlsVisible && controlsAlpha > 0.05f) 110.dp else 16.dp,
+        targetValue = if (isLyricsFullScreen) 48.dp else 140.dp,
         animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f),
         label = "lyricsTopPad"
     )
     val lyricsBottomPad by animateDpAsState(
-        targetValue = if (isLyricsFullScreen) 24.dp else if (controlsVisible && controlsAlpha > 0.05f) 180.dp else 16.dp,
+        targetValue = if (isLyricsFullScreen) 24.dp else if (controlsVisible && controlsAlpha > 0.05f) 180.dp else 24.dp,
         animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f),
         label = "lyricsBottomPad"
     )
@@ -2998,14 +3037,13 @@ fun NowPlayingLyricsLayer(
         modifier = Modifier
             .fillMaxSize()
             .padding(top = lyricsTopPad, bottom = lyricsBottomPad)
+            .clipToBounds()
             .graphicsLayer {
-                val smoothSlide = (subpageSlideFraction * subpageSlideFraction * (3f - 2f * subpageSlideFraction)).coerceIn(0f, 1f)
-                val slideX = -smoothSlide * screenWidthPx
-                // Pure 90° horizontal slide when switching between subpages
-                val transY = if (isSwitchingSubpages || subpageSlideFraction > 0.01f) 0f else with(density) { 24.dp.toPx() * (1f - lyricsProgress) }
-                translationX = slideX
-                translationY = transY
-                alpha = if (isSwitchingSubpages) 1f else lyricsProgress.coerceIn(0f, 1f)
+                translationX = 0f
+                translationY = with(density) { 36.dp.toPx() * (1f - lyricsProgress) }
+                scaleY = 0.94f + 0.06f * lyricsProgress
+                transformOrigin = TransformOrigin(0.5f, 1.0f)
+                alpha = lyricsProgress.coerceIn(0f, 1f)
             }
             .pointerInput(isLyricsFullScreen) {
                 var dragAccumY = 0f
