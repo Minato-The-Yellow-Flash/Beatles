@@ -156,12 +156,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         if (state.isExpanded) {
             playerProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 320f)
+                animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f)
             )
         } else {
             playerProgress.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 320f)
+                animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f)
             )
         }
     }
@@ -1768,11 +1768,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                             }
                         }
 
-                        val curLeft = startBounds.left * (1f - p)
-                        val curTop = startBounds.top * (1f - p)
-                        val curWidth = startBounds.width + (screenWidthPx - startBounds.width) * p
-                        val curHeight = startBounds.height + (screenHeightPx - startBounds.height) * p
-                        val curCorner = (startCorner * (1f - p)).coerceAtLeast(0.dp)
+                        val smoothP = (p * p * (3f - 2f * p)).coerceIn(0f, 1f)
+                        val curLeft = startBounds.left * (1f - smoothP)
+                        val curTop = startBounds.top * (1f - smoothP)
+                        val curWidth = startBounds.width + (screenWidthPx - startBounds.width) * smoothP
+                        val curHeight = startBounds.height + (screenHeightPx - startBounds.height) * smoothP
+                        val curCorner = (startCorner * (1f - smoothP)).coerceAtLeast(0.dp)
 
                         val curCornerShape = RoundedCornerShape(curCorner)
                         val curWidthDp = with(density) { curWidth.toDp() }
@@ -1783,10 +1784,10 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         val containerBg = androidx.compose.ui.graphics.lerp(
                             translucentPillBg,
                             playerBg,
-                            (p * 1.6f).coerceIn(0f, 1f)
+                            (smoothP * 1.6f).coerceIn(0f, 1f)
                         )
 
-                        val morphContainerAlpha = if (p < 0.06f) (p / 0.06f).coerceIn(0f, 1f) else 1f
+                        val morphContainerAlpha = 1f
 
                         Box(
                             modifier = Modifier
@@ -1810,7 +1811,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             onDragEnd = {
                                                 val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
                                                 if (isInSubPage) return@detectVerticalDragGestures
-                                                if (playerProgress.value < 0.85f) {
+                                                if (playerProgress.value < 0.72f) {
                                                     // Collapse back into the exact originating pill (mid capsule or standard bottom mini player)
                                                     if (openedFromMidCapsule && midMiniPillBounds != null) {
                                                         activeMiniPillBounds = midMiniPillBounds
@@ -1824,7 +1825,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     scope.launch {
                                                         playerProgress.animateTo(
                                                             targetValue = 1f,
-                                                            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 360f)
+                                                            animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f)
                                                         )
                                                     }
                                                 }
@@ -1833,7 +1834,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
                                                 if (state.isExpanded && !isInSubPage) {
                                                     scope.launch {
-                                                        val newP = (playerProgress.value - dragAmount / 450f).coerceIn(0f, 1f)
+                                                        val newP = (playerProgress.value - dragAmount / screenHeightPx.toFloat()).coerceIn(0f, 1f)
                                                         playerProgress.snapTo(newP)
                                                     }
                                                 }
@@ -1842,7 +1843,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     }
                             ) {
                                 // 1. Full Player Content (aligned to screen space so album art and components glide smoothly)
-                                val fullPlayerAlpha = if (p <= 0.08f) 0f else ((p - 0.08f) / 0.92f).coerceIn(0f, 1f)
+                                val fullPlayerAlpha = if (p <= 0.001f) 0f else 1f
                                 if (fullPlayerAlpha > 0.001f) {
                                     Box(
                                         modifier = Modifier

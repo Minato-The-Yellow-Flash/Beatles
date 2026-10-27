@@ -644,12 +644,12 @@ fun NowPlayingSheet(
 
         val lyricsProgress by animateFloatAsState(
             targetValue = if (isLyricsActive) 1f else 0f,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 440f),
+            animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f),
             label = "lyricsProgress"
         )
         val nextUpProgress by animateFloatAsState(
             targetValue = if (isNextUpActive) 1f else 0f,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 440f),
+            animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f),
             label = "nextUpProgress"
         )
 
@@ -657,7 +657,7 @@ fun NowPlayingSheet(
         val subpageTarget = if (isNextUpActive) 1f else 0f
         val subpageSlideFraction by animateFloatAsState(
             targetValue = subpageTarget,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 440f),
+            animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f),
             label = "subpageSlideFraction"
         )
         val sideStretchFactor = (1f - kotlin.math.abs(subpageSlideFraction - 0.5f) * 2f).coerceIn(0f, 1f)
@@ -710,14 +710,15 @@ fun NowPlayingSheet(
         // Single unified compact progress: remains strictly at 1f during lyrics <-> next up toggle so album art never jumps or dips
         val compactProgress by animateFloatAsState(
             targetValue = if (isCompactTarget) 1f else 0f,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 440f),
+            animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f),
             label = "compactProgress"
         )
-        val coverWidth = defaultCoverWidth + (68.dp - defaultCoverWidth) * compactProgress
-        val coverHeight = defaultCoverHeight + (68.dp - defaultCoverHeight) * compactProgress
-        val coverLeft = defaultCoverLeft + (24.dp - defaultCoverLeft) * compactProgress
-        val coverTop = defaultCoverTop + (54.dp - defaultCoverTop) * compactProgress
-        val coverCorner = defaultCoverCorner + (14.dp - defaultCoverCorner) * compactProgress
+        val smoothCompact = (compactProgress * compactProgress * (3f - 2f * compactProgress)).coerceIn(0f, 1f)
+        val coverWidth = defaultCoverWidth + (68.dp - defaultCoverWidth) * smoothCompact
+        val coverHeight = defaultCoverHeight + (68.dp - defaultCoverHeight) * smoothCompact
+        val coverLeft = defaultCoverLeft + (24.dp - defaultCoverLeft) * smoothCompact
+        val coverTop = defaultCoverTop + (54.dp - defaultCoverTop) * smoothCompact
+        val coverCorner = defaultCoverCorner + (14.dp - defaultCoverCorner) * smoothCompact
         val coverAlpha by animateFloatAsState(
             targetValue = 1f,
             animationSpec = tween(220),
@@ -742,11 +743,12 @@ fun NowPlayingSheet(
             13.dp
         }
 
-        val currentCoverLeft = originArtLeft + (coverLeft - originArtLeft) * morphProgress
-        val currentCoverTop = originArtTop + (coverTop - originArtTop) * morphProgress
-        val currentCoverWidth = originArtSize + (coverWidth - originArtSize) * morphProgress
-        val currentCoverHeight = originArtSize + (coverHeight - originArtSize) * morphProgress
-        val currentCoverCorner = originArtCorner + (coverCorner - originArtCorner) * morphProgress
+        val smoothMorph = (morphProgress * morphProgress * (3f - 2f * morphProgress)).coerceIn(0f, 1f)
+        val currentCoverLeft = originArtLeft + (coverLeft - originArtLeft) * smoothMorph
+        val currentCoverTop = originArtTop + (coverTop - originArtTop) * smoothMorph
+        val currentCoverWidth = originArtSize + (coverWidth - originArtSize) * smoothMorph
+        val currentCoverHeight = originArtSize + (coverHeight - originArtSize) * smoothMorph
+        val currentCoverCorner = originArtCorner + (coverCorner - originArtCorner) * smoothMorph
 
         // Apple Music-Style Full-Screen Animated Album Artwork (glides to top-left thumbnail when Next Up or Lyrics is active, morphs continuously to mini player when closing)
         if (coverAlpha > 0.01f && morphProgress > 0.0001f) {
@@ -763,20 +765,22 @@ fun NowPlayingSheet(
                         translationX = animatedDragX * (1f - compactProgress).coerceIn(0f, 1f)
                         shape = RoundedCornerShape(currentCoverCorner)
                         clip = true
-                        compositingStrategy = if (morphProgress >= 0.3f) CompositingStrategy.Offscreen else CompositingStrategy.Auto
+                        compositingStrategy = CompositingStrategy.Offscreen
                     }
                     .drawWithContent {
                         drawContent()
                         val maskFade = (1f - compactProgress).coerceIn(0f, 1f)
-                        if (maskFade > 0.005f && morphProgress >= 0.85f) {
+                        val morphMaskWeight = ((morphProgress - 0.70f) / 0.30f).coerceIn(0f, 1f)
+                        val effectiveMaskFade = maskFade * morphMaskWeight
+                        if (effectiveMaskFade > 0.001f) {
                             drawRect(
                                 brush = Brush.verticalGradient(
                                     0.00f to Color.Black,
                                     0.46f to Color.Black,
-                                    0.66f to Color.Black.copy(alpha = 0.85f * maskFade + (1f - maskFade)),
-                                    0.80f to Color.Black.copy(alpha = 0.48f * maskFade + (1f - maskFade)),
-                                    0.92f to Color.Black.copy(alpha = 0.12f * maskFade + (1f - maskFade)),
-                                    1.00f to Color.Black.copy(alpha = 1f - maskFade)
+                                    0.66f to Color.Black.copy(alpha = 1f - 0.15f * effectiveMaskFade),
+                                    0.80f to Color.Black.copy(alpha = 1f - 0.52f * effectiveMaskFade),
+                                    0.92f to Color.Black.copy(alpha = 1f - 0.88f * effectiveMaskFade),
+                                    1.00f to Color.Black.copy(alpha = 1f - 1.00f * effectiveMaskFade)
                                 ),
                                 blendMode = BlendMode.DstIn
                             )
@@ -986,7 +990,7 @@ fun NowPlayingSheet(
         // Bottom Controls Container (Slides down off-screen during lyrics full screen mode or when morphing down)
         val controlsSlideDownAnim by animateDpAsState(
             targetValue = if (isLyricsActive && isLyricsFullScreen) 280.dp else 0.dp,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 420f),
+            animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f),
             label = "controlsSlideDownAnim"
         )
         val controlsVisibilityAlpha = (if (isLyricsActive && isLyricsFullScreen) 0f else controlsAlpha) * ((morphProgress - 0.20f) / 0.80f).coerceIn(0f, 1f)
@@ -2745,7 +2749,8 @@ fun NowPlayingQueueLayer(
             .fillMaxSize()
             .padding(bottom = 190.dp, top = 136.dp)
             .graphicsLayer {
-                val slideX = (1f - subpageSlideFraction) * screenWidthPx
+                val smoothSlide = (subpageSlideFraction * subpageSlideFraction * (3f - 2f * subpageSlideFraction)).coerceIn(0f, 1f)
+                val slideX = (1f - smoothSlide) * screenWidthPx
                 val transY = with(density) { 36.dp.toPx() * (1f - nextUpProgress) * (1f - sideStretchFactor) }
                 translationX = slideX
                 translationY = transY
@@ -2970,12 +2975,12 @@ fun NowPlayingLyricsLayer(
 
     val lyricsTopPad by animateDpAsState(
         targetValue = if (isLyricsFullScreen) 36.dp else if (controlsVisible && controlsAlpha > 0.05f) 110.dp else 16.dp,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 400f),
+        animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f),
         label = "lyricsTopPad"
     )
     val lyricsBottomPad by animateDpAsState(
         targetValue = if (isLyricsFullScreen) 24.dp else if (controlsVisible && controlsAlpha > 0.05f) 180.dp else 16.dp,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 400f),
+        animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f),
         label = "lyricsBottomPad"
     )
 
@@ -2987,7 +2992,8 @@ fun NowPlayingLyricsLayer(
             .fillMaxSize()
             .padding(top = lyricsTopPad, bottom = lyricsBottomPad)
             .graphicsLayer {
-                val slideX = -subpageSlideFraction * screenWidthPx
+                val smoothSlide = (subpageSlideFraction * subpageSlideFraction * (3f - 2f * subpageSlideFraction)).coerceIn(0f, 1f)
+                val slideX = -smoothSlide * screenWidthPx
                 val transY = with(density) { 24.dp.toPx() * (1f - lyricsProgress) * (1f - sideStretchFactor) }
                 translationX = slideX
                 translationY = transY
@@ -3343,7 +3349,7 @@ fun NowPlayingThreeDotsMenu(
 ) {
     val miniMenuAnim by animateFloatAsState(
         targetValue = if (showMiniMenu) 1f else 0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 340f),
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
         label = "miniMenuAnim"
     )
 
@@ -3367,14 +3373,10 @@ fun NowPlayingThreeDotsMenu(
 
             val density = LocalDensity.current
             val endPaddingDp = 24.dp
-            val bottomPaddingDp = remember(showMiniMenu) {
-                val sb = sheetRootBounds
-                val tb = threeDotButtonBounds
-                if (sb != null && tb != null) {
-                    with(density) { (sb.bottom - tb.top + 8.dp.toPx()).toDp().coerceAtLeast(180.dp) }
-                } else {
-                    246.dp
-                }
+            val bottomPaddingDp = if (sheetRootBounds != null && threeDotButtonBounds != null) {
+                with(density) { (sheetRootBounds.bottom - threeDotButtonBounds.top + 8.dp.toPx()).toDp().coerceAtLeast(180.dp) }
+            } else {
+                246.dp
             }
 
             val menuScale = 0.85f + 0.15f * miniMenuAnim
