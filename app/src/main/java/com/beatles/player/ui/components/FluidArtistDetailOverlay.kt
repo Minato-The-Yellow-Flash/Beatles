@@ -612,7 +612,7 @@ fun FluidArtistDetailOverlay(
                                         .background(if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f))
                                         .border(
                                             0.5.dp,
-                                            if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f),
+                                            if (isDark) Color.White.copy(alpha = 0.05f) else Color.Black.copy(alpha = 0.04f),
                                             RoundedCornerShape(20.dp)
                                         )
                                 ) {

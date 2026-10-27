@@ -994,7 +994,6 @@ fun HomeScreen(
                                     .shadow(4.dp, pillShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                     .clip(pillShape)
                                     .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.65f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
-                                    .border(1.dp, if (isDark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.35f), pillShape)
                                     .glassRefraction(22.dp, isDark = isDark)
                                     .clickable(interactionSource = moreInteraction, indication = null) {
                                         val targetGenre = if (selectedGenre == "All") "Pop" else selectedGenre
@@ -1351,7 +1350,6 @@ fun HomeScreen(
                                     .shadow(4.dp, pillShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                     .clip(pillShape)
                                     .background(if (isDark) Color(0xFF1E2026).copy(alpha = 0.65f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
-                                    .border(1.dp, if (isDark) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.35f), pillShape)
                                     .glassRefraction(22.dp, isDark = isDark)
                                     .clickable(interactionSource = moreInteraction, indication = null) {
                                         onSeeAll("made_for_you")

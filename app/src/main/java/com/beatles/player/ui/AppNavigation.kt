@@ -1118,7 +1118,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // Left Pill: shrinks to circle with active tab icon in search mode, expands to full tabs in normal mode
-                                    val barShape = RoundedCornerShape(barCorner)
+                                    val leftCornerDp = androidx.compose.ui.unit.lerp(barCorner, bottomBarHeight / 2f, combined)
+                                    val barShape = RoundedCornerShape(leftCornerDp)
                                     Box(
                                         modifier = Modifier
                                             .width(with(density) { leftWidthPx.toDp() })
@@ -1128,13 +1129,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                     Modifier.liquidGlass(
                                                         shape = barShape,
-                                                        surfaceTint = Color.White.copy(alpha = 0.10f)
+                                                        surfaceTint = Color.White.copy(alpha = 0.04f),
+                                                        showBorder = false
                                                     )
                                                 } else {
                                                     Modifier.background(translucentBarBg)
                                                 }
                                             )
-                                            .liquidGlassRim(barShape)
                                     ) {
                                         // Left Pill Content: Both layers blend smoothly with crossfade
                                         val activeTab = tabs[selectedMainTabIdx]
@@ -1216,7 +1217,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     }
                                             ) {
                                                 // Sliding active indicator with liquid deformation, strictly clamped inside outer bounds
-                                                val innerBg = if (isDark) Color.White.copy(alpha = holdAlpha) else Color.Black.copy(alpha = if (isHoldingNav) 0.22f else 0.10f)
+                                                val indicatorCorner = (barCorner - 4.dp).coerceAtLeast(12.dp)
+                                                val indicatorShape = RoundedCornerShape(indicatorCorner)
+                                                val indicatorTint = if (isDark) {
+                                                    Color.White.copy(alpha = if (isHoldingNav) 0.08f else 0.04f)
+                                                } else {
+                                                    Color.White.copy(alpha = if (isHoldingNav) 0.12f else 0.06f)
+                                                }
                                                 Box(
                                                     modifier = Modifier
                                                         .fillMaxHeight()
@@ -1226,8 +1233,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                             scaleX = stretchX * holdScale
                                                             scaleY = squashY * holdScale
                                                         }
-                                                        .clip(RoundedCornerShape(barCorner))
-                                                        .background(innerBg)
+                                                        .clip(indicatorShape)
+                                                        .liquidGlass(
+                                                            shape = indicatorShape,
+                                                            surfaceTint = indicatorTint,
+                                                            showBorder = false
+                                                        )
                                                 )
 
                                                 Row(
@@ -1334,7 +1345,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     }
 
                                     // Search Pill: contracts to circle button (normal mode) or expands into search bar (search mode)
-                                    val searchPillShape = if (searchExpandProgress > 0.05f) barShape else CircleShape
+                                    val searchCornerDp = androidx.compose.ui.unit.lerp(bottomBarHeight / 2f, barCorner, searchExpandProgress)
+                                    val searchPillShape = RoundedCornerShape(searchCornerDp)
                                     Box(
                                         modifier = Modifier
                                             .width(with(density) { searchWidthPx.toDp() })
@@ -1344,13 +1356,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                     Modifier.liquidGlass(
                                                         shape = searchPillShape,
-                                                        surfaceTint = Color.White.copy(alpha = 0.10f)
+                                                        surfaceTint = Color.White.copy(alpha = 0.04f),
+                                                        showBorder = false
                                                     )
                                                 } else {
                                                     Modifier.background(translucentBarBg)
                                                 }
                                             )
-                                            .liquidGlassRim(searchPillShape)
                                     ) {
                                         // Compact search button (normal mode)
                                         if (searchExpandProgress < 0.6f) {
@@ -1547,23 +1559,28 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                 Modifier.liquidGlass(
                                                     shape = RoundedCornerShape(barCorner),
-                                                    surfaceTint = Color.White.copy(alpha = 0.10f)
+                                                    surfaceTint = Color.White.copy(alpha = 0.04f),
+                                                    showBorder = false
                                                 )
                                             } else {
                                                 Modifier.background(translucentBarBg)
                                             }
                                         )
-                                        .liquidGlassRim(RoundedCornerShape(barCorner))
                                         .padding(4.dp)
                                 ) {
                                     val tabWidth = constraints.maxWidth / tabs.size.toFloat()
+                                    val artistIndicatorShape = RoundedCornerShape((barCorner - 4.dp).coerceAtLeast(12.dp))
                                     Box(
                                         modifier = Modifier
                                             .fillMaxHeight()
                                             .width(with(density) { (tabWidth - 2).toDp() })
                                             .offset { IntOffset((indicatorFraction * tabWidth).roundToInt(), 0) }
-                                            .clip(RoundedCornerShape(barCorner - 4.dp))
-                                            .background(AccentPurple.copy(alpha = 0.35f))
+                                            .clip(artistIndicatorShape)
+                                            .liquidGlass(
+                                                shape = artistIndicatorShape,
+                                                surfaceTint = AccentPurple.copy(alpha = 0.22f),
+                                                showBorder = false
+                                            )
                                     )
                                     Row(
                                         modifier = Modifier.fillMaxSize(),
@@ -1644,24 +1661,29 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                 Modifier.liquidGlass(
                                                     shape = RoundedCornerShape(barCorner),
-                                                    surfaceTint = Color.White.copy(alpha = 0.10f)
+                                                    surfaceTint = Color.White.copy(alpha = 0.04f),
+                                                    showBorder = false
                                                 )
                                             } else {
                                                 Modifier.background(translucentBarBg)
                                             }
                                         )
-                                        .liquidGlassRim(RoundedCornerShape(barCorner))
                                         .padding(4.dp)
                                 ) {
                                     val tabWidth = constraints.maxWidth / tabs.size.toFloat()
                                     if (state.adminTab != AdminTab.SETTINGS) {
+                                        val adminIndicatorShape = RoundedCornerShape((barCorner - 4.dp).coerceAtLeast(12.dp))
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxHeight()
                                                 .width(with(density) { (tabWidth - 2).toDp() })
                                                 .offset { IntOffset((indicatorFraction * tabWidth).roundToInt(), 0) }
-                                                .clip(RoundedCornerShape(barCorner - 4.dp))
-                                                .background(AccentBlue.copy(alpha = 0.35f))
+                                                .clip(adminIndicatorShape)
+                                                .liquidGlass(
+                                                    shape = adminIndicatorShape,
+                                                    surfaceTint = AccentBlue.copy(alpha = 0.22f),
+                                                    showBorder = false
+                                                )
                                         )
                                     }
                                     Row(
@@ -1737,7 +1759,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     sourceBounds = state.selectedGenreBounds,
                     state = state,
                     onClose = { viewModel.setSelectedGenre(null) },
-                    onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) }
+                    onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) },
+                    onSelectAlbum = { alb, bounds -> viewModel.setSelectedAlbum(alb, bounds) }
                 )
 
                 // Fluid Artist Detail Overlay (Expanding continuous shared-element animation from artist item)
@@ -1854,9 +1877,14 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         val curBottom = androidx.compose.ui.util.lerp(startBounds.bottom, screenHeightPx, smoothP)
                         val curWidth = (curRight - curLeft).coerceAtLeast(1f)
                         val curHeight = (curBottom - curTop).coerceAtLeast(1f)
-                        val curCorner = androidx.compose.ui.unit.lerp(startCorner, 0.dp, smoothP)
-
-                        val curCornerShape = RoundedCornerShape(curCorner)
+                        val topCorner = androidx.compose.ui.unit.lerp(startCorner, 32.dp, smoothP)
+                        val bottomCorner = androidx.compose.ui.unit.lerp(startCorner, 0.dp, smoothP)
+                        val curCornerShape = RoundedCornerShape(
+                            topStart = topCorner,
+                            topEnd = topCorner,
+                            bottomStart = bottomCorner,
+                            bottomEnd = bottomCorner
+                        )
                         val curWidthDp = with(density) { curWidth.toDp() }
                         val curHeightDp = with(density) { curHeight.toDp() }
                         val curLeftPx = curLeft.roundToInt()
@@ -1887,83 +1915,40 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     )
                                     .clip(curCornerShape)
                                     .background(containerBg)
+                                    .liquidGlassRim(curCornerShape, isDark = isDark)
                                     .pointerInput(state.isExpanded, state.showLyrics, state.showSeeAllSection) {
                                         val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
                                         if (isInSubPage) return@pointerInput
-                                        val velocityTracker = androidx.compose.ui.input.pointer.util.VelocityTracker()
-                                        detectDragGestures(
-                                            onDragStart = {
-                                                morphState = PlayerMorphState.DRAGGING
-                                                velocityTracker.resetTracking()
-                                            },
-                                            onDrag = { change, dragAmount ->
-                                                change.consume()
-                                                velocityTracker.addPosition(change.uptimeMillis, change.position)
-                                                dragOffsetXPx = (dragOffsetXPx + dragAmount.x).coerceIn(-screenWidthPx * 0.35f, screenWidthPx * 0.35f)
-                                                val deltaP = -dragAmount.y / screenHeightPx.toFloat()
-                                                val newP = (playerProgress.value + deltaP).coerceIn(0f, 1f)
-                                                scope.launch {
-                                                    playerProgress.snapTo(newP)
-                                                }
-                                            },
-                                            onDragEnd = {
-                                                val velocity = velocityTracker.calculateVelocity()
-                                                val vy = velocity.y
-                                                val isFlingDown = vy > 800f * density.density
-                                                val isPastThreshold = playerProgress.value < 0.62f
-                                                if (isFlingDown || isPastThreshold) {
-                                                    morphState = PlayerMorphState.COLLAPSING
-                                                    if (openedFromMidCapsule && midMiniPillBounds != null) {
-                                                        activeMiniPillBounds = midMiniPillBounds
-                                                        activeMiniPillCorner = 28.dp
-                                                    } else if (standardMiniPillBounds != null) {
-                                                        activeMiniPillBounds = standardMiniPillBounds
-                                                        activeMiniPillCorner = 22.dp
-                                                    }
-                                                    viewModel.setExpanded(false)
-                                                    scope.launch {
-                                                        launch {
-                                                            androidx.compose.animation.core.Animatable(dragOffsetXPx).animateTo(
-                                                                targetValue = 0f,
-                                                                animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
-                                                            ) { dragOffsetXPx = value }
+                                        var accumulatedDragY = 0f
+                                        detectVerticalDragGestures(
+                                            onDragStart = { accumulatedDragY = 0f },
+                                            onDragEnd = { accumulatedDragY = 0f },
+                                            onDragCancel = { accumulatedDragY = 0f },
+                                            onVerticalDrag = { change, dragAmount ->
+                                                if (dragAmount > 0f || accumulatedDragY > 0f) {
+                                                    accumulatedDragY += dragAmount
+                                                    if (accumulatedDragY > with(density) { 18.dp.toPx() }) {
+                                                        change.consume()
+                                                        if (morphState != PlayerMorphState.COLLAPSING && morphState != PlayerMorphState.COLLAPSED) {
+                                                            morphState = PlayerMorphState.COLLAPSING
+                                                            if (openedFromMidCapsule && midMiniPillBounds != null) {
+                                                                activeMiniPillBounds = midMiniPillBounds
+                                                                activeMiniPillCorner = 28.dp
+                                                            } else if (standardMiniPillBounds != null) {
+                                                                activeMiniPillBounds = standardMiniPillBounds
+                                                                activeMiniPillCorner = 22.dp
+                                                            }
+                                                            viewModel.setExpanded(false)
+                                                            scope.launch {
+                                                                playerProgress.animateTo(
+                                                                    targetValue = 0f,
+                                                                    animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
+                                                                )
+                                                                morphState = PlayerMorphState.COLLAPSED
+                                                                dragOffsetXPx = 0f
+                                                            }
                                                         }
-                                                        playerProgress.animateTo(
-                                                            targetValue = 0f,
-                                                            initialVelocity = (-vy / screenHeightPx.toFloat()).coerceIn(-15f, 0f),
-                                                            animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
-                                                        )
-                                                        morphState = PlayerMorphState.COLLAPSED
-                                                        dragOffsetXPx = 0f
                                                     }
-                                                } else {
-                                                    morphState = PlayerMorphState.EXPANDING
-                                                    scope.launch {
-                                                        launch {
-                                                            androidx.compose.animation.core.Animatable(dragOffsetXPx).animateTo(
-                                                                targetValue = 0f,
-                                                                animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
-                                                            ) { dragOffsetXPx = value }
-                                                        }
-                                                        playerProgress.animateTo(
-                                                            targetValue = 1f,
-                                                            initialVelocity = (-vy / screenHeightPx.toFloat()).coerceIn(0f, 15f),
-                                                            animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
-                                                        )
-                                                        morphState = PlayerMorphState.EXPANDED
-                                                        dragOffsetXPx = 0f
-                                                    }
-                                                }
-                                            },
-                                            onDragCancel = {
-                                                morphState = PlayerMorphState.EXPANDING
-                                                scope.launch {
-                                                    playerProgress.animateTo(
-                                                        targetValue = 1f,
-                                                        animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
-                                                    )
-                                                    morphState = PlayerMorphState.EXPANDED
-                                                    dragOffsetXPx = 0f
                                                 }
                                             }
                                         )

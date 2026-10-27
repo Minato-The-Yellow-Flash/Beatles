@@ -3,7 +3,9 @@ package com.beatles.player.ui.components
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -51,24 +53,25 @@ fun glassContentColor(): Color =
 @Composable
 fun glassIndicatorColor(): Color =
     if (MaterialTheme.colorScheme.surface.luminance() > 0.5f) {
-        Color.White.copy(alpha = 0.60f)
+        Color.White.copy(alpha = 0.40f)
     } else {
-        Color.White.copy(alpha = 0.15f)
+        Color.White.copy(alpha = 0.08f)
     }
 
 @Composable
 fun glassBarTint(): Color? =
-    Color.White.copy(alpha = 0.10f)
+    Color.White.copy(alpha = 0.04f)
 
 /**
- * Pure hardware-accelerated 45° directional highlight rim stroke via Compose Canvas.
- * Combines BitChord's 45° top-left specular reflection with our signature dual-curve
- * inner/outer refraction bevels and exact light/dark mode color placement.
+ * Pure hardware-accelerated dual-curve lens refraction restored from the original
+ * nav bar concept. Eliminates the 45° angle and uses vertical curves (upper + lower)
+ * and horizontal side curves with disconnected middle gaps and lower edge opacities
+ * for an ultra-subtle, elegant crystal glass outline.
  */
 @Composable
 fun Modifier.liquidGlassRim(
     shape: CornerBasedShape,
-    strokeWidth: Dp = 0.75.dp
+    strokeWidth: Dp = 0.5.dp
 ): Modifier {
     val isDark = MaterialTheme.colorScheme.surface.luminance() <= 0.5f
     return this.liquidGlassRim(shape, strokeWidth, isDark)
@@ -76,7 +79,7 @@ fun Modifier.liquidGlassRim(
 
 fun Modifier.liquidGlassRim(
     shape: CornerBasedShape,
-    strokeWidth: Dp = 0.75.dp,
+    strokeWidth: Dp = 0.5.dp,
     isDark: Boolean = true
 ): Modifier = this.drawWithContent {
     drawContent()
@@ -88,33 +91,45 @@ fun Modifier.liquidGlassRim(
     val minDim = size.minDimension
     val cornerPx = shape.topStart.toPx(size, this).coerceAtMost(minDim / 2f)
 
-    // 1. BitChord 45° Specular Highlight Rim (light catching from top-left)
-    // Dark mode: 50% white specular highlight. Light mode: 65% crisp specular reflection.
-    val peakAlpha = if (isDark) 0.50f else 0.65f
+    // 1. Subtle dual-curve lens sheen (vertical gradient with middle gap)
+    val sheenAlpha = if (isDark) 0.03f else 0.02f
     drawRoundRect(
-        brush = Brush.linearGradient(
-            0.0f to reflectionColor.copy(alpha = peakAlpha),
-            0.20f to reflectionColor.copy(alpha = peakAlpha * 0.45f),
-            0.45f to Color.Transparent,
-            1.0f to Color.Transparent,
-            start = Offset.Zero,
-            end = Offset(size.width, size.height)
+        brush = Brush.verticalGradient(
+            0.0f to reflectionColor.copy(alpha = sheenAlpha),
+            0.22f to Color.Transparent,
+            0.78f to Color.Transparent,
+            1.0f to reflectionColor.copy(alpha = sheenAlpha * 0.5f)
         ),
-        topLeft = Offset(strokePx / 2f, strokePx / 2f),
-        size = Size(
-            (size.width - strokePx).coerceAtLeast(0f),
-            (size.height - strokePx).coerceAtLeast(0f)
-        ),
-        cornerRadius = CornerRadius(
-            (cornerPx - strokePx / 2f).coerceAtLeast(0f),
-            (cornerPx - strokePx / 2f).coerceAtLeast(0f)
-        ),
-        style = Stroke(width = strokePx)
+        cornerRadius = CornerRadius(cornerPx, cornerPx)
     )
 
-    // 2. Signature outer dual-curve refraction: upper curve + lower curve
-    val outerPeakAlpha = if (isDark) 0.35f else 0.40f
-    val outerBottomAlpha = if (isDark) outerPeakAlpha * 0.75f else 0.10f
+    // 2. Inner content refraction bevel: subtle secondary lines inset by 0.5dp (disconnected)
+    val innerStrokeW = 0.5.dp.toPx()
+    val innerPeakAlpha = if (isDark) 0.04f else 0.03f
+    val innerBottomAlpha = innerPeakAlpha * 0.60f
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            0.0f to reflectionColor.copy(alpha = innerPeakAlpha),
+            0.16f to Color.Transparent,
+            0.84f to Color.Transparent,
+            1.0f to reflectionColor.copy(alpha = innerBottomAlpha)
+        ),
+        topLeft = Offset(innerStrokeW, innerStrokeW),
+        size = Size(
+            (size.width - innerStrokeW * 2).coerceAtLeast(0f),
+            (size.height - innerStrokeW * 2).coerceAtLeast(0f)
+        ),
+        cornerRadius = CornerRadius(
+            (cornerPx - innerStrokeW).coerceAtLeast(0f),
+            (cornerPx - innerStrokeW).coerceAtLeast(0f)
+        ),
+        style = Stroke(width = innerStrokeW)
+    )
+
+    // 3. Outer content refraction reflection: upper curve + lower curve with vertical middle gap
+    // Edge opacity lowered as requested (subtle reflection, never harsh or distracting)
+    val outerPeakAlpha = if (isDark) 0.14f else 0.06f
+    val outerBottomAlpha = outerPeakAlpha * 0.60f
     drawRoundRect(
         brush = Brush.verticalGradient(
             0.0f to reflectionColor.copy(alpha = outerPeakAlpha),
@@ -136,78 +151,96 @@ fun Modifier.liquidGlassRim(
         style = Stroke(width = strokePx)
     )
 
-    // 3. Inner content refraction bevel: subtle secondary lines inset by 0.5dp
-    val innerStrokeW = 0.5.dp.toPx()
-    val innerPeakAlpha = if (isDark) 0.09f else 0.12f
-    val innerBottomAlpha = innerPeakAlpha * 0.70f
+    // 4. Right & Left edges border: subtle horizontal curve with middle gap
+    val sidePeakAlpha = if (isDark) 0.03f else 0.05f
     drawRoundRect(
-        brush = Brush.verticalGradient(
-            0.0f to reflectionColor.copy(alpha = innerPeakAlpha),
-            0.16f to Color.Transparent,
-            0.84f to Color.Transparent,
-            1.0f to reflectionColor.copy(alpha = innerBottomAlpha)
+        brush = Brush.horizontalGradient(
+            0.0f to reflectionColor.copy(alpha = sidePeakAlpha),
+            0.15f to Color.Transparent,
+            0.85f to Color.Transparent,
+            1.0f to reflectionColor.copy(alpha = sidePeakAlpha)
         ),
-        topLeft = Offset(innerStrokeW, innerStrokeW),
+        topLeft = Offset(strokePx / 2f, strokePx / 2f),
         size = Size(
-            (size.width - innerStrokeW * 2).coerceAtLeast(0f),
-            (size.height - innerStrokeW * 2).coerceAtLeast(0f)
+            (size.width - strokePx).coerceAtLeast(0f),
+            (size.height - strokePx).coerceAtLeast(0f)
         ),
         cornerRadius = CornerRadius(
-            (cornerPx - innerStrokeW).coerceAtLeast(0f),
-            (cornerPx - innerStrokeW).coerceAtLeast(0f)
+            (cornerPx - strokePx / 2f).coerceAtLeast(0f),
+            (cornerPx - strokePx / 2f).coerceAtLeast(0f)
         ),
-        style = Stroke(width = innerStrokeW)
+        style = Stroke(width = strokePx)
     )
 }
 
 /**
- * Lightweight liquid glass over a stable background with 10% transparency.
+ * Convenience compatibility helper matching the original [glassRefraction] signature.
+ */
+fun Modifier.glassRefraction(
+    cornerRadius: Dp,
+    isDark: Boolean,
+    isCircle: Boolean = false,
+    strokeWidth: Dp = 0.5.dp
+): Modifier {
+    val shape = if (isCircle) CircleShape else RoundedCornerShape(cornerRadius)
+    return this.liquidGlassRim(shape, strokeWidth, isDark)
+}
+
+/**
+ * Lightweight liquid glass over a stable background with ultra-clear transparency.
  */
 @Composable
 fun Modifier.lightweightLiquidGlass(
     shape: CornerBasedShape,
     fallbackColor: Color,
+    showBorder: Boolean = false,
 ): Modifier {
     val enabled = LocalLiquidGlassEnabled.current
     val isDark = MaterialTheme.colorScheme.surface.luminance() <= 0.5f
-    // Pure liquid glass: 10% translucent body
-    val glassTint = Color.White.copy(alpha = 0.10f)
+    // Ultra-clear pure liquid glass body tint (0.04f in dark mode)
+    val glassTint = if (isDark) Color.White.copy(alpha = 0.04f) else Color.White.copy(alpha = 0.06f)
     val finalBg = if (enabled) glassTint else fallbackColor
-    val edgeColor = if (isDark) Color.White.copy(alpha = 0.10f) else Color(0xFF141416).copy(alpha = 0.08f)
 
-    return clip(shape)
+    var m = clip(shape)
         .background(finalBg, shape)
         .then(if (enabled) Modifier.liquidGlassRim(shape, isDark = isDark) else Modifier)
-        .border(GLASS_EDGE_WIDTH, edgeColor, shape)
+
+    if (showBorder) {
+        val edgeColor = if (isDark) Color.White.copy(alpha = 0.04f) else Color(0xFF141416).copy(alpha = 0.04f)
+        m = m.border(GLASS_EDGE_WIDTH, edgeColor, shape)
+    }
+    return m
 }
 
 /**
- * Renders a pure liquid glass surface with 10% transparency:
+ * Renders an ultra-clear pure liquid glass surface (almost crystal-clear, ~4% body tint):
  * 1. Live dynamic backdrop blur via [HazeState]
- * 2. 10% translucent crystal glass surface tint
- * 3. Dual-curve chromatic lens sheen on upper/lower curves
- * 4. Hairline edge border
- * 5. Paired with [liquidGlassRim] for directional specular highlights
+ * 2. Ultra-clear transparent crystal surface tint (no cloudy blur)
+ * 3. Restored vertical & horizontal lens refraction with lowered edge opacity
+ * 4. Borderless by default for clean media player controls
  */
 @Composable
 fun Modifier.liquidGlass(
     shape: CornerBasedShape,
     surfaceTint: Color? = null,
+    showBorder: Boolean = false,
 ): Modifier {
     val enabled = LocalLiquidGlassEnabled.current
     val isDark = MaterialTheme.colorScheme.surface.luminance() <= 0.5f
-    val edgeColor = if (isDark) Color.White.copy(alpha = 0.10f) else Color(0xFF141416).copy(alpha = 0.08f)
 
     if (!enabled) {
         val defaultBg = surfaceTint ?: MaterialTheme.colorScheme.surface
-        return clip(shape)
-            .background(defaultBg, shape)
-            .border(GLASS_EDGE_WIDTH, edgeColor, shape)
+        var m = clip(shape).background(defaultBg, shape)
+        if (showBorder) {
+            val edgeColor = if (isDark) Color.White.copy(alpha = 0.04f) else Color(0xFF141416).copy(alpha = 0.04f)
+            m = m.border(GLASS_EDGE_WIDTH, edgeColor, shape)
+        }
+        return m
     }
 
     val hazeState = LocalHazeState.current
-    // Pure liquid glass: 10% translucent body (not cloudy/frosted slab)
-    val defaultTint = Color.White.copy(alpha = 0.10f)
+    // Ultra-clear pure liquid glass: 4% translucent body (almost clear crystal glass, not milky blur)
+    val defaultTint = if (isDark) Color.White.copy(alpha = 0.04f) else Color.White.copy(alpha = 0.06f)
     val finalTint = surfaceTint ?: defaultTint
 
     var base: Modifier = this.clip(shape)
@@ -220,29 +253,14 @@ fun Modifier.liquidGlass(
         )
     }
 
-    return base
+    var result = base
         .background(finalTint, shape)
         .liquidGlassRim(shape, isDark = isDark)
-        .drawWithContent {
-            if (size.width < 1f || size.height < 1f) {
-                drawContent()
-                return@drawWithContent
-            }
-            // Dual-curve vertical lens sheen (Apple/BitChord physical glass)
-            val cornerPx = shape.topStart.toPx(size, this).coerceAtMost(size.minDimension / 2f)
-            val reflectionColor = if (isDark) Color.White else Color(0xFF141416)
-            val sheenAlpha = if (isDark) 0.04f else 0.03f
-            drawRoundRect(
-                brush = Brush.verticalGradient(
-                    0.0f to reflectionColor.copy(alpha = sheenAlpha),
-                    0.22f to Color.Transparent,
-                    0.78f to Color.Transparent,
-                    1.0f to reflectionColor.copy(alpha = sheenAlpha * 0.6f)
-                ),
-                cornerRadius = CornerRadius(cornerPx, cornerPx)
-            )
 
-            drawContent()
-        }
-        .border(GLASS_EDGE_WIDTH, edgeColor, shape)
+    if (showBorder) {
+        val edgeColor = if (isDark) Color.White.copy(alpha = 0.04f) else Color(0xFF141416).copy(alpha = 0.04f)
+        result = result.border(GLASS_EDGE_WIDTH, edgeColor, shape)
+    }
+
+    return result
 }

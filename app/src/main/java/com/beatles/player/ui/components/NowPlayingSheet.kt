@@ -1143,10 +1143,9 @@ fun NowPlayingSheet(
                                     if (isHeartActive) {
                                         Modifier.background(Color.White.copy(alpha = 0.85f))
                                     } else {
-                                        Modifier.liquidGlass(CircleShape, surfaceTint = Color.White.copy(alpha = 0.14f))
+                                        Modifier.liquidGlass(CircleShape, surfaceTint = Color.White.copy(alpha = 0.08f), showBorder = false)
                                     }
                                 )
-                                .liquidGlassRim(CircleShape)
                                 .pointerInput(isFavorite) {
                                     detectTapGestures(
                                         onPress = {
@@ -1188,10 +1187,9 @@ fun NowPlayingSheet(
                                     if (isThreeDotActive) {
                                         Modifier.background(Color.White.copy(alpha = 0.85f))
                                     } else {
-                                        Modifier.liquidGlass(CircleShape, surfaceTint = Color.White.copy(alpha = 0.14f))
+                                        Modifier.liquidGlass(CircleShape, surfaceTint = Color.White.copy(alpha = 0.08f), showBorder = false)
                                     }
                                 )
-                                .liquidGlassRim(CircleShape)
                                 .pointerInput(showMiniMenu) {
                                     detectTapGestures(
                                         onPress = {
@@ -1522,10 +1520,9 @@ fun NowPlayingSheet(
                             if (isLyricsActive) {
                                 Modifier.background(Color.White.copy(alpha = 0.85f))
                             } else {
-                                Modifier.liquidGlass(pillShape, surfaceTint = Color.White.copy(alpha = 0.12f))
+                                Modifier.liquidGlass(pillShape, surfaceTint = Color.White.copy(alpha = 0.08f), showBorder = false)
                             }
                         )
-                        .liquidGlassRim(pillShape)
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleLyrics()
                         },
@@ -1542,10 +1539,9 @@ fun NowPlayingSheet(
                             if (isNextUpActive) {
                                 Modifier.background(Color.White.copy(alpha = 0.85f))
                             } else {
-                                Modifier.liquidGlass(pillShape, surfaceTint = Color.White.copy(alpha = 0.12f))
+                                Modifier.liquidGlass(pillShape, surfaceTint = Color.White.copy(alpha = 0.08f), showBorder = false)
                             }
                         )
-                        .liquidGlassRim(pillShape)
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleNextUp()
                         },
@@ -1902,8 +1898,7 @@ fun QueueSongItem(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Color.White.copy(alpha = 0.14f))
-                                    .border(0.8.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
+                                    .liquidGlass(RoundedCornerShape(10.dp), surfaceTint = Color.White.copy(alpha = 0.08f), showBorder = false)
                                     .padding(horizontal = 6.dp, vertical = 1.5.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2425,13 +2420,13 @@ fun BeatlesSleepTimerSheet(
                     if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                         Modifier.liquidGlass(
                             shape = sheetShape,
-                            surfaceTint = sheetBg
+                            surfaceTint = sheetBg,
+                            showBorder = false
                         )
                     } else {
                         Modifier.background(sheetBg)
                     }
                 )
-                .liquidGlassRim(sheetShape)
                 .drawWithContent {
                     drawContent()
                     drawLine(
@@ -3536,13 +3531,13 @@ fun NowPlayingThreeDotsMenu(
                         if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                             Modifier.liquidGlass(
                                 shape = menuShape,
-                                surfaceTint = if (isDark) Color(0xFF1C1D24).copy(alpha = 0.88f) else Color(0xFFFFFFFF).copy(alpha = 0.90f)
+                                surfaceTint = if (isDark) Color(0xFF1C1D24).copy(alpha = 0.88f) else Color(0xFFFFFFFF).copy(alpha = 0.90f),
+                                showBorder = false
                             )
                         } else {
                             Modifier.background(solidMenuBg)
                         }
                     )
-                    .liquidGlassRim(menuShape)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                     .padding(vertical = 6.dp)
             ) {

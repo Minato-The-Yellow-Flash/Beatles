@@ -27,6 +27,10 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.draw.shadow
 import com.beatles.player.ui.components.liquidGlass
 import com.beatles.player.ui.components.liquidGlassRim
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
+import com.beatles.player.data.Album
 import com.beatles.player.ui.glassRefraction
 import com.beatles.player.ui.motion.liquidPress
 import androidx.compose.ui.Alignment
@@ -102,7 +106,10 @@ val MOODS_AND_ACTIVITIES = listOf(
     MoodActivity("Focus", "Instrumental, deep work", Color(0xFF8E2DE2), "focus instrumental"),
     MoodActivity("Party", "Dance, celebration hits", Color(0xFFF7971E), "party dance club"),
     MoodActivity("Late Night", "Moody midnight beats", Color(0xFF2C3E50), "late night moody"),
-    MoodActivity("Romance", "Love ballads, acoustic", Color(0xFFE91E63), "romantic love songs")
+    MoodActivity("Romance", "Love ballads, acoustic", Color(0xFFE91E63), "romantic love songs"),
+    MoodActivity("Feel Good", "Happy, sunny pop", Color(0xFF86B890), "feel good happy hits"),
+    MoodActivity("Energize", "Morning boost, upbeat", Color(0xFFD0A060), "energize upbeat pop"),
+    MoodActivity("Sleep", "Deep calm, ambient rain", Color(0xFF6A88B0), "sleep ambient calm")
 )
 
 @Composable
@@ -281,13 +288,17 @@ fun ExploreScreen(
                     items(GENRES) { (name, color) ->
                         var pillBounds by remember { mutableStateOf<Rect?>(null) }
                         val pillInteraction = remember { MutableInteractionSource() }
+                        val pillShape = RoundedCornerShape(50)
                         Box(
                             modifier = Modifier
                                 .liquidPress(pillInteraction)
-                                .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
-                                .clip(RoundedCornerShape(50))
-                                .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.55f))
-                                .glassRefraction(50.dp, isDark = isDark)
+                                .shadow(2.dp, pillShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                                .clip(pillShape)
+                                .liquidGlass(
+                                    shape = pillShape,
+                                    surfaceTint = if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.55f),
+                                    showBorder = false
+                                )
                                 .onGloballyPositioned { pillBounds = it.boundsInRoot() }
                                 .clickable(interactionSource = pillInteraction, indication = null) {
                                     if (onSelectGenre != null) {
@@ -320,7 +331,7 @@ fun ExploreScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Moods & Activities Rich Recommendations Section
+            // Moods & Activities Rich Recommendations Section (BitChord Sleeve Cards)
             item {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Text(
@@ -337,41 +348,83 @@ fun ExploreScreen(
                         items(MOODS_AND_ACTIVITIES) { mood ->
                             val moodInteraction = remember { MutableInteractionSource() }
                             var moodCardBounds by remember { mutableStateOf<Rect?>(null) }
+                            val cardShape = RoundedCornerShape(18.dp)
                             Box(
                                 modifier = Modifier
-                                    .width(150.dp)
-                                    .height(84.dp)
+                                    .width(160.dp)
+                                    .height(92.dp)
                                     .liquidPress(moodInteraction)
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .shadow(4.dp, cardShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
+                                    .clip(cardShape)
                                     .onGloballyPositioned { moodCardBounds = it.boundsInRoot() }
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(mood.color.copy(alpha = 0.85f), mood.color.copy(alpha = 0.40f)),
-                                            start = Offset.Zero,
-                                            end = Offset(200f, 200f)
-                                        )
-                                    )
-                                    .liquidGlassRim(RoundedCornerShape(16.dp))
                                     .clickable(interactionSource = moodInteraction, indication = null) {
-                                        selectedGenreOriginBounds = moodCardBounds
-                                        selectedGenreForDetail = mood.title
+                                        if (onSelectGenre != null) {
+                                            onSelectGenre(mood.title, moodCardBounds)
+                                        } else {
+                                            selectedGenreOriginBounds = moodCardBounds
+                                            selectedGenreForDetail = mood.title
+                                        }
                                     }
-                                    .padding(12.dp)
                             ) {
-                                Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                                // BitChord Signature Sleeve: 28% solid color stripe + 72% soft duotone gradient fill
+                                Row(modifier = Modifier.fillMaxSize()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .weight(0.28f)
+                                            .background(mood.color)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .weight(0.72f)
+                                            .background(
+                                                Brush.horizontalGradient(
+                                                    listOf(mood.color.copy(alpha = 0.80f), mood.color.copy(alpha = 0.35f))
+                                                )
+                                            )
+                                    )
+                                }
+                                // Subtle top-to-bottom shade for sharp text contrast
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            Brush.verticalGradient(
+                                                0f to Color.Black.copy(alpha = 0.35f),
+                                                0.65f to Color.Transparent
+                                            )
+                                        )
+                                )
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
                                     Text(
                                         text = mood.title,
                                         color = Color.White,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp
+                                        fontSize = 15.sp,
+                                        style = TextStyle(
+                                            shadow = Shadow(Color.Black.copy(alpha = 0.45f), offset = Offset(0f, 1f), blurRadius = 4f)
+                                        )
                                     )
                                     Text(
                                         text = mood.subtitle,
-                                        color = Color.White.copy(alpha = 0.80f),
+                                        color = Color.White.copy(alpha = 0.85f),
                                         fontSize = 11.sp,
-                                        maxLines = 1
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
+                                // Restored dual-curve lens refraction
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .liquidGlassRim(cardShape, isDark = isDark)
+                                )
                             }
                         }
                     }
@@ -409,7 +462,7 @@ fun ExploreScreen(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .clip(RoundedCornerShape(18.dp))
-                                            .border(1.dp, if (isDark) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
+                                            .glassRefraction(18.dp, isDark = isDark)
                                             .onGloballyPositioned { cardBounds = it.boundsInRoot() }
                                             .clickable {
                                                 if (onSelectGenre != null) {
@@ -618,7 +671,7 @@ fun ExploreScreen(
         }
 
         // Fluid Genre Detail Overlay: expanding animation matching expanded album page, page color matching artwork/genre
-        if (onSelectGenre == null) {
+        if (selectedGenreForDetail != null) {
             FluidGenreDetailOverlay(
                 genre = selectedGenreForDetail,
                 sourceBounds = selectedGenreOriginBounds,
@@ -636,7 +689,8 @@ fun FluidGenreDetailOverlay(
     sourceBounds: Rect?,
     state: PlayerUiState,
     onClose: () -> Unit,
-    onPlay: (Song, List<Song>, Rect?) -> Unit
+    onPlay: (Song, List<Song>, Rect?) -> Unit,
+    onSelectAlbum: ((Album, Rect?) -> Unit)? = null
 ) {
     val density = LocalDensity.current
     val config = LocalConfiguration.current
@@ -680,6 +734,15 @@ fun FluidGenreDetailOverlay(
                         "classical" -> Triple("indian classical music hits", "classical instrumental", "classical raga gold")
                         "electronic" -> Triple("electronic dance music hits", "edm festival hits", "electronic synthwave")
                         "r&b" -> Triple("top r&b soul songs", "modern r&b playlist", "r&b soul 90s 2000s classics")
+                        "workout" -> Triple("gym workout motivation beats", "high energy workout edm", "cardio workout power hits")
+                        "chill" -> Triple("chill acoustic relaxing songs", "lofi chill vibes", "chillout sunset acoustic")
+                        "focus" -> Triple("deep focus study instrumental", "ambient focus work beats", "concentration piano study")
+                        "party" -> Triple("club party hits dance music", "party bangers dj remix", "weekend party anthems")
+                        "late night" -> Triple("midnight moody lofi songs", "late night drive vibes", "late night acoustic")
+                        "romance" -> Triple("romantic love ballads songs", "acoustic romantic melodies", "heartfelt romance hits")
+                        "feel good" -> Triple("feel good happy pop hits", "uplifting positive vibes songs", "sunshine happy melodies")
+                        "energize" -> Triple("upbeat high energy motivation", "energizing morning pop hits", "power running boost")
+                        "sleep" -> Triple("deep sleep ambient calm music", "rain sleep lofi relaxation", "peaceful sleep instrumental")
                         else -> Triple("$genre hits 2024", "best $genre tracks", "classic $genre songs")
                     }
                     val d1 = async { MusicRepository.search(q1) }
@@ -860,7 +923,7 @@ fun FluidGenreDetailOverlay(
                         }
                     }
 
-                    // Action Controls Row: Shuffle & Large Center Play (matching AlbumDetailSheet borderless circular buttons)
+                    // Action Controls Row: Shuffle & Large Center Play (borderless liquid glass)
                     item {
                         Row(
                             modifier = Modifier
@@ -881,8 +944,7 @@ fun FluidGenreDetailOverlay(
                                     .liquidPress(shuffleInteraction)
                                     .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                     .clip(CircleShape)
-                                    .liquidGlass(CircleShape)
-                                    .liquidGlassRim(CircleShape)
+                                    .liquidGlass(CircleShape, showBorder = false)
                                     .clickable(
                                         interactionSource = shuffleInteraction,
                                         indication = null
@@ -910,8 +972,7 @@ fun FluidGenreDetailOverlay(
                                     .liquidPress(playInteraction)
                                     .shadow(4.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.18f))
                                     .clip(CircleShape)
-                                    .liquidGlass(CircleShape, surfaceTint = playBtnBg)
-                                    .liquidGlassRim(CircleShape)
+                                    .liquidGlass(CircleShape, surfaceTint = playBtnBg, showBorder = false)
                                     .clickable(
                                         interactionSource = playInteraction,
                                         indication = null
@@ -938,8 +999,7 @@ fun FluidGenreDetailOverlay(
                                     .liquidPress(saveInteraction)
                                     .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                     .clip(CircleShape)
-                                    .liquidGlass(CircleShape)
-                                    .liquidGlassRim(CircleShape)
+                                    .liquidGlass(CircleShape, showBorder = false)
                                     .clickable(
                                         interactionSource = saveInteraction,
                                         indication = null
@@ -966,53 +1026,226 @@ fun FluidGenreDetailOverlay(
                         }
                     }
 
+                    // BitChord-Style Shelf 1: Top Suggestions
+                    val topSuggestions = genreTracks.take(8)
+                    if (topSuggestions.isNotEmpty()) {
+                        item {
+                            Column(modifier = Modifier.padding(bottom = 22.dp)) {
+                                Text(
+                                    text = "Top Suggestions",
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+                                )
+                                Text(
+                                    text = "Handpicked songs & mixes for $curGenre",
+                                    fontSize = 12.sp,
+                                    color = Color.White.copy(alpha = 0.65f),
+                                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
+                                )
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 20.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    items(topSuggestions) { song ->
+                                        val songInteraction = remember { MutableInteractionSource() }
+                                        var songBounds by remember { mutableStateOf<Rect?>(null) }
+                                        Column(
+                                            modifier = Modifier
+                                                .width(135.dp)
+                                                .liquidPress(songInteraction)
+                                                .onGloballyPositioned { songBounds = it.boundsInRoot() }
+                                                .clickable(interactionSource = songInteraction, indication = null) {
+                                                    onPlay(song, genreTracks, songBounds)
+                                                }
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(135.dp)
+                                                    .shadow(4.dp, RoundedCornerShape(16.dp), spotColor = Color.Black.copy(alpha = 0.45f))
+                                                    .clip(RoundedCornerShape(16.dp))
+                                            ) {
+                                                AsyncImage(
+                                                    model = song.coverUrl,
+                                                    contentDescription = song.title,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                                Box(
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomEnd)
+                                                        .padding(8.dp)
+                                                        .size(32.dp)
+                                                        .clip(CircleShape)
+                                                        .liquidGlass(CircleShape, surfaceTint = Color.Black.copy(alpha = 0.55f), showBorder = false),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        Icons.Default.PlayArrow,
+                                                        contentDescription = "Play",
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = song.title,
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = song.artist,
+                                                color = Color.White.copy(alpha = 0.65f),
+                                                fontSize = 11.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // BitChord-Style Shelf 2: Popular Albums & Releases
+                    val matchingAlbums = state.albums.filter { alb ->
+                        alb.genre.contains(curGenre, ignoreCase = true) ||
+                        alb.title.contains(curGenre, ignoreCase = true) ||
+                        alb.artist.contains(curGenre, ignoreCase = true)
+                    }.let { if (it.isNotEmpty()) it else state.albums.take(6) }
+
+                    if (matchingAlbums.isNotEmpty()) {
+                        item {
+                            Column(modifier = Modifier.padding(bottom = 22.dp)) {
+                                Text(
+                                    text = "Popular Albums",
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+                                )
+                                Text(
+                                    text = "Full records & sets curated in $curGenre",
+                                    fontSize = 12.sp,
+                                    color = Color.White.copy(alpha = 0.65f),
+                                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
+                                )
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 20.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    items(matchingAlbums) { album ->
+                                        val albInteraction = remember { MutableInteractionSource() }
+                                        var albBounds by remember { mutableStateOf<Rect?>(null) }
+                                        Column(
+                                            modifier = Modifier
+                                                .width(135.dp)
+                                                .liquidPress(albInteraction)
+                                                .onGloballyPositioned { albBounds = it.boundsInRoot() }
+                                                .clickable(interactionSource = albInteraction, indication = null) {
+                                                    if (onSelectAlbum != null) {
+                                                        onSelectAlbum(album, albBounds)
+                                                    } else if (album.songs.isNotEmpty()) {
+                                                        onPlay(album.songs.first(), album.songs, albBounds)
+                                                    }
+                                                }
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(135.dp)
+                                                    .shadow(4.dp, RoundedCornerShape(16.dp), spotColor = Color.Black.copy(alpha = 0.45f))
+                                                    .clip(RoundedCornerShape(16.dp))
+                                            ) {
+                                                AsyncImage(
+                                                    model = album.coverUrl,
+                                                    contentDescription = album.title,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = album.title,
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "${album.artist} • ${album.releaseYear}",
+                                                color = Color.White.copy(alpha = 0.65f),
+                                                fontSize = 11.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Rich Options-within-Options Subcategory Filter Chips Row
                     item {
-                        LazyRow(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(subcategories) { sub ->
-                                val isSelected = selectedSubcategory == sub
-                                val subInteraction = remember { MutableInteractionSource() }
-                                val chipShape = RoundedCornerShape(50)
-                                Box(
-                                    modifier = Modifier
-                                        .liquidPress(subInteraction)
-                                        .clip(chipShape)
-                                        .then(
-                                            if (isSelected) {
-                                                Modifier.background(AccentRed)
-                                            } else {
-                                                Modifier.liquidGlass(chipShape)
+                        Column(modifier = Modifier.padding(bottom = 6.dp)) {
+                            Text(
+                                text = "Explore Categories",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                            )
+                            LazyRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(subcategories) { sub ->
+                                    val isSelected = selectedSubcategory == sub
+                                    val subInteraction = remember { MutableInteractionSource() }
+                                    val chipShape = RoundedCornerShape(50)
+                                    Box(
+                                        modifier = Modifier
+                                            .liquidPress(subInteraction)
+                                            .clip(chipShape)
+                                            .then(
+                                                if (isSelected) {
+                                                    Modifier.background(AccentRed)
+                                                } else {
+                                                    Modifier.liquidGlass(chipShape, showBorder = false)
+                                                }
+                                            )
+                                            .clickable(interactionSource = subInteraction, indication = null) {
+                                                selectedSubcategory = sub
+                                                isGenreLoading = true
+                                                scope.launch {
+                                                    try {
+                                                        val query = "$curGenre ${sub.lowercase()}"
+                                                        val results = MusicRepository.search(query)
+                                                        if (results.isNotEmpty()) {
+                                                            genreTracks = results.distinctBy { it.id }
+                                                        }
+                                                    } catch (_: Exception) {}
+                                                    isGenreLoading = false
+                                                }
                                             }
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = sub,
+                                            color = if (isSelected) Color.White else textPrimary,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                         )
-                                        .liquidGlassRim(chipShape)
-                                        .clickable(interactionSource = subInteraction, indication = null) {
-                                            selectedSubcategory = sub
-                                            isGenreLoading = true
-                                            scope.launch {
-                                                try {
-                                                    val query = "$curGenre ${sub.lowercase()}"
-                                                    val results = MusicRepository.search(query)
-                                                    if (results.isNotEmpty()) {
-                                                        genreTracks = results.distinctBy { it.id }
-                                                    }
-                                                } catch (_: Exception) {}
-                                                isGenreLoading = false
-                                            }
-                                        }
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = sub,
-                                        color = if (isSelected) Color.White else textPrimary,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    )
+                                    }
                                 }
                             }
                         }
