@@ -354,7 +354,7 @@ fun FluidAlbumDetailOverlay(
                     )
                     .shadow(elevation = (14.dp * clampedP * artAlpha).coerceAtLeast(0.dp), shape = RoundedCornerShape(with(density) { curArtCorner.toDp() }))
             ) {
-                // Live breathing animated cover
+                // Live breathing animated cover (anchored to top)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -363,7 +363,8 @@ fun FluidAlbumDetailOverlay(
                             if (clampedP >= 0.9f) {
                                 scaleX = bannerScale
                                 scaleY = bannerScale
-                                translationY = bannerShiftY
+                                transformOrigin = TransformOrigin(0.5f, 0.0f)
+                                translationY = 0f
                             }
                         }
                 ) {
@@ -378,15 +379,19 @@ fun FluidAlbumDetailOverlay(
                             model = resolvedCover,
                             contentDescription = alb.title,
                             contentScale = ContentScale.Crop,
+                            alignment = Alignment.TopCenter,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
 
-                    // Motion Video Layer for Album Detail View (Preferred first when available)
+                    // Motion Video Layer for Album Detail View (Preferred first when available, matching aspect ratio and top-aligned)
                     val albumVideoUrl = alb.videoUrl ?: alb.songs.firstOrNull()?.videoUrl
                     if (!albumVideoUrl.isNullOrBlank()) {
                         val ctx = LocalContext.current
                         var isAlbumVideoReady by remember(albumVideoUrl) { mutableStateOf(false) }
+                        var albVideoWidth by remember(albumVideoUrl) { mutableFloatStateOf(1f) }
+                        var albVideoHeight by remember(albumVideoUrl) { mutableFloatStateOf(1f) }
+                        var albTvRef by remember(albumVideoUrl) { mutableStateOf<TextureView?>(null) }
                         val exoPlayer = remember(albumVideoUrl) {
                             val uri = when {
                                 albumVideoUrl.startsWith("raw://") -> {
@@ -409,9 +414,22 @@ fun FluidAlbumDetailOverlay(
                                 repeatMode = Player.REPEAT_MODE_ALL
                                 volume = 0f
                                 addListener(object : Player.Listener {
-                                    override fun onRenderedFirstFrame() { isAlbumVideoReady = true }
+                                    override fun onRenderedFirstFrame() {
+                                        isAlbumVideoReady = true
+                                        albTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, albVideoWidth, albVideoHeight) } }
+                                    }
                                     override fun onPlaybackStateChanged(state: Int) {
-                                        if (state == Player.STATE_READY) isAlbumVideoReady = true
+                                        if (state == Player.STATE_READY) {
+                                            isAlbumVideoReady = true
+                                            albTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, albVideoWidth, albVideoHeight) } }
+                                        }
+                                    }
+                                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                        if (videoSize.width > 0 && videoSize.height > 0) {
+                                            albVideoWidth = videoSize.width.toFloat()
+                                            albVideoHeight = videoSize.height.toFloat()
+                                            albTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, albVideoWidth, albVideoHeight) } }
+                                        }
                                     }
                                 })
                                 prepare()
@@ -428,12 +446,27 @@ fun FluidAlbumDetailOverlay(
                         )
                         AndroidView(
                             factory = { c ->
-                                TextureView(c).apply { exoPlayer.setVideoTextureView(this) }
+                                TextureView(c).apply {
+                                    albTvRef = this
+                                    exoPlayer.setVideoTextureView(this)
+                                    addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                                        if ((right - left) != (oldRight - oldLeft) || (bottom - top) != (oldBottom - oldTop)) {
+                                            applyTopCenterCropMatrix(this, albVideoWidth, albVideoHeight)
+                                        }
+                                    }
+                                }
                             },
-                            update = { tv -> exoPlayer.setVideoTextureView(tv) },
+                            update = { tv ->
+                                albTvRef = tv
+                                exoPlayer.setVideoTextureView(tv)
+                                tv.post { applyTopCenterCropMatrix(tv, albVideoWidth, albVideoHeight) }
+                            },
                             modifier = Modifier
                                 .fillMaxSize()
-                                .graphicsLayer { alpha = albumVideoAlpha }
+                                .graphicsLayer {
+                                    alpha = albumVideoAlpha
+                                    transformOrigin = TransformOrigin(0.5f, 0.0f)
+                                }
                         )
                     }
                 }

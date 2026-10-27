@@ -179,15 +179,16 @@ fun AppleMusicLiveCover(
             .fillMaxSize()
             .clip(RoundedCornerShape(cornerRadius))
     ) {
-        // 1. Base Layer: High-Res Static Artwork (always rendered first as instant backdrop)
+        // 1. Base Layer: High-Res Static Artwork (always rendered first as instant backdrop, aligned strictly to top)
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
                     scaleX = currentScale
                     scaleY = currentScale
+                    transformOrigin = TransformOrigin(0.5f, 0.0f)
                     translationX = currentDriftX
-                    translationY = currentDriftY
+                    translationY = 0f
                 }
         ) {
             if (coverUrl.isNotBlank()) {
@@ -195,6 +196,7 @@ fun AppleMusicLiveCover(
                     model = coverUrl,
                     contentDescription = song.title,
                     contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopCenter,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -207,10 +209,14 @@ fun AppleMusicLiveCover(
             }
         }
 
-        // 2. Motion Video Layer (First Preference: smoothly crossfades over image when videoUrl is present)
+        // 2. Motion Video Layer (First Preference: smoothly crossfades over image when videoUrl is present, matching aspect ratio and top-aligned)
         val videoUrl = song.videoUrl
         if (!videoUrl.isNullOrBlank()) {
             var isVideoReady by remember(videoUrl) { mutableStateOf(false) }
+            var videoWidth by remember(videoUrl) { mutableFloatStateOf(1f) }
+            var videoHeight by remember(videoUrl) { mutableFloatStateOf(1f) }
+            var textureViewRef by remember(videoUrl) { mutableStateOf<TextureView?>(null) }
+
             val exoPlayer = remember(videoUrl) {
                 val uri = when {
                     videoUrl.startsWith("raw://") -> {
@@ -235,10 +241,25 @@ fun AppleMusicLiveCover(
                     addListener(object : Player.Listener {
                         override fun onRenderedFirstFrame() {
                             isVideoReady = true
+                            textureViewRef?.let { tv ->
+                                tv.post { applyTopCenterCropMatrix(tv, videoWidth, videoHeight) }
+                            }
                         }
                         override fun onPlaybackStateChanged(state: Int) {
                             if (state == Player.STATE_READY) {
                                 isVideoReady = true
+                                textureViewRef?.let { tv ->
+                                    tv.post { applyTopCenterCropMatrix(tv, videoWidth, videoHeight) }
+                                }
+                            }
+                        }
+                        override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                            if (videoSize.width > 0 && videoSize.height > 0) {
+                                videoWidth = videoSize.width.toFloat()
+                                videoHeight = videoSize.height.toFloat()
+                                textureViewRef?.let { tv ->
+                                    tv.post { applyTopCenterCropMatrix(tv, videoWidth, videoHeight) }
+                                }
                             }
                         }
                     })
@@ -262,11 +283,21 @@ fun AppleMusicLiveCover(
             AndroidView(
                 factory = { ctx ->
                     TextureView(ctx).apply {
+                        textureViewRef = this
                         exoPlayer.setVideoTextureView(this)
+                        addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                            if ((right - left) != (oldRight - oldLeft) || (bottom - top) != (oldBottom - oldTop)) {
+                                applyTopCenterCropMatrix(this, videoWidth, videoHeight)
+                            }
+                        }
                     }
                 },
                 update = { textureView ->
+                    textureViewRef = textureView
                     exoPlayer.setVideoTextureView(textureView)
+                    textureView.post {
+                        applyTopCenterCropMatrix(textureView, videoWidth, videoHeight)
+                    }
                 },
                 modifier = Modifier
                     .fillMaxSize()
@@ -274,8 +305,9 @@ fun AppleMusicLiveCover(
                         alpha = videoAlpha
                         scaleX = currentScale
                         scaleY = currentScale
+                        transformOrigin = TransformOrigin(0.5f, 0.0f)
                         translationX = currentDriftX
-                        translationY = currentDriftY
+                        translationY = 0f
                     }
             )
         }
