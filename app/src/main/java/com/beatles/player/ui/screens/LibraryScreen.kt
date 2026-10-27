@@ -356,7 +356,7 @@ fun LibraryScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { viewModel.setSelectedArtist(song.artist, rowBounds) }
+                                    .clickable { viewModel.openArtist(song.artist, rowBounds) }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {

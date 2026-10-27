@@ -446,7 +446,12 @@ fun FluidAlbumSetDetailOverlay(
                                     color = textSecondary,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium,
-                                    textAlign = TextAlign.Center
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.clickable {
+                                        Haptics.click(view)
+                                        handleClose()
+                                        viewModel.openArtist(alb.artist)
+                                    }
                                 )
 
                                 Spacer(modifier = Modifier.height(18.dp))

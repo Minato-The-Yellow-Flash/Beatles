@@ -373,6 +373,7 @@ fun NowPlayingSheet(
     onToggleAutoMix: () -> Unit = {},
     onLoadMoreUpcoming: () -> Unit = {},
     onGoToAlbum: (Song) -> Unit = {},
+    onGoToArtist: (String) -> Unit = {},
     onMoveToPlayNext: (Song) -> Unit = {},
     onRemoveFromQueue: (String) -> Unit = {},
     onMoveInQueue: (Int, Int) -> Unit = { _, _ -> },
@@ -1043,7 +1044,11 @@ fun NowPlayingSheet(
                                 color = Color.White.copy(alpha = 0.70f),
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                maxLines = 1
+                                maxLines = 1,
+                                modifier = Modifier.clickable {
+                                    Haptics.click(view)
+                                    onGoToArtist(song.artist)
+                                }
                             )
                         }
 
@@ -1466,6 +1471,7 @@ fun NowPlayingSheet(
             threeDotButtonBounds = threeDotButtonBounds,
             song = song,
             onGoToAlbum = onGoToAlbum,
+            onGoToArtist = onGoToArtist,
             onPlayArtistMix = onPlayArtistMix,
             autoMixEnabled = autoMixEnabled,
             onToggleAutoMix = onToggleAutoMix,
@@ -2751,24 +2757,25 @@ fun NowPlayingQueueLayer(
             .graphicsLayer {
                 val smoothSlide = (subpageSlideFraction * subpageSlideFraction * (3f - 2f * subpageSlideFraction)).coerceIn(0f, 1f)
                 val slideX = (1f - smoothSlide) * screenWidthPx
-                val transY = with(density) { 36.dp.toPx() * (1f - nextUpProgress) * (1f - sideStretchFactor) }
+                // Pure 90° horizontal slide when switching between subpages
+                val transY = if (isSwitchingSubpages || subpageSlideFraction < 0.99f) 0f else with(density) { 36.dp.toPx() * (1f - nextUpProgress) }
                 translationX = slideX
                 translationY = transY
-                alpha = if (isSwitchingSubpages) subpageSlideFraction.coerceIn(0f, 1f) else nextUpProgress.coerceIn(0f, 1f)
+                alpha = if (isSwitchingSubpages) 1f else nextUpProgress.coerceIn(0f, 1f)
             }
             .pointerInput(Unit) {
                 var totalDx = 0f
                 detectHorizontalDragGestures(
                     onDragStart = { totalDx = 0f },
                     onDragEnd = {
-                        if (totalDx > 90f) {
+                        if (totalDx > 70f) {
                             Haptics.confirm(view)
                             onToggleNextUp()
                         }
                         totalDx = 0f
                     },
                     onHorizontalDrag = { _, dragAmount ->
-                        if (dragAmount > 0) totalDx += dragAmount
+                        totalDx += dragAmount
                     }
                 )
             }
@@ -2994,10 +3001,11 @@ fun NowPlayingLyricsLayer(
             .graphicsLayer {
                 val smoothSlide = (subpageSlideFraction * subpageSlideFraction * (3f - 2f * subpageSlideFraction)).coerceIn(0f, 1f)
                 val slideX = -smoothSlide * screenWidthPx
-                val transY = with(density) { 24.dp.toPx() * (1f - lyricsProgress) * (1f - sideStretchFactor) }
+                // Pure 90° horizontal slide when switching between subpages
+                val transY = if (isSwitchingSubpages || subpageSlideFraction > 0.01f) 0f else with(density) { 24.dp.toPx() * (1f - lyricsProgress) }
                 translationX = slideX
                 translationY = transY
-                alpha = if (isSwitchingSubpages) (1f - subpageSlideFraction).coerceIn(0f, 1f) else lyricsProgress.coerceIn(0f, 1f)
+                alpha = if (isSwitchingSubpages) 1f else lyricsProgress.coerceIn(0f, 1f)
             }
             .pointerInput(isLyricsFullScreen) {
                 var dragAccumY = 0f
@@ -3026,14 +3034,14 @@ fun NowPlayingLyricsLayer(
                 detectHorizontalDragGestures(
                     onDragStart = { totalDx = 0f },
                     onDragEnd = {
-                        if (totalDx > 90f) {
+                        if (totalDx < -70f) {
                             Haptics.confirm(view)
                             onToggleLyrics()
                         }
                         totalDx = 0f
                     },
                     onHorizontalDrag = { _, dragAmount ->
-                        if (dragAmount > 0) totalDx += dragAmount
+                        totalDx += dragAmount
                     }
                 )
             }
@@ -3084,8 +3092,8 @@ fun NowPlayingLyricsLayer(
                                 listState.animateScrollBy(
                                     value = delta.toFloat(),
                                     animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioNoBouncy,
-                                        stiffness = 380f
+                                        dampingRatio = 0.70f,
+                                        stiffness = 120f
                                     )
                                 )
                             }
@@ -3169,23 +3177,34 @@ fun NowPlayingLyricsLayer(
                         val targetScale = if (isActive) 1.03f else 1.0f
                         val targetAlpha = if (isActive) 1.0f else (0.50f - cappedDistance * 0.08f).coerceAtLeast(0.20f)
                         val targetBlur = if (isActive) 0.dp else (cappedDistance.coerceAtMost(2) * 0.8f).dp
-                        val targetBounceY = if (isActive) (-3).dp else if (idx == currentIdx - 1) (-1.5).dp else if (idx == currentIdx + 1) (1.5).dp else 0.dp
+                        val targetBounceY = when {
+                            isActive -> (-4.2).dp
+                            idx == currentIdx - 1 -> (-1.8).dp
+                            idx == currentIdx + 1 -> (4.0).dp
+                            idx == currentIdx + 2 -> (2.8).dp
+                            idx > currentIdx + 2 -> (1.6).dp
+                            else -> 0.dp
+                        }
 
-                        val lineBounceDamping = if (isActive) 0.68f else 0.52f
+                        val lineBounceDamping = when {
+                            isActive -> 0.55f
+                            idx > currentIdx -> 0.35f
+                            else -> 0.65f
+                        }
                         val lineBounceY by animateDpAsState(
                             targetValue = targetBounceY,
                             animationSpec = spring(
                                 dampingRatio = lineBounceDamping,
-                                stiffness = 200f
+                                stiffness = 110f
                             ),
                             label = "lineBounceY_$idx"
                         )
-                        val lineScaleDamping = if (isActive) 0.68f else 0.55f
+                        val lineScaleDamping = if (isActive) 0.55f else 0.38f
                         val lineScale by animateFloatAsState(
                             targetValue = targetScale,
                             animationSpec = spring(
                                 dampingRatio = lineScaleDamping,
-                                stiffness = 200f
+                                stiffness = 110f
                             ),
                             label = "lineScale_$idx"
                         )
@@ -3193,7 +3212,7 @@ fun NowPlayingLyricsLayer(
                             targetValue = targetAlpha,
                             animationSpec = spring(
                                 dampingRatio = 0.70f,
-                                stiffness = 240f
+                                stiffness = 140f
                             ),
                             label = "lineAlpha_$idx"
                         )
@@ -3331,6 +3350,7 @@ fun NowPlayingThreeDotsMenu(
     threeDotButtonBounds: Rect?,
     song: Song,
     onGoToAlbum: (Song) -> Unit,
+    onGoToArtist: (String) -> Unit = {},
     onPlayArtistMix: (String) -> Unit,
     autoMixEnabled: Boolean,
     onToggleAutoMix: () -> Unit,
@@ -3479,6 +3499,26 @@ fun NowPlayingThreeDotsMenu(
                             Icon(Icons.Default.Album, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(12.dp))
                             Text("Go to Album", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
+                        }
+
+                        HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
+
+                        // Option 2b: Go to Artist
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    Haptics.confirm(view)
+                                    onDismissMiniMenu()
+                                    onGoToArtist(song.artist)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Person, contentDescription = null, tint = AppTheme.fg(), modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("Go to Artist", color = AppTheme.fg(), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AppTheme.fg(0.4f), modifier = Modifier.size(16.dp))
                         }
 

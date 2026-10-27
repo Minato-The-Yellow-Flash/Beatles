@@ -698,6 +698,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(selectedArtist = artistName, selectedArtistBounds = bounds) }
     }
 
+    fun openArtist(artistName: String, bounds: Rect? = null) {
+        setSelectedArtist(artistName, bounds)
+        _uiState.update { it.copy(isExpanded = false, selectedAlbum = null) }
+    }
+
     fun setSelectedGenre(genre: String?, bounds: Rect? = null) {
         _uiState.update { it.copy(selectedGenre = genre, selectedGenreBounds = bounds) }
     }

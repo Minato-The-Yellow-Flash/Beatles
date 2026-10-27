@@ -32,6 +32,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
@@ -112,9 +113,9 @@ fun FluidArtistDetailOverlay(
         scope.launch {
             progress.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(
-                    durationMillis = 260,
-                    easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
+                animationSpec = spring(
+                    dampingRatio = 0.84f,
+                    stiffness = 380f
                 )
             )
             currentArtist = null
@@ -170,9 +171,12 @@ fun FluidArtistDetailOverlay(
                 } catch (_: Exception) {}
             }
 
+            if (progress.value > 0.4f) {
+                progress.snapTo(0.12f)
+            }
             progress.animateTo(
                 targetValue = 1f,
-                animationSpec = spring(dampingRatio = 0.84f, stiffness = 320f)
+                animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f)
             )
         } else if (!isClosing && currentArtist != null) {
             handleClose()
@@ -248,12 +252,14 @@ fun FluidArtistDetailOverlay(
         val originCardHeight = origin.height.coerceAtLeast(10f)
 
         val clampedP = p.coerceIn(0f, 1f)
-        val sheetAlpha = clampedP.coerceIn(0f, 1f)
-        val sheetSlideY = (1f - clampedP) * with(density) { 36.dp.toPx() } + dragY
+        val smoothP = (clampedP * clampedP * (3f - 2f * clampedP)).coerceIn(0f, 1f)
+        val sheetAlpha = smoothP
+        val sheetSlideY = (1f - smoothP) * with(density) { 36.dp.toPx() } + dragY
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .zIndex(50f)
                 .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onDragEnd = {
@@ -705,7 +711,7 @@ fun FluidArtistDetailOverlay(
                                                 .width(105.dp)
                                                 .clickable {
                                                     Haptics.click(view)
-                                                    viewModel.setSelectedArtist(simArt.name, simBounds)
+                                                    viewModel.openArtist(simArt.name, simBounds)
                                                 },
                                             horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
@@ -784,11 +790,11 @@ fun FluidArtistDetailOverlay(
             } // Closes Full-screen Sheet Box
 
             // 5. Shared Morph Hero Artist Avatar: glides seamlessly from tapped origin card to centered hero position
-            val curArtLeft = origin.left + (targetLeftPx - origin.left) * clampedP
-            val curArtTop = origin.top + (targetTopPx + artTranslateY - origin.top) * clampedP + dragY
-            val curArtWidth = originCardWidth + (targetArtworkSizePx - originCardWidth) * clampedP
-            val curArtHeight = originCardHeight + (targetArtworkSizePx - originCardHeight) * clampedP
-            val curArtCorner = originCornerPx + (with(density) { 24.dp.toPx() } - originCornerPx) * clampedP
+            val curArtLeft = origin.left + (targetLeftPx - origin.left) * smoothP
+            val curArtTop = origin.top + (targetTopPx + artTranslateY - origin.top) * smoothP + dragY
+            val curArtWidth = originCardWidth + (targetArtworkSizePx - originCardWidth) * smoothP
+            val curArtHeight = originCardHeight + (targetArtworkSizePx - originCardHeight) * smoothP
+            val curArtCorner = originCornerPx + (with(density) { 24.dp.toPx() } - originCornerPx) * smoothP
 
             Box(
                 modifier = Modifier

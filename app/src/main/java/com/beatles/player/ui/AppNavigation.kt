@@ -444,7 +444,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             state = screenState,
                                             onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) },
                                             onPlayArtistMix = { artist, songs -> viewModel.playArtistMix(artist, songs) },
-                                            onSelectArtist = { artist, bounds -> viewModel.setSelectedArtist(artist, bounds) },
+                                            onSelectArtist = { artist, bounds -> viewModel.openArtist(artist, bounds) },
                                             onSeeAll = { section -> viewModel.setSeeAllSection(section.ifEmpty { null }) },
                                             onSelectAlbum = { alb, bounds -> viewModel.setSelectedAlbum(alb, bounds) },
                                             onPlayAlbumSet = { viewModel.playAlbumSet(it) },
@@ -478,7 +478,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             onPlay = { s, _, bounds -> viewModel.playSong(s, playlist = null, isFromSearch = true, sourceBounds = bounds) },
                                             onMoveToPlayNext = { s -> viewModel.moveSongToPlayNext(s) },
                                             onPlayArtistMix = { viewModel.playArtistMix(it) },
-                                            onSelectArtist = { artist, bounds -> viewModel.setSelectedArtist(artist, bounds) },
+                                            onSelectArtist = { artist, bounds -> viewModel.openArtist(artist, bounds) },
                                             onLoadMoreRecommendations = { viewModel.loadMoreTopSongs() }
                                         )
                                     }
@@ -1902,6 +1902,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             autoMixEnabled = state.autoMixEnabled,
                                             onToggleAutoMix = { viewModel.toggleAutoMix() },
                                             onGoToAlbum = { s -> viewModel.openAlbumForSong(s) },
+                                            onGoToArtist = { s -> viewModel.openArtist(s) },
                                             onMoveToPlayNext = { s -> viewModel.moveSongToPlayNext(s) },
                                             onRemoveFromQueue = { sId -> viewModel.removeSongFromQueue(sId) },
                                             onMoveInQueue = { from, to -> viewModel.moveSongInQueue(from, to) },
