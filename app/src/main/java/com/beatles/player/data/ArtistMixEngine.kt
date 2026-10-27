@@ -165,7 +165,13 @@ object ArtistMixEngine {
         var artistPicksSinceSimilar = 0
         val targetArtistStreak = 2 // 2 artist songs -> 1 similar song -> 2 artist songs (~67-70% ratio)
 
-        while (result.size < maxTracks && (uniqueArtistPool.isNotEmpty() || uniqueSimilarPool.isNotEmpty())) {
+        while (result.size < maxTracks) {
+            val canPickArtist = uniqueArtistPool.isNotEmpty()
+            val canPickSimilar = artistRatio < 1.00f && uniqueSimilarPool.isNotEmpty()
+            if (!canPickArtist && !canPickSimilar) {
+                break
+            }
+
             val shouldPickSimilar = when {
                 artistRatio >= 1.00f -> false
                 uniqueArtistPool.isEmpty() -> true

@@ -479,10 +479,12 @@ fun NowPlayingSheet(
         LaunchedEffect(isLyricsActive, lastLyricsInteractionTime) {
             if (isLyricsActive) {
                 controlsVisible = true
-                delay(4000L) // 4s idle reading
+                delay(2000L) // 2s idle reading -> full screen lyrics
                 controlsVisible = false
+                isLyricsFullScreen = true
             } else {
                 controlsVisible = true
+                isLyricsFullScreen = false
             }
         }
 
@@ -545,16 +547,14 @@ fun NowPlayingSheet(
                     .graphicsLayer {
                         val effectiveCoverAlpha = if (isLyricsActive) coverAlpha * controlsAlpha else coverAlpha
                         alpha = effectiveCoverAlpha
-                        if (compactProgress <= 0.001f && morphProgress >= 0.98f) {
-                            translationX = animatedDragX
-                        }
+                        translationX = animatedDragX * (1f - compactProgress).coerceIn(0f, 1f)
                         shape = RoundedCornerShape(currentCoverCorner)
                         clip = true
-                        compositingStrategy = CompositingStrategy.Offscreen
+                        compositingStrategy = if (compactProgress < 0.2f && morphProgress >= 0.92f) CompositingStrategy.Offscreen else CompositingStrategy.Auto
                     }
                     .drawWithContent {
                         drawContent()
-                        val maskFade = (1f - compactProgress).coerceIn(0f, 1f)
+                        val maskFade = (1f - compactProgress * 5f).coerceIn(0f, 1f)
                         if (maskFade > 0.01f && morphProgress >= 0.92f) {
                             drawRect(
                                 brush = Brush.verticalGradient(
@@ -940,13 +940,14 @@ fun NowPlayingSheet(
                         }
                     }
 
+                    val isSeekbarExpanded = isDraggingSlider || autoMixActive
                     val trackAnimHeight by animateDpAsState(
-                        targetValue = if (isDraggingSlider) 12.dp else 10.dp,
+                        targetValue = if (isSeekbarExpanded) 12.dp else 10.dp,
                         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 420f),
                         label = "trackAnimHeight"
                     )
                     val activeTrackAlpha by animateFloatAsState(
-                        targetValue = if (isDraggingSlider) 0.85f else 0.60f,
+                        targetValue = if (isSeekbarExpanded) 0.85f else 0.60f,
                         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 420f),
                         label = "activeTrackAlpha"
                     )
@@ -1282,6 +1283,24 @@ fun NowPlayingSheet(
             isDownloadFailed = isDownloadFailed
         )
 
+        // Top Status Bar Protection: Soft gradient and blur layer so system icons (clock, battery, Wi-Fi) stay clearly visible
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(68.dp)
+                .align(Alignment.TopCenter)
+                .graphicsLayer {
+                    alpha = morphProgress.coerceIn(0f, 1f)
+                }
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to Color.Black.copy(alpha = 0.58f),
+                        0.45f to Color.Black.copy(alpha = 0.28f),
+                        1.0f to Color.Transparent
+                    )
+                )
+        )
+
         // Double-Tap Heart Pop Animation Overlay (at top of Box hierarchy so it displays over artwork & queue)
         if (showBigHeartPopup || bigHeartAlpha > 0f) {
             Box(
@@ -1429,61 +1448,79 @@ fun QueueSongItem(
             .height(56.dp)
             .clip(cardShape)
     ) {
+        val density = LocalDensity.current
         val totalWidthPx = constraints.maxWidth.toFloat()
         val thresholdPx = totalWidthPx * 0.50f
         val dragFraction = if (thresholdPx > 0f) (kotlin.math.abs(animatedOffsetX) / thresholdPx).coerceIn(0f, 1f) else 0f
         val dragAlpha = (1f - dragFraction * 0.40f).coerceIn(0.4f, 1f)
 
-        // Swipe Action Backgrounds
-        if (offsetX > 20f) {
+        // Connected Swipe Action Background (drawn only in the revealed space, never behind the card)
+        if (animatedOffsetX > 0.5f) {
             val isOverThreshold = offsetX >= thresholdPx
+            val revealWidthDp = with(density) { animatedOffsetX.toDp() }
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFF2E7D32).copy(alpha = if (isOverThreshold) 0.95f else 0.55f))
-                    .padding(horizontal = 20.dp),
+                    .align(Alignment.CenterStart)
+                    .fillMaxHeight()
+                    .width(revealWidthDp)
+                    .background(Color(0xFF2E7D32).copy(alpha = if (isOverThreshold) 0.95f else 0.65f))
+                    .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.PlaylistPlay, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        if (isOverThreshold) "Release to Play Next" else "Swipe 50% to Play Next",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
-                    )
+                if (animatedOffsetX > with(density) { 32.dp.toPx() }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.PlaylistPlay, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        if (isOverThreshold && animatedOffsetX > with(density) { 80.dp.toPx() }) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Play Next",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
             }
-        } else if (offsetX < -20f) {
+        } else if (animatedOffsetX < -0.5f) {
+            val revealWidth = kotlin.math.abs(animatedOffsetX)
             val isOverThreshold = offsetX <= -thresholdPx
+            val revealWidthDp = with(density) { revealWidth.toDp() }
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFFD32F2F).copy(alpha = if (isOverThreshold) 0.95f else 0.55f))
-                    .padding(horizontal = 20.dp),
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(revealWidthDp)
+                    .background(Color(0xFFD32F2F).copy(alpha = if (isOverThreshold) 0.95f else 0.65f))
+                    .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        if (isOverThreshold) "Release to Remove" else "Swipe 50% to Remove",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+                if (revealWidth > with(density) { 32.dp.toPx() }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isOverThreshold && revealWidth > with(density) { 80.dp.toPx() }) {
+                            Text(
+                                "Remove",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
         }
 
-        // Foreground Card Row: clean pill matching Next Up button UI
+        // Foreground Card Row: seamlessly preserves cardBg with zero flicker
         Row(
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(animatedOffsetX.roundToInt(), 0) }
                 .clip(cardShape)
-                .background(if (kotlin.math.abs(animatedOffsetX) > 2f) Color(0xFF1E2024) else cardBg)
+                .background(cardBg)
                 .pointerInput(totalWidthPx) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
@@ -1544,21 +1581,21 @@ fun QueueSongItem(
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFFF82C38).copy(alpha = 0.22f))
-                                    .border(1.dp, Color(0xFFF82C38).copy(alpha = 0.50f), RoundedCornerShape(10.dp))
+                                    .background(Color.White.copy(alpha = 0.14f))
+                                    .border(0.8.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
                                     .padding(horizontal = 6.dp, vertical = 1.5.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         Icons.Rounded.AutoAwesome,
                                         contentDescription = null,
-                                        tint = Color(0xFFF82C38),
+                                        tint = Color.White.copy(alpha = 0.85f),
                                         modifier = Modifier.size(10.dp)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
                                         "AutoMix",
-                                        color = Color.White,
+                                        color = Color.White.copy(alpha = 0.90f),
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = 0.5.sp
@@ -2506,11 +2543,11 @@ fun NowPlayingQueueLayer(
             .fillMaxSize()
             .padding(bottom = 190.dp, top = 136.dp)
             .graphicsLayer {
-                val slideX = if (isSwitchingSubpages) (1f - subpageSlideFraction) * screenWidthPx else 0f
-                val transY = if (isSwitchingSubpages) 0f else with(density) { 36.dp.toPx() * (1f - nextUpProgress) }
+                val slideX = (1f - subpageSlideFraction) * screenWidthPx
+                val transY = with(density) { 36.dp.toPx() * (1f - nextUpProgress) * (1f - sideStretchFactor) }
                 translationX = slideX
                 translationY = transY
-                alpha = if (isSwitchingSubpages) 1f else nextUpProgress.coerceIn(0f, 1f)
+                alpha = if (isSwitchingSubpages) subpageSlideFraction.coerceIn(0f, 1f) else nextUpProgress.coerceIn(0f, 1f)
             }
             .pointerInput(Unit) {
                 var totalDx = 0f
@@ -2614,38 +2651,40 @@ fun NowPlayingQueueLayer(
                             isDark = isDark
                         )
                     }
-                    item {
-                        val cleanArtist = song.artist.replace(" - Topic", "").trim()
-                        val sameArtistInteraction = remember { MutableInteractionSource() }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 6.dp)
-                                .liquidPress(sameArtistInteraction)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color.White.copy(alpha = 0.06f))
-                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
-                                .clickable(interactionSource = sameArtistInteraction, indication = null) {
-                                    Haptics.confirm(view)
-                                    onPlayArtistMix(cleanArtist)
+                    if (queueTitle == null) {
+                        item {
+                            val cleanArtist = song.artist.replace(" - Topic", "").trim()
+                            val sameArtistInteraction = remember { MutableInteractionSource() }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 6.dp)
+                                    .liquidPress(sameArtistInteraction)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color.White.copy(alpha = 0.06f))
+                                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+                                    .clickable(interactionSource = sameArtistInteraction, indication = null) {
+                                        Haptics.confirm(view)
+                                        onPlayArtistMix(cleanArtist)
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Radio, contentDescription = null, tint = AccentRed, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "Listen to more from $cleanArtist",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
                                 }
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Radio, contentDescription = null, tint = AccentRed, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    "Listen to more from $cleanArtist",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
                             }
                         }
                     }
-                    itemsIndexed(upcoming, key = { _, s -> s.id }) { idx, s ->
+                    itemsIndexed(upcoming, key = { idx, s -> "${s.id}_$idx" }) { idx, s ->
                         if (idx >= upcoming.size - 4) {
                             LaunchedEffect(upcoming.size) {
                                 onLoadMoreUpcoming()
@@ -2746,25 +2785,31 @@ fun NowPlayingLyricsLayer(
             .fillMaxSize()
             .padding(top = lyricsTopPad, bottom = lyricsBottomPad)
             .graphicsLayer {
-                val slideX = if (isSwitchingSubpages) -subpageSlideFraction * screenWidthPx else 0f
+                val slideX = -subpageSlideFraction * screenWidthPx
+                val transY = with(density) { 24.dp.toPx() * (1f - lyricsProgress) * (1f - sideStretchFactor) }
                 translationX = slideX
-                translationY = if (isSwitchingSubpages) 0f else lyrTransY
-                alpha = if (isSwitchingSubpages) 1f else lyricsProgress.coerceIn(0f, 1f)
+                translationY = transY
+                alpha = if (isSwitchingSubpages) (1f - subpageSlideFraction).coerceIn(0f, 1f) else lyricsProgress.coerceIn(0f, 1f)
             }
             .pointerInput(isLyricsFullScreen) {
                 var dragAccumY = 0f
                 detectVerticalDragGestures(
                     onDragStart = { dragAccumY = 0f },
                     onDragEnd = {
-                        if (dragAccumY < -30f) {
+                        if (dragAccumY < -20f) {
                             onSetLyricsFullScreen(true)
-                        } else if (dragAccumY > 30f) {
+                        } else if (dragAccumY > 20f) {
                             onSetLyricsFullScreen(false)
                         }
                         dragAccumY = 0f
                     },
                     onVerticalDrag = { _, dragAmount ->
                         dragAccumY += dragAmount
+                        if (dragAccumY < -15f || dragAmount < -8f) {
+                            onSetLyricsFullScreen(true)
+                        } else if (dragAccumY > 20f || dragAmount > 10f) {
+                            onSetLyricsFullScreen(false)
+                        }
                     }
                 )
             }
@@ -2900,12 +2945,12 @@ fun NowPlayingLyricsLayer(
                         val targetScale = if (isActive) 1.03f else 1.0f
                         val targetAlpha = if (isActive) 1.0f else (0.50f - cappedDistance * 0.08f).coerceAtLeast(0.20f)
                         val targetBlur = if (isActive) 0.dp else (cappedDistance.coerceAtMost(2) * 0.8f).dp
-                        val targetBounceY = if (isActive) (-1).dp else 0.dp
+                        val targetBounceY = if (isActive) (-2.5).dp else 0.dp
 
                         val lineBounceY by animateDpAsState(
                             targetValue = targetBounceY,
                             animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                dampingRatio = 0.70f,
                                 stiffness = 380f
                             ),
                             label = "lineBounceY_$idx"
@@ -2913,7 +2958,7 @@ fun NowPlayingLyricsLayer(
                         val lineScale by animateFloatAsState(
                             targetValue = targetScale,
                             animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                dampingRatio = 0.70f,
                                 stiffness = 380f
                             ),
                             label = "lineScale_$idx"
@@ -3099,8 +3144,7 @@ fun NowPlayingThreeDotsMenu(
             val isDark = AppTheme.isDark
             val currentCornerDp = lerp(19.dp, 24.dp, miniMenuAnim)
             val menuShape = RoundedCornerShape(currentCornerDp)
-            val solidMenuBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.45f) else Color(0xFFFFFFFF).copy(alpha = 0.50f)
-            val solidMenuBorder = if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f)
+            val solidMenuBg = if (isDark) Color(0xFF1C1D24) else Color(0xFFFFFFFF)
 
             val density = LocalDensity.current
             val endPaddingDp = remember(sheetRootBounds, threeDotButtonBounds) {
@@ -3133,11 +3177,9 @@ fun NowPlayingThreeDotsMenu(
                         alpha = miniMenuAnim.coerceIn(0f, 1f)
                         transformOrigin = TransformOrigin(0.92f, 1.0f)
                     }
-                    .shadow(6.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                    .shadow(10.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.16f))
                     .clip(menuShape)
                     .background(solidMenuBg)
-                    .glassRefraction(currentCornerDp, isDark = isDark)
-                    .border(0.5.dp, solidMenuBorder, menuShape)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                     .padding(vertical = 6.dp)
             ) {

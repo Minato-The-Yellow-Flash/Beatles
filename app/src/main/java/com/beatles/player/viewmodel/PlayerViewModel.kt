@@ -1045,17 +1045,21 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun moveSongInQueue(fromIdx: Int, toIdx: Int) {
         _uiState.update { state ->
-            val currentSong = state.currentSong
-            val currentPl = state.playlist.toMutableList()
-            val currIdx = if (currentSong != null) currentPl.indexOfFirst { it.id == currentSong.id } else -1
-            val upcomingStart = if (currIdx >= 0) currIdx + 1 else 0
-            val actualFrom = upcomingStart + fromIdx
-            val actualTo = upcomingStart + toIdx
-            if (actualFrom in currentPl.indices && actualTo in currentPl.indices) {
-                val item = currentPl.removeAt(actualFrom)
-                currentPl.add(actualTo, item)
-                state.copy(playlist = currentPl)
-            } else {
+            try {
+                val currentSong = state.currentSong
+                val currentPl = state.playlist.toMutableList()
+                val currIdx = if (currentSong != null) currentPl.indexOfFirst { it.id == currentSong.id } else -1
+                val upcomingStart = if (currIdx >= 0) currIdx + 1 else 0
+                val actualFrom = upcomingStart + fromIdx
+                val actualTo = upcomingStart + toIdx
+                if (actualFrom in currentPl.indices && actualTo in currentPl.indices) {
+                    val item = currentPl.removeAt(actualFrom)
+                    currentPl.add(actualTo, item)
+                    state.copy(playlist = currentPl)
+                } else {
+                    state
+                }
+            } catch (_: Exception) {
                 state
             }
         }
@@ -1382,20 +1386,19 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     if (artistTracks.size > 1) candidatePool.add(artistTracks[1])
                     candidatePool.addAll(rel.drop(4))
                     candidatePool.addAll(genreTracks.drop(4))
-                    candidatePool.distinctBy { it.id }
+                    val uniqueCandidates = candidatePool.distinctBy { it.id }
                     
                     val existingIds = _uiState.value.playlist.map { it.id }.toSet()
-                    val cohesive = candidatePool.filter {
+                    val cohesive = uniqueCandidates.filter {
                         repo.detectLanguage(it).equals(songLang, ignoreCase = true)
                     }
-                    val newTracks = (if (cohesive.isNotEmpty()) cohesive else candidatePool)
+                    val newTracks = (if (cohesive.isNotEmpty()) cohesive else uniqueCandidates)
                         .filter { it.id !in existingIds && it.id !in sessionPlayedSongIds }
+                        .distinctBy { it.id }
 
                     if (newTracks.isNotEmpty()) {
                         withContext(Dispatchers.Main) {
-                            val updatedPl = _uiState.value.playlist.toMutableList().apply {
-                                addAll(newTracks.take(12))
-                            }
+                            val updatedPl = (_uiState.value.playlist + newTracks.take(12)).distinctBy { it.id }
                             _uiState.update { it.copy(playlist = updatedPl) }
                         }
                     }
@@ -1457,7 +1460,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                         newSimilarTracks = emptyList(),
                         targetArtist = artistName,
                         batchSize = 16
-                    )
+                    ).distinctBy { it.id }
                     if (extendedPl.size > current.playlist.size) {
                         _uiState.update { it.copy(playlist = extendedPl) }
                     }
