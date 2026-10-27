@@ -199,15 +199,19 @@ fun AppleMusicLiveCover(
                 modifier = Modifier.fillMaxSize()
             )
             // Instant cached highest quality cover (loads immediately in highest quality without double-layered pops)
-            val primaryCover = if (coverUrl.isNotBlank() && coverUrl.startsWith("http")) coverUrl else song.coverUrl
+            val primaryCover = remember(song.id, song.coverUrl, coverUrl) {
+                val target = if (coverUrl.isNotBlank() && coverUrl.startsWith("http")) coverUrl else song.coverUrl
+                com.beatles.player.data.MusicRepository.resolveImmediateHqCover(song.copy(coverUrl = target))
+            }
             if (primaryCover.isNotBlank() && primaryCover.startsWith("http")) {
                 AsyncImage(
                     model = coil.request.ImageRequest.Builder(context)
                         .data(primaryCover)
-                        .placeholderMemoryCacheKey(song.coverUrl)
+                        .placeholderMemoryCacheKey(primaryCover)
                         .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
                         .diskCachePolicy(coil.request.CachePolicy.ENABLED)
-                        .crossfade(180)
+                        .allowHardware(true)
+                        .crossfade(true)
                         .build(),
                     contentDescription = song.title,
                     contentScale = ContentScale.Crop,
@@ -1119,7 +1123,14 @@ fun NowPlayingSheet(
                                     scaleY = heartScale
                                 }
                                 .clip(CircleShape)
-                                .background(if (isHeartActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.14f))
+                                .then(
+                                    if (isHeartActive) {
+                                        Modifier.background(Color.White.copy(alpha = 0.85f))
+                                    } else {
+                                        Modifier.liquidGlass(CircleShape, surfaceTint = Color.White.copy(alpha = 0.14f))
+                                    }
+                                )
+                                .liquidGlassRim(CircleShape)
                                 .pointerInput(isFavorite) {
                                     detectTapGestures(
                                         onPress = {
@@ -1157,7 +1168,14 @@ fun NowPlayingSheet(
                                 }
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .background(if (isThreeDotActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.14f))
+                                .then(
+                                    if (isThreeDotActive) {
+                                        Modifier.background(Color.White.copy(alpha = 0.85f))
+                                    } else {
+                                        Modifier.liquidGlass(CircleShape, surfaceTint = Color.White.copy(alpha = 0.14f))
+                                    }
+                                )
+                                .liquidGlassRim(CircleShape)
                                 .pointerInput(showMiniMenu) {
                                     detectTapGestures(
                                         onPress = {
@@ -1478,12 +1496,20 @@ fun NowPlayingSheet(
                 val nextUpBg = if (isNextUpActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
                 val nextUpText = if (isNextUpActive) Color(0xFF151515) else Color.White
 
+                val pillShape = RoundedCornerShape(50)
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .height(44.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(lyricsBg)
+                        .clip(pillShape)
+                        .then(
+                            if (isLyricsActive) {
+                                Modifier.background(Color.White.copy(alpha = 0.85f))
+                            } else {
+                                Modifier.liquidGlass(pillShape, surfaceTint = Color.White.copy(alpha = 0.12f))
+                            }
+                        )
+                        .liquidGlassRim(pillShape)
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleLyrics()
                         },
@@ -1495,8 +1521,15 @@ fun NowPlayingSheet(
                     modifier = Modifier
                         .weight(1f)
                         .height(44.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(nextUpBg)
+                        .clip(pillShape)
+                        .then(
+                            if (isNextUpActive) {
+                                Modifier.background(Color.White.copy(alpha = 0.85f))
+                            } else {
+                                Modifier.liquidGlass(pillShape, surfaceTint = Color.White.copy(alpha = 0.12f))
+                            }
+                        )
+                        .liquidGlassRim(pillShape)
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleNextUp()
                         },
@@ -2371,8 +2404,17 @@ fun BeatlesSleepTimerSheet(
                 }
                 .shadow(24.dp, sheetShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.7f) else Color.Black.copy(alpha = 0.25f))
                 .clip(sheetShape)
-                .background(sheetBg)
-                .glassRefraction(navCorner, isDark)
+                .then(
+                    if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                        Modifier.liquidGlass(
+                            shape = sheetShape,
+                            surfaceTint = sheetBg
+                        )
+                    } else {
+                        Modifier.background(sheetBg)
+                    }
+                )
+                .liquidGlassRim(sheetShape)
                 .drawWithContent {
                     drawContent()
                     drawLine(
@@ -3009,41 +3051,13 @@ fun NowPlayingLyricsLayer(
     // Apple Music Synced Word-by-Word Lyrics View
     val processedLyrics = remember(lyrics, duration) { LyricsProcessor.processSyncedLyrics(lyrics, trackDurationMs = duration) }
 
-    // High-refresh (60/120fps) continuous frame clock decoupled from 100ms polling with anticipatory vocal attack lead (+80ms)
-    var livePositionMs by remember { mutableLongStateOf(currentPosition) }
-    var anchorRealtime by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
-    var anchorPos by remember { mutableLongStateOf(currentPosition) }
-
-    LaunchedEffect(currentPosition) {
-        if (!isPlaying) {
-            anchorPos = currentPosition
-            anchorRealtime = android.os.SystemClock.elapsedRealtime()
-            livePositionMs = currentPosition.coerceAtLeast(0L)
-            return@LaunchedEffect
-        }
-        val estimated = (anchorPos + (android.os.SystemClock.elapsedRealtime() - anchorRealtime)).coerceAtLeast(0L)
-        val drift = currentPosition - estimated
-        if (kotlin.math.abs(drift) > 65L) {
-            anchorPos = currentPosition
-            anchorRealtime = android.os.SystemClock.elapsedRealtime()
-            livePositionMs = currentPosition.coerceAtLeast(0L)
-        }
-    }
-
-    LaunchedEffect(isPlaying, isLyricsActive) {
-        if (!isPlaying || !isLyricsActive) {
-            livePositionMs = currentPosition.coerceAtLeast(0L)
-            return@LaunchedEffect
-        }
-        anchorRealtime = android.os.SystemClock.elapsedRealtime()
-        anchorPos = currentPosition
-        while (isLyricsActive && isPlaying) {
-            withFrameMillis {
-                val elapsed = android.os.SystemClock.elapsedRealtime() - anchorRealtime
-                livePositionMs = (anchorPos + elapsed).coerceAtLeast(0L)
-            }
-        }
-    }
+    // BitChord high-precision vsync steered Lyric Clock (eliminates drift, micro-stutters and jitter)
+    val lyricClock = com.beatles.player.data.rememberLyricClock(
+        positionMs = currentPosition,
+        isPlaying = isPlaying,
+        isActive = isLyricsActive
+    )
+    val livePositionMs = lyricClock.longValue
 
     val lyricsTopPad by animateDpAsState(
         targetValue = if (isLyricsFullScreen) 48.dp else 140.dp,
@@ -3223,18 +3237,25 @@ fun NowPlayingLyricsLayer(
                     }
                 }
 
+                // BitChord duet detection: check if song features multi-singer call-and-response or secondary vocal lines
+                val isDuet = remember(processedLyrics) {
+                    processedLyrics.any { it.isSecondaryArtist || it.alignment == com.beatles.player.data.LyricAlignment.End }
+                }
+
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .nestedScroll(nestedScrollConnection)
-                        .padding(start = 28.dp, end = 28.dp),
+                        .padding(start = 24.dp, end = 24.dp),
                     contentPadding = PaddingValues(top = lyricsListTopPad, bottom = lyricsListBottomPad),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     itemsIndexed(processedLyrics, key = { idx, line -> "lyric_${line.timeMs}_$idx" }) { idx, line ->
                         val isActive = idx == currentIdx
-                        val isRightAligned = line.isSecondaryArtist
+                        val isRightAligned = line.isSecondaryArtist || line.alignment == com.beatles.player.data.LyricAlignment.End
+                        val laneStartPad = if (isDuet && isRightAligned) 48.dp else 0.dp
+                        val laneEndPad = if (isDuet && !isRightAligned) 48.dp else 0.dp
                         val distance = if (currentIdx >= 0) kotlin.math.abs(idx - currentIdx) else 1
                         val cappedDistance = distance.coerceAtMost(4)
 
@@ -3304,6 +3325,7 @@ fun NowPlayingLyricsLayer(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .padding(start = laneStartPad, end = laneEndPad)
                                 .graphicsLayer {
                                     translationY = lineBounceY.toPx()
                                     scaleX = lineScale
@@ -3491,7 +3513,17 @@ fun NowPlayingThreeDotsMenu(
                     }
                     .shadow(12.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.16f))
                     .clip(menuShape)
-                    .background(solidMenuBg)
+                    .then(
+                        if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
+                            Modifier.liquidGlass(
+                                shape = menuShape,
+                                surfaceTint = if (isDark) Color(0xFF1C1D24).copy(alpha = 0.88f) else Color(0xFFFFFFFF).copy(alpha = 0.90f)
+                            )
+                        } else {
+                            Modifier.background(solidMenuBg)
+                        }
+                    )
+                    .liquidGlassRim(menuShape)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                     .padding(vertical = 6.dp)
             ) {

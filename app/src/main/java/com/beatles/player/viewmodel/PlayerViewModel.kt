@@ -1267,7 +1267,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
              (_uiState.value.artistMixTarget != null && ArtistMixEngine.isArtistMatch(song, _uiState.value.artistMixTarget!!)))
 
         val effectiveVideo = song.videoUrl ?: repo.getCuratedMotionArtwork(song.title, song.artist, song.album)
-        val readySong = if (effectiveVideo != null && song.videoUrl == null) song.copy(videoUrl = effectiveVideo) else song
+        val immediateHqCover = repo.resolveImmediateHqCover(song)
+        val readySong = song.copy(
+            coverUrl = if (immediateHqCover.isNotBlank()) immediateHqCover else song.coverUrl,
+            videoUrl = if (effectiveVideo != null) effectiveVideo else song.videoUrl
+        )
 
         _uiState.update { it.copy(
             currentSong = readySong, isPlaying = true, isExpanded = if (isAutoMix || keepExpandedState) it.isExpanded else true, isLoadingStream = true,

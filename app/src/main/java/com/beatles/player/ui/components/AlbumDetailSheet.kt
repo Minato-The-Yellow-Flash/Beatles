@@ -157,7 +157,7 @@ fun FluidAlbumDetailOverlay(
     val highResCover = remember(alb.id) {
         if (initialCover.isNotBlank()) com.beatles.player.data.MusicRepository.getHighestQualityCover(initialCover) else ""
     }
-    val resolvedCover = initialCover.ifBlank { highResCover }
+    val resolvedCover = if (highResCover.isNotBlank()) highResCover else initialCover
 
     // Pre-cache high-resolution artwork and live video in background for zero-latency loading
     val sheetCtx = LocalContext.current
@@ -410,10 +410,11 @@ fun FluidAlbumDetailOverlay(
                         AsyncImage(
                             model = coil.request.ImageRequest.Builder(LocalContext.current)
                                 .data(primaryCover)
-                                .placeholderMemoryCacheKey(initialCover)
+                                .placeholderMemoryCacheKey(initialCover.ifBlank { null })
                                 .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
                                 .diskCachePolicy(coil.request.CachePolicy.ENABLED)
-                                .crossfade(180)
+                                .allowHardware(true)
+                                .crossfade(true)
                                 .build(),
                             contentDescription = alb.title,
                             contentScale = ContentScale.Crop,
@@ -619,8 +620,8 @@ fun FluidAlbumDetailOverlay(
                                             .liquidPress(shuffleInteraction)
                                             .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                             .clip(CircleShape)
-                                            .background(buttonBg)
-                                            .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                            .liquidGlass(CircleShape, surfaceTint = buttonBg)
+                                            .liquidGlassRim(CircleShape)
                                             .clickable(
                                                 interactionSource = shuffleInteraction,
                                                 indication = null
@@ -674,8 +675,8 @@ fun FluidAlbumDetailOverlay(
                                             .liquidPress(saveInteraction)
                                             .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                             .clip(CircleShape)
-                                            .background(buttonBg)
-                                            .glassRefraction(25.dp, isDark = isDark, isCircle = true)
+                                            .liquidGlass(CircleShape, surfaceTint = buttonBg)
+                                            .liquidGlassRim(CircleShape)
                                             .clickable(
                                                 interactionSource = saveInteraction,
                                                 indication = null
@@ -970,8 +971,8 @@ fun FluidAlbumDetailOverlay(
                                 .liquidPress(backInteraction)
                                 .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                 .clip(CircleShape)
-                                .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
-                                .glassRefraction(20.dp, isDark = isDark, isCircle = true)
+                                .liquidGlass(CircleShape, surfaceTint = if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
+                                .liquidGlassRim(CircleShape)
                                 .clickable(interactionSource = backInteraction, indication = null) { handleClose() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -1007,8 +1008,8 @@ fun FluidAlbumDetailOverlay(
                                 .liquidPress(infoInteraction)
                                 .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                                 .clip(CircleShape)
-                                .background(if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
-                                .glassRefraction(20.dp, isDark = isDark, isCircle = true)
+                                .liquidGlass(CircleShape, surfaceTint = if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.45f))
+                                .liquidGlassRim(CircleShape)
                                 .clickable(interactionSource = infoInteraction, indication = null) { showInfoDialog = true },
                             contentAlignment = Alignment.Center
                         ) {
@@ -1038,8 +1039,8 @@ fun FluidAlbumDetailOverlay(
                         .fillMaxWidth(0.88f)
                         .shadow(8.dp, RoundedCornerShape(26.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.18f))
                         .clip(RoundedCornerShape(26.dp))
-                        .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.95f))
-                        .glassRefraction(26.dp, isDark = isDark)
+                        .liquidGlass(RoundedCornerShape(26.dp), surfaceTint = if (isDark) Color(0xFF1E2024).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.95f))
+                        .liquidGlassRim(RoundedCornerShape(26.dp))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                         .padding(22.dp)
                 ) {
@@ -1141,8 +1142,8 @@ fun FluidAlbumDetailOverlay(
                         .fillMaxWidth(0.85f)
                         .shadow(8.dp, RoundedCornerShape(26.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.18f))
                         .clip(RoundedCornerShape(26.dp))
-                        .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.95f))
-                        .glassRefraction(26.dp, isDark = isDark)
+                        .liquidGlass(RoundedCornerShape(26.dp), surfaceTint = if (isDark) Color(0xFF1E2024).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.95f))
+                        .liquidGlassRim(RoundedCornerShape(26.dp))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                         .padding(22.dp)
                 ) {

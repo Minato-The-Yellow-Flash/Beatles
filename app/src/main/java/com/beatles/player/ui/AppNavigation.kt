@@ -103,6 +103,13 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.haze
 import dev.chrisbanes.haze.hazeChild
+import com.beatles.player.ui.components.LocalLiquidGlassEnabled
+import com.beatles.player.ui.components.LocalAppBackdrop
+import com.beatles.player.ui.components.liquidGlass
+import com.beatles.player.ui.components.lightweightLiquidGlass
+import com.beatles.player.ui.components.liquidGlassRim
+import com.beatles.player.ui.components.backdrop.backdrops.rememberLayerBackdrop
+import com.beatles.player.ui.components.backdrop.backdrops.layerBackdrop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -434,7 +441,19 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 label = "dynamicBottomPadding"
             )
 
-            CompositionLocalProvider(LocalDynamicBottomPadding provides animatedBottomPadding) {
+            val paintBackdrop: androidx.compose.ui.graphics.drawscope.ContentDrawScope.() -> Unit = remember(appBg) {
+                {
+                    drawRect(appBg)
+                    drawContent()
+                }
+            }
+            val appBackdrop = rememberLayerBackdrop(onDraw = paintBackdrop)
+
+            CompositionLocalProvider(
+                LocalDynamicBottomPadding provides animatedBottomPadding,
+                LocalLiquidGlassEnabled provides true,
+                LocalAppBackdrop provides appBackdrop
+            ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -450,6 +469,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .layerBackdrop(appBackdrop)
                         .haze(state = hazeState)
                         .graphicsLayer {
                             scaleX = contentBehindScale
@@ -756,15 +776,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         .clip(RoundedCornerShape(pillCorner))
                                         .then(
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                                                Modifier.hazeChild(
-                                                    state = hazeState,
+                                                Modifier.liquidGlass(
                                                     shape = RoundedCornerShape(pillCorner),
-                                                    style = GlassHazeStyle
+                                                    surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
                                                 )
-                                            } else Modifier
+                                            } else {
+                                                Modifier.background(translucentPillBg)
+                                            }
                                         )
-                                        .background(translucentPillBg)
-                                        .glassRefraction(pillCorner, isDark)
+                                        .liquidGlassRim(RoundedCornerShape(pillCorner))
                                 ) {
                                     // Gesture detector for horizontal swipe to change track & tap to expand (R6)
                                     Box(
@@ -1112,15 +1132,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             .clip(barShape)
                                             .then(
                                                 if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                                                    Modifier.hazeChild(
-                                                        state = hazeState,
+                                                    Modifier.liquidGlass(
                                                         shape = barShape,
-                                                        style = GlassHazeStyle
+                                                        surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
                                                     )
-                                                } else Modifier
+                                                } else {
+                                                    Modifier.background(translucentBarBg)
+                                                }
                                             )
-                                            .background(translucentBarBg)
-                                            .glassRefraction(barCorner, isDark)
+                                            .liquidGlassRim(barShape)
                                     ) {
                                         // Left Pill Content: Both layers blend smoothly with crossfade
                                         val activeTab = tabs[selectedMainTabIdx]
@@ -1328,15 +1348,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             .clip(searchPillShape)
                                             .then(
                                                 if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                                                    Modifier.hazeChild(
-                                                        state = hazeState,
+                                                    Modifier.liquidGlass(
                                                         shape = searchPillShape,
-                                                        style = GlassHazeStyle
+                                                        surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
                                                     )
-                                                } else Modifier
+                                                } else {
+                                                    Modifier.background(translucentBarBg)
+                                                }
                                             )
-                                            .background(translucentBarBg)
-                                            .glassRefraction(barCorner, isDark)
+                                            .liquidGlassRim(searchPillShape)
                                     ) {
                                         // Compact search button (normal mode)
                                         if (searchExpandProgress < 0.6f) {
@@ -1443,15 +1463,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 .clip(CircleShape)
                                                 .then(
                                                     if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                                                        Modifier.hazeChild(
-                                                            state = hazeState,
+                                                        Modifier.liquidGlass(
                                                             shape = CircleShape,
-                                                            style = GlassHazeStyle
+                                                            surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
                                                         )
-                                                    } else Modifier
+                                                    } else {
+                                                        Modifier.background(translucentBarBg)
+                                                    }
                                                 )
-                                                .background(translucentBarBg)
-                                                .glassRefraction(circleSize / 2, isDark, isCircle = true)
+                                                .liquidGlassRim(CircleShape)
                                                 .clickable(
                                                     interactionSource = remember { MutableInteractionSource() },
                                                     indication = null
@@ -1531,15 +1551,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         .clip(RoundedCornerShape(barCorner))
                                         .then(
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                                                Modifier.hazeChild(
-                                                    state = hazeState,
+                                                Modifier.liquidGlass(
                                                     shape = RoundedCornerShape(barCorner),
-                                                    style = GlassHazeStyle
+                                                    surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
                                                 )
-                                            } else Modifier
+                                            } else {
+                                                Modifier.background(translucentBarBg)
+                                            }
                                         )
-                                        .background(translucentBarBg)
-                                        .glassRefraction(barCorner, isDark)
+                                        .liquidGlassRim(RoundedCornerShape(barCorner))
                                         .padding(4.dp)
                                 ) {
                                     val tabWidth = constraints.maxWidth / tabs.size.toFloat()
@@ -1585,15 +1605,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         .clip(CircleShape)
                                         .then(
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                                                Modifier.hazeChild(
-                                                    state = hazeState,
+                                                Modifier.liquidGlass(
                                                     shape = CircleShape,
-                                                    style = GlassHazeStyle
+                                                    surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
                                                 )
-                                            } else Modifier
+                                            } else {
+                                                Modifier.background(translucentBarBg)
+                                            }
                                         )
-                                        .background(translucentBarBg)
-                                        .glassRefraction(circleSize / 2, isDark, isCircle = true)
+                                        .liquidGlassRim(CircleShape)
                                         .clickable { viewModel.setShowAddAlbumDialog(true) },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1628,15 +1648,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         .clip(RoundedCornerShape(barCorner))
                                         .then(
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                                                Modifier.hazeChild(
-                                                    state = hazeState,
+                                                Modifier.liquidGlass(
                                                     shape = RoundedCornerShape(barCorner),
-                                                    style = GlassHazeStyle
+                                                    surfaceTint = if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
                                                 )
-                                            } else Modifier
+                                            } else {
+                                                Modifier.background(translucentBarBg)
+                                            }
                                         )
-                                        .background(translucentBarBg)
-                                        .glassRefraction(barCorner, isDark)
+                                        .liquidGlassRim(RoundedCornerShape(barCorner))
                                         .padding(4.dp)
                                 ) {
                                     val tabWidth = constraints.maxWidth / tabs.size.toFloat()
@@ -1684,15 +1704,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         .clip(CircleShape)
                                         .then(
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                                                Modifier.hazeChild(
-                                                    state = hazeState,
+                                                Modifier.liquidGlass(
                                                     shape = CircleShape,
-                                                    style = GlassHazeStyle
+                                                    surfaceTint = if (state.adminTab == AdminTab.SETTINGS) AccentBlue.copy(alpha = 0.8f) else if (isDark) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.35f)
                                                 )
-                                            } else Modifier
+                                            } else {
+                                                Modifier.background(if (state.adminTab == AdminTab.SETTINGS) AccentBlue else translucentBarBg)
+                                            }
                                         )
-                                        .background(if (state.adminTab == AdminTab.SETTINGS) AccentBlue else translucentBarBg)
-                                        .glassRefraction(circleSize / 2, isDark, isCircle = true)
+                                        .liquidGlassRim(CircleShape)
                                         .clickable { viewModel.setAdminTab(AdminTab.SETTINGS) },
                                     contentAlignment = Alignment.Center
                                 ) {

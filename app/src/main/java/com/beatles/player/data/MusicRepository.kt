@@ -25,19 +25,29 @@ object MusicRepository {
 
     init { NewPipe.init(OkHttpDownloader()) }
 
+    fun getCachedHighResCover(title: String, artist: String): String? {
+        val cleanTitle = title.replace(Regex("(?i)\\[.*?\\]|\\(.*?\\)"), "").replace(Regex("(?i)ft\\..*|feat\\..*|\\|.*|-.*"), "").trim()
+        val cleanArtist = artist.replace(" - Topic", "").trim()
+        val cacheKey = "$cleanTitle|$cleanArtist".lowercase()
+        return highResCoverCache[cacheKey]
+    }
+
+    fun resolveImmediateHqCover(song: Song): String {
+        val cached = getCachedHighResCover(song.title, song.artist)
+        if (!cached.isNullOrBlank()) return cached
+        return getHighestQualityCover(song.coverUrl)
+    }
+
     fun getHighestQualityCover(thumb: String): String {
         if (thumb.isBlank()) return ""
-        val ytMatch = Regex(".*/vi/([^/]+)/.*").find(thumb)
-        if (ytMatch != null) {
-            val vid = ytMatch.groupValues[1]
-            return "https://i.ytimg.com/vi/$vid/maxresdefault.jpg"
-        }
         if (thumb.contains("googleusercontent.com") || thumb.contains("ggpht.com")) {
             return thumb.replace(Regex("=w\\d+-h\\d+.*"), "=w1200-h1200-l90-rj")
                 .replace(Regex("=s\\d+.*"), "=s1200")
+                .replace(Regex("w\\d+-h\\d+"), "w1200-h1200")
         }
-        if (thumb.contains("mzstatic.com")) {
-            return thumb.replace(Regex("/\\d+x\\d+bb\\."), "/1200x1200bb.")
+        if (thumb.contains("mzstatic.com") || thumb.contains("apple.com")) {
+            return thumb.replace(Regex("\\d+x\\d+bb"), "1200x1200bb")
+                .replace(Regex("\\{w\\}x\\{h\\}bb"), "1200x1200bb")
                 .replace(Regex("/\\d+x\\d+w\\."), "/1200x1200w.")
                 .replace(Regex("/\\d+x\\d+\\."), "/1200x1200.")
         }
@@ -47,10 +57,14 @@ object MusicRepository {
         if (thumb.contains("saavncdn.com")) {
             return thumb.replace(Regex("_\\d+x\\d+\\."), "_500x500.")
         }
-        return thumb.replace("/hqdefault.jpg", "/maxresdefault.jpg")
-            .replace("/mqdefault.jpg", "/maxresdefault.jpg")
-            .replace("/sddefault.jpg", "/maxresdefault.jpg")
-            .replace("/default.jpg", "/maxresdefault.jpg")
+        val ytMatch = Regex(".*/vi/([^/]+)/.*").find(thumb)
+        if (ytMatch != null) {
+            val vid = ytMatch.groupValues[1]
+            return "https://i.ytimg.com/vi/$vid/hq720.jpg"
+        }
+        return thumb.replace("/mqdefault.jpg", "/hq720.jpg")
+            .replace("/default.jpg", "/hq720.jpg")
+            .replace("/sddefault.jpg", "/hq720.jpg")
     }
 
     fun getBestThumbnailUrl(thumb: String): String {
@@ -1465,7 +1479,7 @@ object MusicRepository {
                 val results = json.getAsJsonArray("results")
                 if (results != null && results.size() > 0) {
                     val itunesArt = results[0].asJsonObject.get("artworkUrl100")?.asString
-                        ?.replace("100x100bb", "600x600bb")
+                        ?.replace("100x100bb", "1200x1200bb")
                     if (!itunesArt.isNullOrEmpty()) {
                         highResCoverCache[cacheKey] = itunesArt
                         return itunesArt

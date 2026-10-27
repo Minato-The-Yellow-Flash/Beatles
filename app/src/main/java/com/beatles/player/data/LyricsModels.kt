@@ -1,5 +1,7 @@
 package com.beatles.player.data
 
+enum class LyricAlignment { Start, End }
+
 data class SyncedWord(
     val text: String,
     val startMs: Long,
@@ -13,7 +15,8 @@ data class SyncedLyricLine(
     val durationMs: Long = 4000L,
     val isInstrumental: Boolean = false,
     val instrumentalDurationMs: Long = 0L,
-    val isSecondaryArtist: Boolean = false
+    val isSecondaryArtist: Boolean = false,
+    val alignment: LyricAlignment = if (isSecondaryArtist) LyricAlignment.End else LyricAlignment.Start
 )
 
 object LyricsProcessor {
@@ -90,8 +93,11 @@ object LyricsProcessor {
                 continue
             }
 
-            val polishedText = IndicTransliteration.polishAndFormat(line.text)
-            val isSec = line.isSecondaryArtist || IndicTransliteration.isSecondaryArtistLine(line.text)
+            val rawTrim = line.text.trim()
+            val isBracketed = (rawTrim.startsWith("(") && rawTrim.endsWith(")")) || (rawTrim.startsWith("[") && rawTrim.endsWith("]"))
+            val isSec = line.isSecondaryArtist || isBracketed || IndicTransliteration.isSecondaryArtistLine(line.text)
+            val cleanText = if (isBracketed) rawTrim.removeSurrounding("(", ")").removeSurrounding("[", "]").trim() else rawTrim
+            val polishedText = IndicTransliteration.polishAndFormat(cleanText)
             val rawWords = polishedText.trim().split("\\s+".toRegex()).filter { it.isNotEmpty() }
             val totalGap = if (nextLine != null && nextLine.timeMs > line.timeMs) {
                 nextLine.timeMs - line.timeMs
@@ -131,6 +137,7 @@ object LyricsProcessor {
             }
 
             val lineEndMs = if (words.isNotEmpty()) words.last().endMs else (line.timeMs + lineDur)
+            val align = if (isSec) LyricAlignment.End else LyricAlignment.Start
             result.add(
                 SyncedLyricLine(
                     timeMs = line.timeMs,
@@ -138,7 +145,8 @@ object LyricsProcessor {
                     words = words,
                     durationMs = lineDur,
                     isInstrumental = false,
-                    isSecondaryArtist = isSec
+                    isSecondaryArtist = isSec,
+                    alignment = align
                 )
             )
 
