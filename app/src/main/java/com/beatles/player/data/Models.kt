@@ -1,6 +1,6 @@
 package com.beatles.player.data
 
-data class Song(
+data class Song @JvmOverloads constructor(
     val id: String,
     val title: String,
     val artist: String,
@@ -9,7 +9,8 @@ data class Song(
     val durationSeconds: Int,
     val streamUrl: String? = null,
     val genre: String = "Various",
-    val isAlbum: Boolean = false
+    val isAlbum: Boolean = false,
+    val videoUrl: String? = null
 )
 
 data class LyricLine(
