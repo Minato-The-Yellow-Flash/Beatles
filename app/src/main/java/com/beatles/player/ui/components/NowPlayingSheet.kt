@@ -565,6 +565,23 @@ fun NowPlayingSheet(
                         shadowElevation = (baseElevation.toPx() * morphProgress * compactProgress)
                         shape = RoundedCornerShape(currentCoverCorner)
                         clip = true
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+                    .drawWithContent {
+                        drawContent()
+                        if (compactProgress < 0.8f && morphProgress >= 0.92f) {
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    0.00f to Color.Black,
+                                    0.46f to Color.Black,
+                                    0.66f to Color.Black.copy(alpha = 0.85f),
+                                    0.80f to Color.Black.copy(alpha = 0.48f),
+                                    0.92f to Color.Black.copy(alpha = 0.12f),
+                                    1.00f to Color.Transparent
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
+                        }
                     }
             ) {
                 val liveArtScale = if (isPlaying && !isCompactTarget) liveArtScaleAnim else 1.0f
@@ -608,23 +625,6 @@ fun NowPlayingSheet(
                                 )
                         )
                     }
-                }
-
-                // Apple Music bottom gradient fade melting full-screen artwork into controls
-                if (compactProgress < 0.8f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer { alpha = ((1f - compactProgress) * morphProgress).coerceIn(0f, 1f) }
-                            .background(
-                                Brush.verticalGradient(
-                                    0.0f to Color.Transparent,
-                                    0.42f to Color.Transparent,
-                                    0.78f to Color(0xFF0E0E10).copy(alpha = 0.85f),
-                                    1.0f to Color(0xFF0E0E10)
-                                )
-                            )
-                    )
                 }
 
                 // Apple Music top drag handle indicator
@@ -838,6 +838,13 @@ fun NowPlayingSheet(
                         }
                 ) {
                     // Song title + artist + Favorite Star & 3-Dots More Options (Apple Music Image 2 layout)
+                    val displayTitle = remember(song.title) {
+                        com.beatles.player.data.IndicTransliteration.toLatinTitle(song.title)
+                    }
+                    val displayArtist = remember(song.artist) {
+                        com.beatles.player.data.IndicTransliteration.toLatinTitle(song.artist)
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -845,45 +852,35 @@ fun NowPlayingSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(song.title, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text(
+                                text = displayTitle,
+                                color = Color.White,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1
+                            )
                             Spacer(modifier = Modifier.height(3.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    song.artist,
-                                    color = Color.White.copy(alpha = 0.70f),
-                                    fontSize = 16.sp,
-                                    maxLines = 1,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
-                                val playingLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
-                                val playingGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.White.copy(alpha = 0.20f))
-                                        .padding(horizontal = 7.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        "$playingLang • $playingGenre",
-                                        color = Color.White.copy(alpha = 0.90f),
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
+                            Text(
+                                text = displayArtist,
+                                color = Color.White.copy(alpha = 0.70f),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
                         }
 
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(14.dp))
 
-                        // Favorite / Star button (Apple Music Image 2 style)
-                        val heartBg = if (isFavorite) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.14f)
+                        // Favorite / Star button
+                        val heartBg = if (isFavorite) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
                         val heartTint = if (isFavorite) AccentRed else Color.White
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(heartBg)
+                                .glassRefraction(20.dp, isDark = true)
+                                .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(20.dp))
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null
@@ -904,15 +901,17 @@ fun NowPlayingSheet(
 
                         Spacer(modifier = Modifier.width(10.dp))
 
-                        // Three-Dots More Options Menu Button
+                        // Three-Dots More Options Menu Button (frosted blur with edges like the nav bar)
                         Box(
                             modifier = Modifier
                                 .onGloballyPositioned { coords ->
                                     threeDotButtonBounds = coords.boundsInRoot()
                                 }
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.14f))
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .glassRefraction(20.dp, isDark = true)
+                                .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(20.dp))
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null
@@ -931,248 +930,10 @@ fun NowPlayingSheet(
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(14.dp))
 
-                // Download + Heart + AutoMix Toggle + 3-dots mini menu row (equal 14dp spacing)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val isLocalTrack = song.streamUrl?.startsWith("content://") == true ||
-                            song.streamUrl?.startsWith("file://") == true ||
-                            song.id.startsWith("local_")
-                    val isDownloaded = downloadedSongs.any { it.id == song.id }
-                    val isDownloading = downloadingSongId == song.id
-                    val isDownloadFailed = downloadFailedSongId == song.id
+                    Spacer(modifier = Modifier.height(20.dp))
 
-                    val dlProgressAnim by animateFloatAsState(
-                        targetValue = if (isDownloading) downloadProgress.coerceIn(0f, 1f) else if (isDownloaded) 1f else 0f,
-                        animationSpec = androidx.compose.animation.core.tween(durationMillis = 100, easing = androidx.compose.animation.core.LinearEasing),
-                        label = "dlProgressAnim"
-                    )
-
-                    val checkmarkScale by animateFloatAsState(
-                        targetValue = if (isDownloaded) 1f else 0.8f,
-                        animationSpec = LiquidMotion.Lens,
-                        label = "checkmarkLensScale"
-                    )
-
-                    if (isLocalTrack) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    } else {
-                        val dlBg = when {
-                            isDownloaded -> Color.White.copy(alpha = 0.85f)
-                            isDownloading -> Color.White.copy(alpha = 0.20f)
-                            isDownloadFailed -> Color(0xFFE74C3C).copy(alpha = 0.22f)
-                            else -> Color.White.copy(alpha = 0.16f)
-                        }
-                        val dlBorderColor = when {
-                            isDownloaded -> Color.Transparent
-                            isDownloadFailed -> Color(0xFFE74C3C).copy(alpha = 0.45f)
-                            else -> Color.White.copy(alpha = 0.25f)
-                        }
-
-                        var isDlPressed by remember { mutableStateOf(false) }
-                        val dlPressScale by animateFloatAsState(
-                            targetValue = if (isDlPressed) 0.96f else 1.0f,
-                            animationSpec = LiquidMotion.Lens,
-                            label = "dlPressScale"
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(38.dp)
-                                .graphicsLayer {
-                                    scaleX = dlPressScale
-                                    scaleY = dlPressScale
-                                }
-                                .clip(RoundedCornerShape(19.dp))
-                                .background(dlBg)
-                                .semantics {
-                                    contentDescription = when {
-                                        isDownloaded -> "Downloaded song"
-                                        isDownloading -> "Downloading song ${(dlProgressAnim * 100).toInt()}%"
-                                        isDownloadFailed -> "Retry download"
-                                        else -> "Download song"
-                                    }
-                                }
-                                .pointerInput(isDownloading, isDownloaded, isDownloadFailed) {
-                                    detectTapGestures(
-                                        onPress = {
-                                            isDlPressed = true
-                                            tryAwaitRelease()
-                                            isDlPressed = false
-                                        },
-                                        onTap = {
-                                            Haptics.confirm(view)
-                                            when {
-                                                isDownloading -> onCancelDownload(song.id)
-                                                isDownloaded -> onRemoveDownload(song.id)
-                                                else -> onDownloadSong(song)
-                                            }
-                                        }
-                                    )
-                                }
-                                .padding(horizontal = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                // 24-28dp Live Circular Progress Ring (5 States: R3)
-                                Box(
-                                    modifier = Modifier.size(24.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    when {
-                                        // State 2: Queued / Starting
-                                        isDownloading && downloadProgress <= 0.01f -> {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(22.dp),
-                                                color = Color.White,
-                                                strokeWidth = 2.dp,
-                                                trackColor = Color.White.copy(alpha = 0.20f)
-                                            )
-                                        }
-                                        // State 3: Downloading (Determinate smooth progress arc + cancel cross)
-                                        isDownloading -> {
-                                            CircularProgressIndicator(
-                                                progress = { dlProgressAnim },
-                                                modifier = Modifier.size(22.dp),
-                                                color = Color.White,
-                                                strokeWidth = 2.dp,
-                                                trackColor = Color.White.copy(alpha = 0.20f)
-                                            )
-                                            Icon(
-                                                Icons.Default.Close,
-                                                contentDescription = "Cancel",
-                                                tint = Color.White.copy(alpha = 0.85f),
-                                                modifier = Modifier.size(10.dp)
-                                            )
-                                        }
-                                        // State 4: Done / Downloaded (Lens pulse checkmark without circle)
-                                        isDownloaded -> {
-                                            Icon(
-                                                Icons.Default.Check,
-                                                contentDescription = "Downloaded",
-                                                tint = Color(0xFF151515),
-                                                modifier = Modifier
-                                                    .size(16.dp)
-                                                    .graphicsLayer {
-                                                        scaleX = checkmarkScale
-                                                        scaleY = checkmarkScale
-                                                    }
-                                            )
-                                        }
-                                        // State 5: Error / Failed (Retry icon without circle)
-                                        isDownloadFailed -> {
-                                            Icon(
-                                                Icons.Default.Refresh,
-                                                contentDescription = "Retry Download",
-                                                tint = Color(0xFFFF6B6B),
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                        // State 1: Idle (Raw download icon without circle)
-                                        else -> {
-                                            Icon(
-                                                Icons.Default.Download,
-                                                contentDescription = "Download",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.width(6.dp))
-
-                                val labelText = when {
-                                    isDownloaded -> "Downloaded"
-                                    isDownloading && downloadProgress > 0.01f -> "${(dlProgressAnim * 100).toInt()}%"
-                                    isDownloading -> "Queued"
-                                    isDownloadFailed -> "Retry"
-                                    else -> "Download"
-                                }
-
-                                Text(
-                                    labelText,
-                                    color = if (isDownloaded) Color(0xFF151515) else if (isDownloadFailed) Color(0xFFFF6B6B) else Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                    }
-
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        // AutoMix Toggle Pill
-                        val autoMixLabel = "AutoMix"
-                        val isAutoMixActive = autoMixMode == com.beatles.player.player.automix.AutoMixMode.ON
-                        val autoMixBg = if (isAutoMixActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.14f)
-                        val autoMixContentTint = if (isAutoMixActive) Color(0xFF151515) else Color.White
-
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(19.dp))
-                                .background(autoMixBg)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) {
-                                    Haptics.confirm(view)
-                                    onToggleAutoMix()
-                                }
-                                .padding(horizontal = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.GraphicEq,
-                                    contentDescription = autoMixLabel,
-                                    tint = autoMixContentTint,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    autoMixLabel,
-                                    color = autoMixContentTint,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        // Lossless Quality Pill Badge (Apple Music Image 2 layout)
-                        Box(
-                            modifier = Modifier
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(19.dp))
-                                .background(Color.White.copy(alpha = 0.14f))
-                                .padding(horizontal = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.GraphicEq, contentDescription = null, tint = Color.White.copy(alpha = 0.70f), modifier = Modifier.size(13.dp))
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Text("Lossless", color = Color.White.copy(alpha = 0.85f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Luminous Expanding Frosted Seekbar (Glows brighter & expands on tap/drag with blur element)
+                // Luminous Expanding Frosted Seekbar (Previous version 8dp size with subtle 0.5dp expansion on tap/drag, no circle nose)
                 Column(modifier = Modifier.padding(horizontal = 24.dp)) {
                     var isDraggingSlider by remember { mutableStateOf(false) }
                     var sliderPos by remember { mutableFloatStateOf(currentPosition.toFloat()) }
@@ -1186,12 +947,12 @@ fun NowPlayingSheet(
                     }
 
                     val trackAnimHeight by animateDpAsState(
-                        targetValue = if (isDraggingSlider) 10.dp else 4.5.dp,
+                        targetValue = if (isDraggingSlider) 8.5.dp else 8.dp,
                         animationSpec = spring(dampingRatio = 0.75f, stiffness = 420f),
                         label = "trackAnimHeight"
                     )
                     val inactiveAnimHeight by animateDpAsState(
-                        targetValue = if (isDraggingSlider) 8.dp else 4.5.dp,
+                        targetValue = if (isDraggingSlider) 8.5.dp else 8.dp,
                         animationSpec = spring(dampingRatio = 0.75f, stiffness = 420f),
                         label = "inactiveAnimHeight"
                     )
@@ -1277,9 +1038,9 @@ fun NowPlayingSheet(
                             )
 
                             if (activeWidth > 0f) {
-                                // 2. Wide radiant outer glow halo (when scrubbing or AutoMix pulse)
+                                // 2. Radiant outer glow halo
                                 if (scrubGlowAlpha > 0.01f) {
-                                    val glowPadH = 10.dp.toPx()
+                                    val glowPadH = 8.dp.toPx()
                                     val glowH = h + glowPadH
                                     drawRoundRect(
                                         brush = Brush.horizontalGradient(
@@ -1294,7 +1055,7 @@ fun NowPlayingSheet(
                                     )
                                 }
 
-                                // 3. Core Active Track (Frosted translucent gradient with soft blur element)
+                                // 3. Core Active Track (Frosted translucent gradient)
                                 val inactiveTrackPath = androidx.compose.ui.graphics.Path().apply {
                                     addRoundRect(
                                         androidx.compose.ui.geometry.RoundRect(
@@ -1320,21 +1081,11 @@ fun NowPlayingSheet(
                                         cornerRadius = corner
                                     )
                                 }
-
-                                // 4. Luminous Scrub Head Thumb on active seeking
-                                if (isDraggingSlider) {
-                                    val thumbRadius = h * 0.85f
-                                    drawCircle(
-                                        color = Color.White,
-                                        radius = thumbRadius,
-                                        center = Offset(activeWidth.coerceIn(thumbRadius, w - thumbRadius), centerY)
-                                    )
-                                }
                             }
                         }
                     }
 
-                    // Timestamps Row with Dolby Atmos badge in center (Apple Music Image 2 layout)
+                    // Timestamps Row
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1348,10 +1099,10 @@ fun NowPlayingSheet(
                             color = Color.White.copy(alpha = 0.6f),
                             fontSize = 12.sp
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (autoMixActive && autoMixLabel != null) {
                             Text(
-                                if (autoMixActive && autoMixLabel != null) autoMixLabel else "Dolby Atmos",
-                                color = Color.White.copy(alpha = 0.75f),
+                                autoMixLabel,
+                                color = Color.White.copy(alpha = 0.85f),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -1551,6 +1302,10 @@ fun NowPlayingSheet(
             }
         }
 
+        val isDownloaded = remember(song.id, downloadedSongs) { downloadedSongs.any { it.id == song.id } }
+        val isDownloading = downloadingSongId == song.id
+        val isDownloadFailed = downloadFailedSongId == song.id
+
         // 3-Dots iOS 27 Mini Submenu
         NowPlayingThreeDotsMenu(
             showMiniMenu = showMiniMenu,
@@ -1571,7 +1326,14 @@ fun NowPlayingSheet(
             onOpenSleepTimerDialog = { showSleepTimerDialog = true },
             playlists = playlists,
             onCreatePlaylist = onCreatePlaylist,
-            onAddToPlaylist = onAddToPlaylist
+            onAddToPlaylist = onAddToPlaylist,
+            onDownloadSong = onDownloadSong,
+            onCancelDownload = onCancelDownload,
+            onRemoveDownload = onRemoveDownload,
+            isDownloaded = isDownloaded,
+            isDownloading = isDownloading,
+            downloadProgress = downloadProgress,
+            isDownloadFailed = isDownloadFailed
         )
 
         // Double-Tap Heart Pop Animation Overlay (at top of Box hierarchy so it displays over artwork & queue)
@@ -3345,7 +3107,14 @@ fun NowPlayingThreeDotsMenu(
     onOpenSleepTimerDialog: () -> Unit,
     playlists: List<Playlist>,
     onCreatePlaylist: (String, Song) -> Unit,
-    onAddToPlaylist: (String, Song) -> Unit
+    onAddToPlaylist: (String, Song) -> Unit,
+    onDownloadSong: (Song) -> Unit = {},
+    onCancelDownload: (String) -> Unit = {},
+    onRemoveDownload: (String) -> Unit = {},
+    isDownloaded: Boolean = false,
+    isDownloading: Boolean = false,
+    downloadProgress: Float = 0f,
+    isDownloadFailed: Boolean = false
 ) {
     val miniMenuAnim by animateFloatAsState(
         targetValue = if (showMiniMenu) 1f else 0f,
@@ -3370,8 +3139,8 @@ fun NowPlayingThreeDotsMenu(
             val isDark = AppTheme.isDark
             val currentCornerDp = lerp(19.dp, 24.dp, miniMenuAnim)
             val menuShape = RoundedCornerShape(currentCornerDp)
-            val solidMenuBg = if (isDark) Color(0xFF1E2026) else Color(0xFFFFFFFF)
-            val solidMenuBorder = if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+            val solidMenuBg = if (isDark) Color(0xCC1E2026) else Color(0xEEFFFFFF)
+            val solidMenuBorder = if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.10f)
 
             val density = LocalDensity.current
             val endPaddingDp = remember(sheetRootBounds, threeDotButtonBounds) {
@@ -3407,12 +3176,59 @@ fun NowPlayingThreeDotsMenu(
                     .shadow(12.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.18f))
                     .clip(menuShape)
                     .background(solidMenuBg)
+                    .glassRefraction(currentCornerDp, isDark = isDark)
                     .border(1.dp, solidMenuBorder, menuShape)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                     .padding(vertical = 6.dp)
             ) {
                 if (!showSavePlaylistView) {
                     Column {
+                        // Download Song Option
+                        val isLocalTrack = song.streamUrl?.startsWith("content://") == true ||
+                                song.streamUrl?.startsWith("file://") == true ||
+                                song.id.startsWith("local_")
+
+                        if (!isLocalTrack) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        Haptics.confirm(view)
+                                        when {
+                                            isDownloading -> onCancelDownload(song.id)
+                                            isDownloaded -> onRemoveDownload(song.id)
+                                            else -> onDownloadSong(song)
+                                        }
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val dlIcon = when {
+                                    isDownloading -> Icons.Default.Close
+                                    isDownloaded -> Icons.Default.Check
+                                    isDownloadFailed -> Icons.Default.Refresh
+                                    else -> Icons.Default.Download
+                                }
+                                val dlTint = when {
+                                    isDownloaded -> Color(0xFF2ECC71)
+                                    isDownloadFailed -> Color(0xFFE74C3C)
+                                    else -> AppTheme.fg()
+                                }
+                                Icon(dlIcon, contentDescription = null, tint = dlTint, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                val dlText = when {
+                                    isDownloading && downloadProgress > 0.01f -> "Downloading ${(downloadProgress * 100).toInt()}%"
+                                    isDownloading -> "Downloading..."
+                                    isDownloaded -> "Downloaded (Tap to Remove)"
+                                    isDownloadFailed -> "Retry Download"
+                                    else -> "Download Track"
+                                }
+                                Text(dlText, color = dlTint, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            }
+
+                            HorizontalDivider(color = AppTheme.fg(0.08f), modifier = Modifier.padding(horizontal = 14.dp))
+                        }
+
                         // Option 1: Add to Playlist
                         Row(
                             modifier = Modifier

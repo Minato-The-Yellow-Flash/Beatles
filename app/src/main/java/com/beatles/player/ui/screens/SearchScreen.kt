@@ -507,14 +507,6 @@ fun SearchScreen(
                                                 color = textMuted,
                                                 fontSize = 11.sp
                                             )
-                                            if (album.genre.isNotBlank() && album.genre != "Music") {
-                                                Text(
-                                                    " • ${album.genre}",
-                                                    color = textMuted,
-                                                    fontSize = 11.sp,
-                                                    maxLines = 1
-                                                )
-                                            }
                                         }
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(

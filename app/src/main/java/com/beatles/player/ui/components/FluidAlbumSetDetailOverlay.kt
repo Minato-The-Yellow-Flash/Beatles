@@ -416,17 +416,24 @@ fun FluidAlbumSetDetailOverlay(
 
                                 Spacer(modifier = Modifier.height(18.dp))
 
+                                val displayAlbumTitle = remember(alb.title) {
+                                    com.beatles.player.data.IndicTransliteration.toLatinTitle(alb.title)
+                                }
+                                val displayAlbumArtist = remember(alb.artist) {
+                                    com.beatles.player.data.IndicTransliteration.toLatinTitle(alb.artist)
+                                }
+
                                 Text(
-                                    text = alb.title,
+                                    text = displayAlbumTitle,
                                     color = textPrimary,
                                     fontSize = 22.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.ExtraBold,
                                     textAlign = TextAlign.Center,
                                     maxLines = 2
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "${alb.artist} • ${alb.releaseYear.ifBlank { "2026" }} • ${alb.genre.ifBlank { "Album" }}",
+                                    text = if (alb.releaseYear.isNotBlank()) "${displayAlbumArtist} • ${alb.releaseYear}" else displayAlbumArtist,
                                     color = textSecondary,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Medium,

@@ -319,6 +319,23 @@ fun FluidAlbumDetailOverlay(
                         scaleX = if (clampedP >= 0.95f) artScale else 1f
                         scaleY = if (clampedP >= 0.95f) artScale else 1f
                         alpha = if (clampedP >= 0.95f) artAlpha.coerceIn(0f, 1f) else 1f
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    }
+                    .drawWithContent {
+                        drawContent()
+                        if (clampedP >= 0.85f) {
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    0.00f to Color.Black,
+                                    0.46f to Color.Black,
+                                    0.66f to Color.Black.copy(alpha = 0.85f),
+                                    0.80f to Color.Black.copy(alpha = 0.48f),
+                                    0.92f to Color.Black.copy(alpha = 0.12f),
+                                    1.00f to Color.Transparent
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
+                        }
                     }
                     .then(if (artBlur > 0.dp && clampedP >= 0.95f && artAlpha > 0.01f) Modifier.blur(artBlur) else Modifier)
                     .clip(
@@ -358,24 +375,6 @@ fun FluidAlbumDetailOverlay(
                         )
                     }
                 }
-
-                // Smooth multi-stop bottom gradient fade to seamlessly melt into the sheet content area
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(140.dp)
-                        .align(Alignment.BottomCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    Color.Transparent,
-                                    albumPageBg.copy(alpha = 0.35f),
-                                    albumPageBg.copy(alpha = 0.80f),
-                                    albumPageBg
-                                )
-                            )
-                        )
-                )
             }
 
             // 3. Scrollable Content Layer (Metadata, Action Pills, Tracklist & Pinned Nav Bar)
@@ -426,17 +425,24 @@ fun FluidAlbumDetailOverlay(
                                     },
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
+                                val displayAlbumTitle = remember(alb.title) {
+                                    com.beatles.player.data.IndicTransliteration.toLatinTitle(alb.title)
+                                }
+                                val displayAlbumArtist = remember(alb.artist) {
+                                    com.beatles.player.data.IndicTransliteration.toLatinTitle(alb.artist)
+                                }
+
                                 Text(
-                                    text = alb.title,
+                                    text = displayAlbumTitle,
                                     style = TextStyle(brush = albumTitleBrush),
                                     fontSize = 24.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.ExtraBold,
                                     textAlign = TextAlign.Center,
                                     maxLines = 2
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "${alb.artist} • ${alb.releaseYear.ifBlank { "2026" }} • ${alb.genre.ifBlank { "Album" }}",
+                                    text = if (alb.releaseYear.isNotBlank()) "${displayAlbumArtist} • ${alb.releaseYear}" else displayAlbumArtist,
                                     color = textSecondary,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Medium,

@@ -271,7 +271,7 @@ fun LibraryScreen(
                                             Text(album.title, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                             Text(album.artist, color = textSecondary, fontSize = 12.sp, maxLines = 1)
                                             Spacer(modifier = Modifier.height(2.dp))
-                                            Text("${album.songs.size} tracks · ${album.genre}", color = textMuted, fontSize = 10.sp)
+                                            Text("${album.songs.size} tracks", color = textMuted, fontSize = 10.sp)
                                         }
                                     }
                                 }
@@ -372,7 +372,7 @@ fun LibraryScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(song.artist, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text(song.genre, color = textSecondary, fontSize = 12.sp)
+                                    Text("Artist", color = textSecondary, fontSize = 12.sp)
                                 }
                                 val mixInteraction = remember { MutableInteractionSource() }
                                 Box(

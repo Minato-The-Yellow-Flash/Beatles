@@ -337,6 +337,20 @@ object IndicTransliteration {
     }
 
     /**
+     * Transliterates Indic text (Punjabi, Hindi, etc.) to Latin script with title-case word capitalization,
+     * suitable for song titles and artist names.
+     */
+    fun toLatinTitle(text: String): String {
+        if (text.isBlank()) return text
+        val cleaned = text.replace(" - Topic", "").trim()
+        if (!containsIndic(cleaned)) return cleaned
+        val latin = toLatin(cleaned)
+        return latin.split(" ").joinToString(" ") { word ->
+            word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        }
+    }
+
+    /**
      * Determines if a lyric line corresponds to a secondary artist, backing response, or duet part.
      */
     fun isSecondaryArtistLine(text: String): Boolean {

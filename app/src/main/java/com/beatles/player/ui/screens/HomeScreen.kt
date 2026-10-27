@@ -1269,9 +1269,6 @@ fun HomeScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(song.title ?: "", color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                             Text(song.artist ?: "", color = textSecondary, fontSize = 12.sp, maxLines = 1)
-                            val topLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
-                            val topGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
-                            Text("$topLang • $topGenre", color = AccentRed.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                         }
                         val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
                         Text(dur, color = textMuted, fontSize = 12.sp)
@@ -1330,9 +1327,6 @@ fun HomeScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(song.title ?: "", color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                 Text(song.artist ?: "", color = textSecondary, fontSize = 11.sp, maxLines = 1)
-                                val mfyLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
-                                val mfyGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
-                                Text("$mfyLang • $mfyGenre", color = AccentRed.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                             }
                         }
 
@@ -1625,9 +1619,6 @@ fun SeeAllScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(song.title ?: "", color = textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                         Text(song.artist ?: "", color = textSecondary, fontSize = 12.sp, maxLines = 1)
-                        val songLang = remember(song.id) { com.beatles.player.data.MusicRepository.detectLanguage(song) }
-                        val songGenre = remember(song.id) { song.genre.ifBlank { com.beatles.player.data.MusicRepository.detectGenre(song) } }
-                        Text("$songLang • $songGenre", color = AccentRed.copy(alpha = 0.85f), fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                     }
                     val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
                     Text(dur, color = textMuted, fontSize = 12.sp)
