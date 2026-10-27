@@ -182,7 +182,7 @@ object LyricsProcessor {
      * Returns -1 if position is before the first line.
      */
     fun findActiveLineIndex(lines: List<SyncedLyricLine>, positionMs: Long): Int {
-        val effectivePos = positionMs + 160L
+        val effectivePos = positionMs + 40L
         if (lines.isEmpty() || effectivePos < lines.first().timeMs) return -1
         var low = 0
         var high = lines.size - 1
@@ -204,7 +204,7 @@ object LyricsProcessor {
      * Smooth and continuous at all word boundaries without snaps or discontinuities.
      */
     fun calculateLineSweepProgress(line: SyncedLyricLine, positionMs: Long): Float {
-        val effectivePos = positionMs + 160L
+        val effectivePos = positionMs + 40L
         val words = line.words
         if (words.isEmpty()) return 0f
         if (effectivePos <= words.first().startMs) return 0f

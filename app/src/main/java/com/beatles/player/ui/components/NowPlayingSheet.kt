@@ -509,13 +509,15 @@ fun NowPlayingSheet(
         }
     }
 
+    val sheetBackgroundAlpha = ((morphProgress - 0.25f) / 0.75f).coerceIn(0f, 1f)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .onGloballyPositioned { coords ->
                 sheetRootBounds = coords.boundsInRoot()
             }
-            .background(DarkBg)
+            .background(DarkBg.copy(alpha = sheetBackgroundAlpha))
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
@@ -530,7 +532,6 @@ fun NowPlayingSheet(
             }
     ) {
         val backgroundBlurAmount = if (showLyrics || showNextUp) 80.dp else 72.dp
-        val sheetBackgroundAlpha = 1f
 
         val infiniteDrift = rememberInfiniteTransition(label = "driftingAmbient")
         val liveBlurScale by infiniteDrift.animateFloat(
@@ -1034,26 +1035,31 @@ fun NowPlayingSheet(
             animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f),
             label = "controlsSlideDownAnim"
         )
-        val controlsVisibilityAlpha = (if (isLyricsActive && isLyricsFullScreen) 0f else controlsAlpha) * ((morphProgress - 0.20f) / 0.80f).coerceIn(0f, 1f)
+        val controlsMorphWeight = ((morphProgress - 0.55f) / 0.45f).coerceIn(0f, 1f)
+        val controlsVisibilityAlpha = (if (isLyricsActive && isLyricsFullScreen) 0f else controlsAlpha) * controlsMorphWeight
+        val controlsMorphSlideY = with(density) { 36.dp.toPx() * (1f - controlsMorphWeight) }
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
                     alpha = controlsVisibilityAlpha
-                    translationY = with(density) { controlsSlideDownAnim.toPx() }
+                    translationY = with(density) { controlsSlideDownAnim.toPx() } + controlsMorphSlideY
                 }
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.Bottom
         ) {
             val isAnySubpageActive = isLyricsActive || isNextUpActive || isSwitchingSubpages || showLyrics || showNextUp
             val songInfoProgress = if (isAnySubpageActive) 0f else (1f - maxOf(lyricsProgress, nextUpProgress)).coerceIn(0f, 1f)
+            val songInfoMorphWeight = ((morphProgress - 0.50f) / 0.50f).coerceIn(0f, 1f)
+            val songInfoAlpha = songInfoProgress * songInfoMorphWeight
+            val songInfoSlideY = with(density) { 20.dp.toPx() * (1f - songInfoMorphWeight) }
             if (songInfoProgress > 0.001f) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .graphicsLayer {
-                            alpha = songInfoProgress
-                            translationY = -20f * (1f - songInfoProgress)
+                            alpha = songInfoAlpha
+                            translationY = -20f * (1f - songInfoProgress) + songInfoSlideY
                         }
                 ) {
                     // Song title + artist + Favorite Star & 3-Dots More Options (Apple Music Image 2 layout)
@@ -1498,36 +1504,42 @@ fun NowPlayingSheet(
         val isDownloading = downloadingSongId == song.id
         val isDownloadFailed = downloadFailedSongId == song.id
 
-        // 3-Dots iOS 27 Mini Submenu
-        NowPlayingThreeDotsMenu(
-            showMiniMenu = showMiniMenu,
-            onDismissMiniMenu = {
-                showMiniMenu = false
-                showSavePlaylistView = false
-            },
-            showSavePlaylistView = showSavePlaylistView,
-            onSetShowSavePlaylistView = { showSavePlaylistView = it },
-            sheetRootBounds = sheetRootBounds,
-            threeDotButtonBounds = threeDotButtonBounds,
-            song = song,
-            onGoToAlbum = onGoToAlbum,
-            onGoToArtist = onGoToArtist,
-            onPlayArtistMix = onPlayArtistMix,
-            autoMixEnabled = autoMixEnabled,
-            onToggleAutoMix = onToggleAutoMix,
-            sleepTimerState = sleepTimerState,
-            onOpenSleepTimerDialog = { showSleepTimerDialog = true },
-            playlists = playlists,
-            onCreatePlaylist = onCreatePlaylist,
-            onAddToPlaylist = onAddToPlaylist,
-            onDownloadSong = onDownloadSong,
-            onCancelDownload = onCancelDownload,
-            onRemoveDownload = onRemoveDownload,
-            isDownloaded = isDownloaded,
-            isDownloading = isDownloading,
-            downloadProgress = downloadProgress,
-            isDownloadFailed = isDownloadFailed
-        )
+        // 3-Dots iOS 27 Mini Submenu (rendered at top layer zIndex 500f so no album art, ambient blur, or specular effects overlap)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(500f)
+        ) {
+            NowPlayingThreeDotsMenu(
+                showMiniMenu = showMiniMenu,
+                onDismissMiniMenu = {
+                    showMiniMenu = false
+                    showSavePlaylistView = false
+                },
+                showSavePlaylistView = showSavePlaylistView,
+                onSetShowSavePlaylistView = { showSavePlaylistView = it },
+                sheetRootBounds = sheetRootBounds,
+                threeDotButtonBounds = threeDotButtonBounds,
+                song = song,
+                onGoToAlbum = onGoToAlbum,
+                onGoToArtist = onGoToArtist,
+                onPlayArtistMix = onPlayArtistMix,
+                autoMixEnabled = autoMixEnabled,
+                onToggleAutoMix = onToggleAutoMix,
+                sleepTimerState = sleepTimerState,
+                onOpenSleepTimerDialog = { showSleepTimerDialog = true },
+                playlists = playlists,
+                onCreatePlaylist = onCreatePlaylist,
+                onAddToPlaylist = onAddToPlaylist,
+                onDownloadSong = onDownloadSong,
+                onCancelDownload = onCancelDownload,
+                onRemoveDownload = onRemoveDownload,
+                isDownloaded = isDownloaded,
+                isDownloading = isDownloading,
+                downloadProgress = downloadProgress,
+                isDownloadFailed = isDownloadFailed
+            )
+        }
 
         // Top Status Bar Protection: Soft gradient and blur layer so system icons (clock, battery, Wi-Fi) stay clearly visible
         val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -3000,13 +3012,13 @@ fun NowPlayingLyricsLayer(
         if (diff > 400L || !isPlaying) {
             anchorPos = currentPosition
             anchorRealtime = android.os.SystemClock.elapsedRealtime()
-            livePositionMs = (currentPosition + 220L).coerceAtLeast(0L)
+            livePositionMs = currentPosition.coerceAtLeast(0L)
         }
     }
 
     LaunchedEffect(isPlaying, isLyricsActive) {
         if (!isPlaying || !isLyricsActive) {
-            livePositionMs = (currentPosition + 220L).coerceAtLeast(0L)
+            livePositionMs = currentPosition.coerceAtLeast(0L)
             return@LaunchedEffect
         }
         anchorRealtime = android.os.SystemClock.elapsedRealtime()
@@ -3014,7 +3026,7 @@ fun NowPlayingLyricsLayer(
         while (isLyricsActive && isPlaying) {
             withFrameMillis {
                 val elapsed = android.os.SystemClock.elapsedRealtime() - anchorRealtime
-                livePositionMs = (anchorPos + elapsed + 220L).coerceAtLeast(0L)
+                livePositionMs = (anchorPos + elapsed).coerceAtLeast(0L)
             }
         }
     }
@@ -3216,24 +3228,25 @@ fun NowPlayingLyricsLayer(
                         val targetAlpha = if (isActive) 1.0f else (0.50f - cappedDistance * 0.08f).coerceAtLeast(0.20f)
                         val targetBlur = if (isActive) 0.dp else (cappedDistance.coerceAtMost(2) * 0.8f).dp
                         val targetBounceY = when {
-                            isActive -> (-4.2).dp
-                            idx == currentIdx - 1 -> (-1.8).dp
-                            idx == currentIdx + 1 -> (4.0).dp
-                            idx == currentIdx + 2 -> (2.8).dp
-                            idx > currentIdx + 2 -> (1.6).dp
+                            isActive -> (-4.5).dp
+                            idx == currentIdx - 1 -> (-2.0).dp
+                            idx == currentIdx + 1 -> (6.2).dp
+                            idx == currentIdx + 2 -> (4.4).dp
+                            idx == currentIdx + 3 -> (3.0).dp
+                            idx > currentIdx + 3 -> (1.8).dp
                             else -> 0.dp
                         }
 
                         val lineBounceDamping = when {
-                            isActive -> 0.55f
-                            idx > currentIdx -> 0.35f
+                            isActive -> 0.52f
+                            idx > currentIdx -> 0.28f
                             else -> 0.65f
                         }
                         val lineBounceY by animateDpAsState(
                             targetValue = targetBounceY,
                             animationSpec = spring(
                                 dampingRatio = lineBounceDamping,
-                                stiffness = 110f
+                                stiffness = 95f
                             ),
                             label = "lineBounceY_$idx"
                         )
@@ -3417,6 +3430,7 @@ fun NowPlayingThreeDotsMenu(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .zIndex(500f)
                 .background(Color.Black.copy(alpha = 0.35f * miniMenuAnim))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },

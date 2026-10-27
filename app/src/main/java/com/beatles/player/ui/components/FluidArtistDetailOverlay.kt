@@ -38,7 +38,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -256,28 +261,46 @@ fun FluidArtistDetailOverlay(
         val sheetAlpha = smoothP
         val sheetSlideY = (1f - smoothP) * with(density) { 36.dp.toPx() } + dragY
 
+        val nestedScrollConnection = remember {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (available.y > 0 && listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
+                        dragY = (dragY + available.y * 0.75f).coerceAtLeast(0f)
+                        if (dragY > 200f) {
+                            handleClose()
+                        }
+                        return Offset(0f, available.y)
+                    } else if (available.y < 0 && dragY > 0f) {
+                        val consumed = minOf(-available.y, dragY)
+                        dragY = (dragY - consumed).coerceAtLeast(0f)
+                        return Offset(0f, -consumed)
+                    }
+                    return Offset.Zero
+                }
+                override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                    if (available.y > 0 && listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
+                        dragY = (dragY + available.y * 0.75f).coerceAtLeast(0f)
+                        if (dragY > 200f) {
+                            handleClose()
+                        }
+                        return Offset(0f, available.y)
+                    }
+                    return Offset.Zero
+                }
+                override suspend fun onPreFling(available: Velocity): Velocity {
+                    if (dragY > 100f) {
+                        handleClose()
+                    }
+                    dragY = 0f
+                    return Velocity.Zero
+                }
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .zIndex(50f)
-                .pointerInput(Unit) {
-                    detectVerticalDragGestures(
-                        onDragEnd = {
-                            if (dragY > 120f) {
-                                handleClose()
-                            }
-                            dragY = 0f
-                        },
-                        onVerticalDrag = { _, delta ->
-                            if (delta > 0 || dragY > 0f) {
-                                dragY = (dragY + delta).coerceAtLeast(0f)
-                                if (dragY > 220f) {
-                                    handleClose()
-                                }
-                            }
-                        }
-                    )
-                }
+                .zIndex(120f)
         ) {
             // Background scrim
             Box(
@@ -313,6 +336,20 @@ fun FluidArtistDetailOverlay(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(340.dp)
+                            .pointerInput(Unit) {
+                                detectVerticalDragGestures(
+                                    onDragEnd = {
+                                        if (dragY > 100f) handleClose()
+                                        dragY = 0f
+                                    },
+                                    onVerticalDrag = { _, delta ->
+                                        if (delta > 0 || dragY > 0f) {
+                                            dragY = (dragY + delta).coerceAtLeast(0f)
+                                            if (dragY > 200f) handleClose()
+                                        }
+                                    }
+                                )
+                            }
                             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                             .drawWithContent {
                                 drawContent()
@@ -369,7 +406,9 @@ fun FluidArtistDetailOverlay(
                     // 3. Scrollable Content (Header, Actions, Tracklist, Albums/EPs)
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .nestedScroll(nestedScrollConnection),
                         contentPadding = PaddingValues(top = targetArtworkSize + 110.dp, bottom = LocalDynamicBottomPadding.current + 32.dp)
                     ) {
                         // Title & Metadata

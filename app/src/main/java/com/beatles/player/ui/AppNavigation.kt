@@ -156,12 +156,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         if (state.isExpanded) {
             playerProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f)
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f)
             )
         } else {
             playerProgress.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f)
+                animationSpec = spring(dampingRatio = 0.86f, stiffness = 340f)
             )
         }
     }
@@ -1935,8 +1935,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     }
                                 }
 
-                                // 2. Mini Player Pill Content (crossfades in when closing/expanding)
-                                val miniPillAlpha = if (p >= 0.35f) 0f else ((0.35f - p) / 0.35f).coerceIn(0f, 1f)
+                                // 2. Mini Player Pill Content (crossfades in when closing/expanding, hero artwork morphs continuously into the leading slot)
+                                val miniPillAlpha = if (p >= 0.42f) 0f else ((0.42f - p) / 0.42f).coerceIn(0f, 1f)
                                 if (miniPillAlpha > 0.001f) {
                                     val isCircleMini = startBounds.width < 100f
                                     val isMidCompact = !isCircleMini && !isExpandingFromSongCard && (openedFromMidCapsule || activeMiniPillBounds == midMiniPillBounds || startBounds.width < screenWidthPx * 0.85f)
@@ -1948,24 +1948,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         contentAlignment = if (isCircleMini) Alignment.Center else Alignment.CenterStart
                                     ) {
                                         if (isCircleMini) {
-                                            val coverUrl = state.currentSong!!.coverUrl
-                                            if (coverUrl.isNotEmpty()) {
-                                                AsyncImage(
-                                                    model = coverUrl,
-                                                    contentDescription = null,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .clip(CircleShape)
-                                                )
-                                            } else {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .clip(CircleShape)
-                                                        .background(Color.Gray)
-                                                )
-                                            }
+                                            Spacer(modifier = Modifier.fillMaxSize())
                                         } else if (isExpandingFromSongCard) {
                                             val currentSong = state.currentSong!!
                                             Row(
@@ -1974,14 +1957,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                AsyncImage(
-                                                    model = currentSong.coverUrl,
-                                                    contentDescription = null,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .size(52.dp)
-                                                        .clip(if (currentSong.isAlbum) RoundedCornerShape(12.dp) else RoundedCornerShape(10.dp))
-                                                )
+                                                Spacer(modifier = Modifier.size(52.dp))
                                                 Spacer(modifier = Modifier.width(14.dp))
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(
@@ -2017,23 +1993,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 val pillArt = if (isMidCompact || startCorner > 24.dp) 38.dp else 32.dp
-                                                if (state.currentSong!!.coverUrl.isNotEmpty()) {
-                                                    AsyncImage(
-                                                        model = state.currentSong!!.coverUrl,
-                                                        contentDescription = null,
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier
-                                                            .size(pillArt)
-                                                            .clip(CircleShape)
-                                                    )
-                                                } else {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(pillArt)
-                                                            .clip(CircleShape)
-                                                            .background(Color.Gray)
-                                                    )
-                                                }
+                                                Spacer(modifier = Modifier.size(pillArt))
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Column(
                                                     modifier = Modifier.weight(1f),

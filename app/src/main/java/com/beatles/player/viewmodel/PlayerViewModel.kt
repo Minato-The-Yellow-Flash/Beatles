@@ -396,8 +396,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
             val now = System.currentTimeMillis()
-            if (now - lastAutoMixHandoffTime >= 15_000L) {
-                if (!autoMixEngine.isBusy) {
+            // Strictly guard against stale media events from cleared or inactive decks post-AutoMix
+            if (!autoMixEngine.isBusy && !autoMixEngine.isHandingOff) {
+                val activeMediaId = autoMixEngine.currentDeck?.currentMediaItem?.mediaId
+                val isStaleTransition = (activeMediaId != null && activeMediaId != mediaId) ||
+                    (lastHandoffSongId != null && mediaId != lastHandoffSongId && (now - lastAutoMixHandoffTime < 90_000L))
+                if (!isStaleTransition && (now - lastAutoMixHandoffTime >= 15_000L)) {
                     val s = _uiState.value.playlist.find { it.id == mediaId }
                     if (s != null && s.id != _uiState.value.currentSong?.id) {
                         _uiState.update { it.copy(currentSong = s, isFavorite = storage.isFavorite(getApplication(), s.id), lyrics = emptyList()) }
@@ -699,7 +703,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun openArtist(artistName: String, bounds: Rect? = null) {
-        setSelectedArtist(artistName, bounds)
+        val clean = artistName.replace(" - Topic", "").trim()
+            .split(",", "&", "feat.", "ft.", "/").firstOrNull()?.trim()
+            ?.ifBlank { artistName.trim() } ?: artistName.trim()
+        setSelectedArtist(clean, bounds)
         _uiState.update { it.copy(isExpanded = false, selectedAlbum = null) }
     }
 
@@ -1762,7 +1769,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun syncPlaybackWithService() {
-        val currentDeckPlayer = if (autoMixEngine.activeDeckIndex == 1) autoMixEngine.currentDeck else PlaybackService.instance?.defaultPlayer
+        if (autoMixEngine.isBusy || autoMixEngine.isHandingOff) return
+        val currentDeckPlayer = autoMixEngine.currentDeck ?: PlaybackService.instance?.defaultPlayer
         val activeDeckSong = currentDeckPlayer?.currentMediaItem?.mediaId?.let { id ->
             _uiState.value.playlist.find { it.id == id }
         }
@@ -1775,7 +1783,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val isPlayingNow = PlaybackService.instance?.defaultPlayer?.isPlaying == true || (autoMixEngine.currentDeck?.isPlaying == true)
 
         if (serviceSong != null) {
-            val needsSongUpdate = _uiState.value.currentSong == null || (_uiState.value.currentSong?.id != serviceSong.id && isPlayingNow)
+            val now = System.currentTimeMillis()
+            val isRecentAutoMix = (lastHandoffSongId != null && now - lastAutoMixHandoffTime < 90_000L)
+            val needsSongUpdate = _uiState.value.currentSong == null || (_uiState.value.currentSong?.id != serviceSong.id && isPlayingNow && !isRecentAutoMix)
             if (needsSongUpdate || _uiState.value.isPlaying != isPlayingNow) {
                 _uiState.update { it.copy(
                     currentSong = if (needsSongUpdate) serviceSong else it.currentSong,
