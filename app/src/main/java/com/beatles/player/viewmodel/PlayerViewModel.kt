@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.beatles.player.data.*
 import com.beatles.player.player.AudioPlayerManager
+import com.beatles.player.player.PlaybackService
 import com.beatles.player.player.automix.AutoMixEngine
 import com.beatles.player.player.automix.AutoMixState
 import com.beatles.player.player.automix.TransitionPhase
@@ -1646,11 +1647,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         sessionPlayedSongIds.add(incomingSong.id)
         val ctx = getApplication<Application>()
         val incomingDuration = if (incomingSong.durationSeconds > 0) incomingSong.durationSeconds * 1000L else _uiState.value.duration
+        var finalPlaylist: List<Song> = emptyList()
         _uiState.update { s ->
             val pl = if (s.playlist.any { it.id == incomingSong.id }) s.playlist else {
                 val idx = s.playlist.indexOfFirst { it.id == s.currentSong?.id }
                 s.playlist.toMutableList().apply { add(if (idx >= 0) idx + 1 else size, incomingSong) }
             }
+            finalPlaylist = pl
             s.copy(
                 currentSong = incomingSong,
                 duration = incomingDuration,
@@ -1661,6 +1664,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 lyrics = emptyList()
             )
         }
+        com.beatles.player.player.PlaybackService.activeSong = incomingSong
+        com.beatles.player.player.PlaybackService.activePlaylist = finalPlaylist
+        storage.saveLastPlayedSong(ctx, incomingSong)
+        storage.saveLastPlayedPlaylist(ctx, finalPlaylist)
         storage.addToRecentlyPlayed(ctx, incomingSong)
         _uiState.update { it.copy(recentlyPlayed = storage.getRecentlyPlayed(ctx)) }
         fetchLyrics(incomingSong)
@@ -1725,21 +1732,28 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun syncPlaybackWithService() {
-        val serviceSong = com.beatles.player.player.PlaybackService.activeSong ?: try { storage.getLastPlayedSong(getApplication()) } catch (_: Exception) { null }
-        val servicePl = if (com.beatles.player.player.PlaybackService.activePlaylist.isNotEmpty()) {
-            com.beatles.player.player.PlaybackService.activePlaylist
+        val currentDeckPlayer = if (autoMixEngine.activeDeckIndex == 1) autoMixEngine.currentDeck else PlaybackService.instance?.defaultPlayer
+        val activeDeckSong = currentDeckPlayer?.currentMediaItem?.mediaId?.let { id ->
+            _uiState.value.playlist.find { it.id == id }
+        }
+        val serviceSong = activeDeckSong ?: PlaybackService.activeSong ?: try { storage.getLastPlayedSong(getApplication()) } catch (_: Exception) { null }
+        val servicePl = if (PlaybackService.activePlaylist.isNotEmpty()) {
+            PlaybackService.activePlaylist
         } else {
             try { storage.getLastPlayedPlaylist(getApplication()) } catch (_: Exception) { emptyList() }
         }
-        val isPlayingNow = com.beatles.player.player.PlaybackService.instance?.defaultPlayer?.isPlaying == true || (autoMixEngine.currentDeck?.isPlaying == true)
+        val isPlayingNow = PlaybackService.instance?.defaultPlayer?.isPlaying == true || (autoMixEngine.currentDeck?.isPlaying == true)
 
-        if (serviceSong != null && (_uiState.value.currentSong == null || _uiState.value.currentSong?.id != serviceSong.id || _uiState.value.isPlaying != isPlayingNow)) {
-            _uiState.update { it.copy(
-                currentSong = serviceSong,
-                playlist = if (it.playlist.isNotEmpty()) it.playlist else if (servicePl.isNotEmpty()) servicePl else listOf(serviceSong),
-                isPlaying = isPlayingNow,
-                duration = if (it.duration > 0L) it.duration else serviceSong.durationSeconds * 1000L
-            )}
+        if (serviceSong != null) {
+            val needsSongUpdate = _uiState.value.currentSong == null || (_uiState.value.currentSong?.id != serviceSong.id && isPlayingNow)
+            if (needsSongUpdate || _uiState.value.isPlaying != isPlayingNow) {
+                _uiState.update { it.copy(
+                    currentSong = if (needsSongUpdate) serviceSong else it.currentSong,
+                    playlist = if (it.playlist.isNotEmpty()) it.playlist else if (servicePl.isNotEmpty()) servicePl else listOf(serviceSong),
+                    isPlaying = isPlayingNow,
+                    duration = if (it.duration > 0L) it.duration else serviceSong.durationSeconds * 1000L
+                )}
+            }
         }
     }
 

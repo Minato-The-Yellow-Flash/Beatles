@@ -38,6 +38,14 @@ object MusicRepository {
         }
         if (thumb.contains("mzstatic.com")) {
             return thumb.replace(Regex("/\\d+x\\d+bb\\."), "/1200x1200bb.")
+                .replace(Regex("/\\d+x\\d+w\\."), "/1200x1200w.")
+                .replace(Regex("/\\d+x\\d+\\."), "/1200x1200.")
+        }
+        if (thumb.contains("dzcdn.net")) {
+            return thumb.replace(Regex("/\\d+x\\d+-"), "/1000x1000-")
+        }
+        if (thumb.contains("saavncdn.com")) {
+            return thumb.replace(Regex("_\\d+x\\d+\\."), "_500x500.")
         }
         return thumb.replace("/hqdefault.jpg", "/maxresdefault.jpg")
             .replace("/mqdefault.jpg", "/maxresdefault.jpg")

@@ -104,6 +104,7 @@ fun FluidArtistDetailOverlay(
     var realArtistAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var isTracksLoading by remember { mutableStateOf(false) }
     var isClosing by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
 
     fun handleClose() {
         if (isClosing) return
@@ -127,6 +128,7 @@ fun FluidArtistDetailOverlay(
 
     LaunchedEffect(artist) {
         if (artist != null) {
+            try { listState.scrollToItem(0) } catch (_: Exception) {}
             currentArtist = artist
             if (sourceBounds != null) {
                 currentOriginBounds = sourceBounds
@@ -186,10 +188,11 @@ fun FluidArtistDetailOverlay(
 
     if (curArtist != null && p > 0.001f) {
         val artistImage = remember(curArtist, artistTracks) {
-            CURATED_ONBOARD_ARTISTS.find { it.name.equals(curArtist, ignoreCase = true) }?.imageUrl
+            val raw = CURATED_ONBOARD_ARTISTS.find { it.name.equals(curArtist, ignoreCase = true) }?.imageUrl
                 ?: state.albums.find { it.artist.equals(curArtist, ignoreCase = true) }?.coverUrl
                 ?: artistTracks.firstOrNull()?.coverUrl
                 ?: "https://c.saavncdn.com/artists/Karan_Aujla_004_20230809115159_500x500.jpg"
+            com.beatles.player.data.MusicRepository.getHighestQualityCover(raw)
         }
 
         val targetArtworkSize = 200.dp
@@ -221,8 +224,6 @@ fun FluidArtistDetailOverlay(
             ),
             label = "artistBannerShiftY"
         )
-
-        val listState = rememberLazyListState()
 
         // Scroll-driven swipe up parallax and progressive blur for hero artwork
         val scrollOffset = if (listState.firstVisibleItemIndex == 0) {

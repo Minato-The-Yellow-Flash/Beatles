@@ -753,6 +753,7 @@ fun FluidAlbumDetailOverlay(
                                                 .width(105.dp)
                                                 .clickable {
                                                     Haptics.click(view)
+                                                    handleClose()
                                                     viewModel.setSelectedArtist(simArt.name, simBounds)
                                                 },
                                             horizontalAlignment = Alignment.CenterHorizontally

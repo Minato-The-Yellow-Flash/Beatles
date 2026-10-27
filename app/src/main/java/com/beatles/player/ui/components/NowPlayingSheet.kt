@@ -426,12 +426,12 @@ fun NowPlayingSheet(
 
         val lyricsProgress by animateFloatAsState(
             targetValue = if (isLyricsActive) 1f else 0f,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 360f),
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 440f),
             label = "lyricsProgress"
         )
         val nextUpProgress by animateFloatAsState(
             targetValue = if (isNextUpActive) 1f else 0f,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 360f),
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 440f),
             label = "nextUpProgress"
         )
 
@@ -439,7 +439,7 @@ fun NowPlayingSheet(
         val subpageTarget = if (isNextUpActive) 1f else 0f
         val subpageSlideFraction by animateFloatAsState(
             targetValue = subpageTarget,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 480f),
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 440f),
             label = "subpageSlideFraction"
         )
         val sideStretchFactor = (1f - kotlin.math.abs(subpageSlideFraction - 0.5f) * 2f).coerceIn(0f, 1f)
@@ -468,26 +468,10 @@ fun NowPlayingSheet(
 
         val isCompactCover = isCompactTarget
 
-        // Apple Music-style Live Ambient Breathing Artwork Motion
-        val liveInfiniteTransition = rememberInfiniteTransition(label = "liveAlbumArtMotion")
-        val liveArtScaleAnim by liveInfiniteTransition.animateFloat(
-            initialValue = 1.0f,
-            targetValue = if (isPlaying && !isCompactTarget) 1.035f else 1.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 6500, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "liveArtScale"
-        )
-        val liveArtRotAnim by liveInfiniteTransition.animateFloat(
-            initialValue = -0.4f,
-            targetValue = if (isPlaying && !isCompactTarget) 0.4f else 0.0f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 8500, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "liveArtRot"
-        )
+        var isLyricsFullScreen by remember { mutableStateOf(false) }
+        LaunchedEffect(isLyricsActive) {
+            if (!isLyricsActive) isLyricsFullScreen = false
+        }
 
         var lastLyricsInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
         var controlsVisible by remember { mutableStateOf(true) }
@@ -511,7 +495,7 @@ fun NowPlayingSheet(
         // Single unified compact progress: remains strictly at 1f during lyrics <-> next up toggle so album art never jumps or dips
         val compactProgress by animateFloatAsState(
             targetValue = if (isCompactTarget) 1f else 0f,
-            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 360f),
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 440f),
             label = "compactProgress"
         )
         val coverWidth = defaultCoverWidth + (68.dp - defaultCoverWidth) * compactProgress
@@ -564,38 +548,35 @@ fun NowPlayingSheet(
                         if (compactProgress <= 0.001f && morphProgress >= 0.98f) {
                             translationX = animatedDragX
                         }
-                        val baseElevation = lerp(16.dp, 4.dp, compactProgress)
-                        shadowElevation = (baseElevation.toPx() * morphProgress * compactProgress)
                         shape = RoundedCornerShape(currentCoverCorner)
                         clip = true
                         compositingStrategy = CompositingStrategy.Offscreen
                     }
                     .drawWithContent {
                         drawContent()
-                        if (compactProgress < 0.8f && morphProgress >= 0.92f) {
+                        val maskFade = (1f - compactProgress).coerceIn(0f, 1f)
+                        if (maskFade > 0.01f && morphProgress >= 0.92f) {
                             drawRect(
                                 brush = Brush.verticalGradient(
                                     0.00f to Color.Black,
                                     0.46f to Color.Black,
-                                    0.66f to Color.Black.copy(alpha = 0.85f),
-                                    0.80f to Color.Black.copy(alpha = 0.48f),
-                                    0.92f to Color.Black.copy(alpha = 0.12f),
-                                    1.00f to Color.Transparent
+                                    0.66f to Color.Black.copy(alpha = 0.85f * maskFade + (1f - maskFade)),
+                                    0.80f to Color.Black.copy(alpha = 0.48f * maskFade + (1f - maskFade)),
+                                    0.92f to Color.Black.copy(alpha = 0.12f * maskFade + (1f - maskFade)),
+                                    1.00f to Color.Black.copy(alpha = 1f - maskFade)
                                 ),
                                 blendMode = BlendMode.DstIn
                             )
                         }
                     }
             ) {
-                val liveArtScale = if (isPlaying && !isCompactTarget) liveArtScaleAnim else 1.0f
-                val liveArtRot = if (isPlaying && !isCompactTarget) liveArtRotAnim else 0.0f
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            scaleX = liveArtScale
-                            scaleY = liveArtScale
-                            rotationZ = liveArtRot
+                            scaleX = 1.0f
+                            scaleY = 1.0f
+                            rotationZ = 0.0f
                         }
                 ) {
                     if (currentCoverUrl.isNotBlank()) {
@@ -790,6 +771,8 @@ fun NowPlayingSheet(
                 isLyricsActive = isLyricsActive,
                 controlsVisible = controlsVisible,
                 controlsAlpha = controlsAlpha,
+                isLyricsFullScreen = isLyricsFullScreen,
+                onSetLyricsFullScreen = { isLyricsFullScreen = it },
                 onToggleControls = {
                     lastLyricsInteractionTime = System.currentTimeMillis()
                     controlsVisible = !controlsVisible
@@ -804,13 +787,19 @@ fun NowPlayingSheet(
         }
 
 
-        // Bottom Controls Container (Fades out after 10s of inactivity during Lyrics mode or when morphing down)
-        val controlsVisibilityAlpha = controlsAlpha * ((morphProgress - 0.20f) / 0.80f).coerceIn(0f, 1f)
+        // Bottom Controls Container (Slides down off-screen during lyrics full screen mode or when morphing down)
+        val controlsSlideDownAnim by animateDpAsState(
+            targetValue = if (isLyricsActive && isLyricsFullScreen) 280.dp else 0.dp,
+            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 420f),
+            label = "controlsSlideDownAnim"
+        )
+        val controlsVisibilityAlpha = (if (isLyricsActive && isLyricsFullScreen) 0f else controlsAlpha) * ((morphProgress - 0.20f) / 0.80f).coerceIn(0f, 1f)
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
                     alpha = controlsVisibilityAlpha
+                    translationY = with(density) { controlsSlideDownAnim.toPx() }
                 }
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.Bottom
@@ -860,40 +849,19 @@ fun NowPlayingSheet(
 
                         Spacer(modifier = Modifier.width(14.dp))
 
-                        // Favorite / Like button (15% smaller 34dp, no border, 85% overlap circle with transparent icon cutout)
+                        // Favorite / Like button (34dp, 85% overlap circular disc, high-contrast inner icon)
                         var isHeartPressed by remember { mutableStateOf(false) }
                         val isHeartActive = isFavorite || isHeartPressed
-                        val heartPainter = rememberVectorPainter(if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder)
 
                         Box(
                             modifier = Modifier
                                 .size(34.dp)
-                                .clip(CircleShape)
                                 .graphicsLayer {
-                                    compositingStrategy = CompositingStrategy.Offscreen
                                     scaleX = heartScale
                                     scaleY = heartScale
                                 }
-                                .drawWithContent {
-                                    drawCircle(
-                                        color = if (isHeartActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
-                                    )
-                                    val iconSizePx = 17.dp.toPx()
-                                    val left = (size.width - iconSizePx) / 2f
-                                    val top = (size.height - iconSizePx) / 2f
-                                    with(heartPainter) {
-                                        translate(left = left, top = top) {
-                                            draw(
-                                                size = androidx.compose.ui.geometry.Size(iconSizePx, iconSizePx),
-                                                colorFilter = if (isHeartActive) {
-                                                    ColorFilter.tint(Color.Black, BlendMode.DstOut)
-                                                } else {
-                                                    ColorFilter.tint(Color.White)
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
+                                .clip(CircleShape)
+                                .background(if (isHeartActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.14f))
                                 .pointerInput(isFavorite) {
                                     detectTapGestures(
                                         onPress = {
@@ -907,15 +875,22 @@ fun NowPlayingSheet(
                                             isHeartAnimating = true
                                         }
                                     )
-                                }
-                        )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                                contentDescription = "Favorite",
+                                tint = if (isHeartActive) Color(0xFF141416) else Color.White,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
 
                         Spacer(modifier = Modifier.width(10.dp))
 
-                        // Three-Dots More Options Button (15% smaller 34dp, no border, 85% overlap circle with transparent icon cutout)
+                        // Three-Dots More Options Button (34dp, 85% overlap circular disc, high-contrast inner icon)
                         var isThreeDotPressed by remember { mutableStateOf(false) }
                         val isThreeDotActive = showMiniMenu || isThreeDotPressed
-                        val threeDotPainter = rememberVectorPainter(Icons.Default.MoreHoriz)
 
                         Box(
                             modifier = Modifier
@@ -924,27 +899,7 @@ fun NowPlayingSheet(
                                 }
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                                .drawWithContent {
-                                    drawCircle(
-                                        color = if (isThreeDotActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f)
-                                    )
-                                    val iconSizePx = 17.dp.toPx()
-                                    val left = (size.width - iconSizePx) / 2f
-                                    val top = (size.height - iconSizePx) / 2f
-                                    with(threeDotPainter) {
-                                        translate(left = left, top = top) {
-                                            draw(
-                                                size = androidx.compose.ui.geometry.Size(iconSizePx, iconSizePx),
-                                                colorFilter = if (isThreeDotActive) {
-                                                    ColorFilter.tint(Color.Black, BlendMode.DstOut)
-                                                } else {
-                                                    ColorFilter.tint(Color.White)
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
+                                .background(if (isThreeDotActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.14f))
                                 .pointerInput(showMiniMenu) {
                                     detectTapGestures(
                                         onPress = {
@@ -958,13 +913,21 @@ fun NowPlayingSheet(
                                             showSavePlaylistView = false
                                         }
                                     )
-                                }
-                        )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreHoriz,
+                                contentDescription = "More Options",
+                                tint = if (isThreeDotActive) Color(0xFF141416) else Color.White,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                // Luminous Expanding Frosted Seekbar (Previous version 8dp size with subtle 0.5dp expansion on tap/drag, no circle nose)
+                // Luminous Expanding Frosted Seekbar (10dp default height expanding to 12dp, 60% idle / 85% touch active overlay)
                 Column(modifier = Modifier.padding(horizontal = 24.dp)) {
                     var isDraggingSlider by remember { mutableStateOf(false) }
                     var sliderPos by remember { mutableFloatStateOf(currentPosition.toFloat()) }
@@ -978,9 +941,14 @@ fun NowPlayingSheet(
                     }
 
                     val trackAnimHeight by animateDpAsState(
-                        targetValue = if (isDraggingSlider) 8.5.dp else 7.dp,
+                        targetValue = if (isDraggingSlider) 12.dp else 10.dp,
                         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 420f),
                         label = "trackAnimHeight"
+                    )
+                    val activeTrackAlpha by animateFloatAsState(
+                        targetValue = if (isDraggingSlider) 0.85f else 0.60f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 420f),
+                        label = "activeTrackAlpha"
                     )
 
                     var lastHapticSec by remember { mutableLongStateOf(-1L) }
@@ -1044,10 +1012,10 @@ fun NowPlayingSheet(
                                 cornerRadius = corner
                             )
 
-                            // 2. Active Track: 85% white overlay along the track
+                            // 2. Active Track: 60% white overlay idle, 85% when touched or dragged
                             if (activeWidth > 0f) {
                                 drawRoundRect(
-                                    color = Color.White.copy(alpha = 0.85f),
+                                    color = Color.White.copy(alpha = activeTrackAlpha),
                                     topLeft = Offset(0f, centerY - h / 2f),
                                     size = Size(activeWidth, h),
                                     cornerRadius = corner
@@ -2715,6 +2683,8 @@ fun NowPlayingLyricsLayer(
     isLyricsActive: Boolean,
     controlsVisible: Boolean,
     controlsAlpha: Float,
+    isLyricsFullScreen: Boolean = false,
+    onSetLyricsFullScreen: (Boolean) -> Unit = {},
     onToggleControls: () -> Unit,
     onLyricsDragged: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -2722,8 +2692,8 @@ fun NowPlayingLyricsLayer(
 ) {
     val density = LocalDensity.current
     val view = LocalView.current
-    val lyrStretchY = 1.0f + 0.08f * (1f - lyricsProgress)
-    val lyrTransY = with(density) { 36.dp.toPx() * (1f - lyricsProgress) }
+    val lyrStretchY = 1.0f
+    val lyrTransY = with(density) { 24.dp.toPx() * (1f - lyricsProgress) }
 
     // Apple Music Synced Word-by-Word Lyrics View
     val processedLyrics = remember(lyrics, duration) { LyricsProcessor.processSyncedLyrics(lyrics, trackDurationMs = duration) }
@@ -2758,13 +2728,13 @@ fun NowPlayingLyricsLayer(
     }
 
     val lyricsTopPad by animateDpAsState(
-        targetValue = if (controlsVisible && controlsAlpha > 0.05f) 110.dp else 16.dp,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f),
+        targetValue = if (isLyricsFullScreen) 36.dp else if (controlsVisible && controlsAlpha > 0.05f) 110.dp else 16.dp,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 400f),
         label = "lyricsTopPad"
     )
     val lyricsBottomPad by animateDpAsState(
-        targetValue = if (controlsVisible && controlsAlpha > 0.05f) 180.dp else 16.dp,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f),
+        targetValue = if (isLyricsFullScreen) 24.dp else if (controlsVisible && controlsAlpha > 0.05f) 180.dp else 16.dp,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 400f),
         label = "lyricsBottomPad"
     )
 
@@ -2780,6 +2750,23 @@ fun NowPlayingLyricsLayer(
                 translationX = slideX
                 translationY = if (isSwitchingSubpages) 0f else lyrTransY
                 alpha = if (isSwitchingSubpages) 1f else lyricsProgress.coerceIn(0f, 1f)
+            }
+            .pointerInput(isLyricsFullScreen) {
+                var dragAccumY = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { dragAccumY = 0f },
+                    onDragEnd = {
+                        if (dragAccumY < -30f) {
+                            onSetLyricsFullScreen(true)
+                        } else if (dragAccumY > 30f) {
+                            onSetLyricsFullScreen(false)
+                        }
+                        dragAccumY = 0f
+                    },
+                    onVerticalDrag = { _, dragAmount ->
+                        dragAccumY += dragAmount
+                    }
+                )
             }
             .pointerInput(Unit) {
                 var totalDx = 0f
@@ -2844,8 +2831,8 @@ fun NowPlayingLyricsLayer(
                                 listState.animateScrollBy(
                                     value = delta.toFloat(),
                                     animationSpec = spring(
-                                        dampingRatio = 0.52f,
-                                        stiffness = 260f
+                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                        stiffness = 380f
                                     )
                                 )
                             }
@@ -2867,12 +2854,13 @@ fun NowPlayingLyricsLayer(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) {
+                        onSetLyricsFullScreen(!isLyricsFullScreen)
                         onToggleControls()
                     }
                     .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                     .drawWithContent {
-                        val fadeTopRatio = if (controlsVisible && controlsAlpha > 0.05f) 0.09f else 0.02f
-                        val fadeBottomRatio = if (controlsVisible && controlsAlpha > 0.05f) 0.90f else 0.98f
+                        val fadeTopRatio = if (isLyricsFullScreen) 0.04f else if (controlsVisible && controlsAlpha > 0.05f) 0.09f else 0.02f
+                        val fadeBottomRatio = if (isLyricsFullScreen) 0.98f else if (controlsVisible && controlsAlpha > 0.05f) 0.90f else 0.98f
                         drawContent()
                         drawRect(
                             brush = Brush.verticalGradient(
@@ -2888,11 +2876,11 @@ fun NowPlayingLyricsLayer(
                     }
             ) {
                 val lyricsListBottomPad by animateDpAsState(
-                    targetValue = if (controlsVisible && controlsAlpha > 0.05f) 160.dp else 24.dp,
+                    targetValue = if (isLyricsFullScreen) 24.dp else if (controlsVisible && controlsAlpha > 0.05f) 160.dp else 24.dp,
                     label = "lyricsListBottomPad"
                 )
                 val lyricsListTopPad by animateDpAsState(
-                    targetValue = if (controlsVisible && controlsAlpha > 0.05f) anchorSpotDp else 20.dp,
+                    targetValue = if (isLyricsFullScreen) 20.dp else if (controlsVisible && controlsAlpha > 0.05f) anchorSpotDp else 20.dp,
                     label = "lyricsListTopPad"
                 )
                 LazyColumn(
@@ -2909,24 +2897,24 @@ fun NowPlayingLyricsLayer(
                         val distance = if (currentIdx >= 0) kotlin.math.abs(idx - currentIdx) else 1
                         val cappedDistance = distance.coerceAtMost(4)
 
-                        val targetScale = if (isActive) 1.05f else 1.0f
+                        val targetScale = if (isActive) 1.03f else 1.0f
                         val targetAlpha = if (isActive) 1.0f else (0.50f - cappedDistance * 0.08f).coerceAtLeast(0.20f)
                         val targetBlur = if (isActive) 0.dp else (cappedDistance.coerceAtMost(2) * 0.8f).dp
-                        val targetBounceY = if (isActive) (-6).dp else 0.dp
+                        val targetBounceY = if (isActive) (-1).dp else 0.dp
 
                         val lineBounceY by animateDpAsState(
                             targetValue = targetBounceY,
                             animationSpec = spring(
-                                dampingRatio = 0.44f,
-                                stiffness = 240f
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = 380f
                             ),
                             label = "lineBounceY_$idx"
                         )
                         val lineScale by animateFloatAsState(
                             targetValue = targetScale,
                             animationSpec = spring(
-                                dampingRatio = 0.70f,
-                                stiffness = 320f
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = 380f
                             ),
                             label = "lineScale_$idx"
                         )
@@ -3111,8 +3099,8 @@ fun NowPlayingThreeDotsMenu(
             val isDark = AppTheme.isDark
             val currentCornerDp = lerp(19.dp, 24.dp, miniMenuAnim)
             val menuShape = RoundedCornerShape(currentCornerDp)
-            val solidMenuBg = if (isDark) Color(0xCC1E2026) else Color(0xEEFFFFFF)
-            val solidMenuBorder = if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.10f)
+            val solidMenuBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.45f) else Color(0xFFFFFFFF).copy(alpha = 0.50f)
+            val solidMenuBorder = if (isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f)
 
             val density = LocalDensity.current
             val endPaddingDp = remember(sheetRootBounds, threeDotButtonBounds) {
@@ -3145,11 +3133,11 @@ fun NowPlayingThreeDotsMenu(
                         alpha = miniMenuAnim.coerceIn(0f, 1f)
                         transformOrigin = TransformOrigin(0.92f, 1.0f)
                     }
-                    .shadow(12.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.18f))
+                    .shadow(6.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
                     .clip(menuShape)
                     .background(solidMenuBg)
                     .glassRefraction(currentCornerDp, isDark = isDark)
-                    .border(1.dp, solidMenuBorder, menuShape)
+                    .border(0.5.dp, solidMenuBorder, menuShape)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                     .padding(vertical = 6.dp)
             ) {

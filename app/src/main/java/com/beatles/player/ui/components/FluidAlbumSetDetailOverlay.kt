@@ -44,6 +44,8 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -83,6 +85,7 @@ fun FluidAlbumSetDetailOverlay(
 ) {
     val density = LocalDensity.current
     val config = LocalConfiguration.current
+    val view = LocalView.current
     val isDark = isDarkTheme(state.themeMode)
     val bgColor = if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
@@ -374,10 +377,16 @@ fun FluidAlbumSetDetailOverlay(
                                     .padding(horizontal = 24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                // 200dp Hero Card
+                                // 200dp Hero Card (Tapping opens the full expanded album sheet)
+                                var heroBounds by remember { mutableStateOf<Rect?>(null) }
                                 Box(
                                     modifier = Modifier
                                         .size(200.dp)
+                                        .onGloballyPositioned { heroBounds = it.boundsInRoot() }
+                                        .clickable {
+                                            Haptics.click(view)
+                                            viewModel.setSelectedAlbum(alb, heroBounds)
+                                        }
                                         .graphicsLayer {
                                             translationY = pageArtTranslateY
                                             scaleX = pageArtScale

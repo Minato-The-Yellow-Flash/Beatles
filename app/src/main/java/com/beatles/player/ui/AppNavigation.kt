@@ -1674,16 +1674,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     onPlayArtistMix = { viewModel.playArtistMix(it) }
                 )
 
-                // Fluid Album Detail Overlay (Opens on top of artist page / screens with seamless shared-element morph)
-                FluidAlbumDetailOverlay(
-                    album = state.selectedAlbum,
-                    sourceBounds = state.selectedAlbumBounds,
-                    state = state,
-                    viewModel = viewModel,
-                    onClose = { viewModel.setSelectedAlbum(null) },
-                    onPlay = { s, pl -> viewModel.playSong(s, pl) }
-                )
-
                 // Fluid Album Set Detail Overlay (Interactive HorizontalPager Carousel)
                 FluidAlbumSetDetailOverlay(
                     albumSet = state.selectedAlbumSet,
@@ -1693,6 +1683,16 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     onClose = { viewModel.setSelectedAlbumSet(null) },
                     onPlay = { s, pl -> viewModel.playSong(s, pl) },
                     onPlayAlbumSet = { viewModel.playAlbumSet(it) }
+                )
+
+                // Fluid Album Detail Overlay (Opens on top of artist page / album set / screens with seamless shared-element morph)
+                FluidAlbumDetailOverlay(
+                    album = state.selectedAlbum,
+                    sourceBounds = state.selectedAlbumBounds,
+                    state = state,
+                    viewModel = viewModel,
+                    onClose = { viewModel.setSelectedAlbum(null) },
+                    onPlay = { s, pl -> viewModel.playSong(s, pl) }
                 )
 
                 // Profile Screen Overlay (Native iOS push slide transition)
