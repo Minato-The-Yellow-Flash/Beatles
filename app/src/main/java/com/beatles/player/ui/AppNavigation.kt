@@ -396,10 +396,10 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         else -> {
             val isDark = isDarkTheme(state.themeMode)
             val appBg = if (isDark) GrayBlackBg else Color(0xFFF6F7F9)
-            val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.40f) else Color(0xFFFFFFFF).copy(alpha = 0.48f)
-            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.20f)
-            val translucentPillBg = if (isDark) Color(0xFF181A22).copy(alpha = 0.44f) else Color(0xFFFFFFFF).copy(alpha = 0.52f)
-            val translucentPillBorder = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.20f)
+            val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.10f) else Color.White.copy(alpha = 0.85f)
+            val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.60f)
+            val translucentPillBg = if (isDark) Color(0xFF181A22).copy(alpha = 0.10f) else Color.White.copy(alpha = 0.90f)
+            val translucentPillBorder = if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.60f)
             val translucentInnerPill = if (isDark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.08f)
             val textPrimary = if (isDark) Color.White else Color(0xFF141416)
             val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
@@ -514,7 +514,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             headerAlpha = headerAlphaProvider,
                                             onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) },
                                             onSearch = { viewModel.search(it); viewModel.setTab(Tab.SEARCH) },
-                                            onSelectGenre = { g, b -> viewModel.setSelectedGenre(g, b) }
+                                            onSelectGenre = { g, b -> viewModel.setSelectedGenre(g, b) },
+                                            onSelectArtist = { a, b -> viewModel.openArtist(a, b) }
                                         )
                                         Tab.LIBRARY -> LibraryScreen(
                                             state = screenState,
@@ -1129,7 +1130,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                     Modifier.liquidGlass(
                                                         shape = barShape,
-                                                        surfaceTint = Color.White.copy(alpha = 0.04f),
+                                                        surfaceTint = if (isDark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.82f),
                                                         showBorder = false
                                                     )
                                                 } else {
@@ -1220,9 +1221,9 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 val indicatorCorner = (barCorner - 4.dp).coerceAtLeast(12.dp)
                                                 val indicatorShape = RoundedCornerShape(indicatorCorner)
                                                 val indicatorTint = if (isDark) {
-                                                    Color.White.copy(alpha = if (isHoldingNav) 0.08f else 0.04f)
+                                                    Color.White.copy(alpha = if (isHoldingNav) 0.18f else 0.10f)
                                                 } else {
-                                                    Color.White.copy(alpha = if (isHoldingNav) 0.12f else 0.06f)
+                                                    Color.White.copy(alpha = if (isHoldingNav) 0.95f else 0.70f)
                                                 }
                                                 Box(
                                                     modifier = Modifier
@@ -1356,7 +1357,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                     Modifier.liquidGlass(
                                                         shape = searchPillShape,
-                                                        surfaceTint = Color.White.copy(alpha = 0.04f),
+                                                        surfaceTint = if (isDark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.82f),
                                                         showBorder = false
                                                     )
                                                 } else {
@@ -1760,40 +1761,47 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     state = state,
                     onClose = { viewModel.setSelectedGenre(null) },
                     onPlay = { s, pl, bounds -> viewModel.playSong(s, pl, sourceBounds = bounds) },
-                    onSelectAlbum = { alb, bounds -> viewModel.setSelectedAlbum(alb, bounds) }
+                    onSelectAlbum = { alb, bounds -> viewModel.setSelectedAlbum(alb, bounds) },
+                    onSelectArtist = { a, b -> viewModel.openArtist(a, b) }
                 )
 
                 // Fluid Artist Detail Overlay (Expanding continuous shared-element animation from artist item)
-                FluidArtistDetailOverlay(
-                    artist = state.selectedArtist,
-                    sourceBounds = state.selectedArtistBounds,
-                    state = state,
-                    viewModel = viewModel,
-                    onClose = { viewModel.setSelectedArtist(null) },
-                    onPlay = { s, pl -> viewModel.playSong(s, pl) },
-                    onPlayArtistMix = { viewModel.playArtistMix(it) }
-                )
+                Box(modifier = Modifier.fillMaxSize().zIndex(250f)) {
+                    FluidArtistDetailOverlay(
+                        artist = state.selectedArtist,
+                        sourceBounds = state.selectedArtistBounds,
+                        state = state,
+                        viewModel = viewModel,
+                        onClose = { viewModel.setSelectedArtist(null) },
+                        onPlay = { s, pl -> viewModel.playSong(s, pl) },
+                        onPlayArtistMix = { viewModel.playArtistMix(it) }
+                    )
+                }
 
                 // Fluid Album Set Detail Overlay (Interactive HorizontalPager Carousel)
-                FluidAlbumSetDetailOverlay(
-                    albumSet = state.selectedAlbumSet,
-                    sourceBounds = state.selectedAlbumSetBounds,
-                    state = state,
-                    viewModel = viewModel,
-                    onClose = { viewModel.setSelectedAlbumSet(null) },
-                    onPlay = { s, pl -> viewModel.playSong(s, pl) },
-                    onPlayAlbumSet = { viewModel.playAlbumSet(it) }
-                )
+                Box(modifier = Modifier.fillMaxSize().zIndex(255f)) {
+                    FluidAlbumSetDetailOverlay(
+                        albumSet = state.selectedAlbumSet,
+                        sourceBounds = state.selectedAlbumSetBounds,
+                        state = state,
+                        viewModel = viewModel,
+                        onClose = { viewModel.setSelectedAlbumSet(null) },
+                        onPlay = { s, pl -> viewModel.playSong(s, pl) },
+                        onPlayAlbumSet = { viewModel.playAlbumSet(it) }
+                    )
+                }
 
                 // Fluid Album Detail Overlay (Opens on top of artist page / album set / screens with seamless shared-element morph)
-                FluidAlbumDetailOverlay(
-                    album = state.selectedAlbum,
-                    sourceBounds = state.selectedAlbumBounds,
-                    state = state,
-                    viewModel = viewModel,
-                    onClose = { viewModel.setSelectedAlbum(null) },
-                    onPlay = { s, pl -> viewModel.playSong(s, pl) }
-                )
+                Box(modifier = Modifier.fillMaxSize().zIndex(260f)) {
+                    FluidAlbumDetailOverlay(
+                        album = state.selectedAlbum,
+                        sourceBounds = state.selectedAlbumBounds,
+                        state = state,
+                        viewModel = viewModel,
+                        onClose = { viewModel.setSelectedAlbum(null) },
+                        onPlay = { s, pl -> viewModel.playSong(s, pl) }
+                    )
+                }
 
                 // Profile Screen Overlay (Native iOS push slide transition)
                 AnimatedVisibility(

@@ -503,27 +503,20 @@ class AutoMixEngine(
     }
 
     /**
-     * Optimized DJ Gain Curves tailored by transition type:
-     * - BEAT_MIX: Holds outgoing rhythm energy through intro build, punching incoming on beat.
+     * BitChord-Grade DJ Gain Curves tailored by transition type:
+     * - BEAT_MIX / BASS_SWAP: BitChord DJ_BLEND with Bass Handoff (equal-power sin/cos, full energy held until midpoint swap).
      * - DROP_TRANSITION: Clean drop/cut on Beat 1 phrase boundary (t = 0.50) with incoming full power.
-     * - CROSSFADE: Equal-power sinusoidal curve with soft headroom limiting.
+     * - CROSSFADE: Exact equal-power sinusoidal curve (sin² + cos² = 1.0) with dynamic headroom limiting.
      */
     private fun gains(type: TransitionType, t: Float, gainMatch: Float = 1.0f): Pair<Float, Float> {
         val halfPi = (PI / 2).toFloat()
         val (rawOut, rawIn) = when (type) {
-            TransitionType.BEAT_MIX -> {
-                // Outgoing holds high volume during incoming beat introduction, smoothly dipping past downbeat handoff
-                val outG = if (t < 0.40f) {
-                    1.0f - 0.15f * (t / 0.40f)
-                } else {
-                    0.85f * cos(((t - 0.40f) / 0.55f).coerceIn(0f, 1f) * halfPi)
-                }
-                // Incoming enters with solid rhythm punch, hitting full power by midpoint handoff (t = 0.50)
-                val inG = if (t < 0.50f) {
-                    sin((t / 0.50f) * halfPi) * gainMatch
-                } else {
-                    1.0f * gainMatch
-                }
+            TransitionType.BEAT_MIX, TransitionType.BASS_SWAP -> {
+                // BitChord DJ_BLEND with Bass Swap: Outgoing held at full energy until midpoint bass swap (t = 0.50),
+                // incoming reaches full power on downbeat handoff, with outgoing fading on equal-power curve
+                val swapAt = 0.50f
+                val outG = if (t <= swapAt) 1.0f else cos(((t - swapAt) / (1f - swapAt)).coerceIn(0f, 1f) * halfPi)
+                val inG = (if (t <= swapAt) sin((t / swapAt).coerceIn(0f, 1f) * halfPi) else 1.0f) * gainMatch
                 outG to inG
             }
             TransitionType.DROP_TRANSITION -> {
@@ -561,36 +554,22 @@ class AutoMixEngine(
                 outG to inG
             }
             TransitionType.FILTER_FADE -> {
-                // DJay Mac Filter Fade: Outgoing energy thins out (lowering beats and tones)
+                // BitChord DJ_FILTER: Outgoing low-pass thinning with smooth high-pass incoming entrance
                 val outG = (cos(t * halfPi)).let { it * it }.coerceIn(0f, 1f)
                 val inG = (sin(t * halfPi).let { kotlin.math.sqrt(it) } * gainMatch).coerceIn(0f, 1.25f)
                 outG to inG
             }
-            TransitionType.BASS_SWAP -> {
-                // DJay Mac Bass Swap: Prevents low-end frequency clashing
-                val outG = if (t < 0.50f) {
-                    cos((t / 0.50f) * (halfPi * 0.65f))
-                } else {
-                    0.35f * cos(((t - 0.50f) / 0.50f) * halfPi)
-                }
-                val inG = if (t < 0.50f) {
-                    0.50f * sin((t / 0.50f) * halfPi) * gainMatch
-                } else {
-                    (0.50f + 0.50f * sin(((t - 0.50f) / 0.50f) * halfPi)) * gainMatch
-                }
-                outG to inG
-            }
             else -> {
-                // Standard equal-power sinusoidal crossfade
+                // Standard BitChord equal-power sinusoidal crossfade (sin² + cos² = 1.0)
                 val o = cos(t * halfPi).coerceIn(0f, 1f)
                 val i = (sin(t * halfPi) * gainMatch).coerceIn(0f, 1.25f)
                 o to i
             }
         }
 
-        // Soft limiter to guarantee headroom and prevent digital clipping
-        val sum = rawOut + rawIn
-        val scale = if (sum > 1.0f) 1.0f / (1.0f + 0.35f * (sum - 1.0f)) else 1.0f
+        // BitChord soft limiter & headroom scaling: maintains constant perceived loudness without clipping
+        val power = rawOut * rawOut + rawIn * rawIn
+        val scale = if (power > 1.0f) 1.0f / kotlin.math.sqrt(power) else 1.0f
 
         // Micro-fade (2-5ms) at onset to prevent clicks
         val microFade = if (t < 0.005f) (t / 0.005f) else 1.0f

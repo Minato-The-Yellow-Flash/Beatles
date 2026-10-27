@@ -137,10 +137,21 @@ fun FluidArtistDetailOverlay(
 
     LaunchedEffect(artist) {
         if (artist != null) {
-            try { listState.scrollToItem(0) } catch (_: Exception) {}
             currentArtist = artist
             currentOriginBounds = sourceBounds
             isClosing = false
+            try { listState.scrollToItem(0) } catch (_: Exception) {}
+
+            // Immediately launch fluid entrance animation on frame 0 for instant response
+            scope.launch {
+                if (progress.value < 0.05f) {
+                    progress.snapTo(0.02f)
+                }
+                progress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f)
+                )
+            }
 
             // 1. Immediate local tracks
             val localTracks = (state.favoriteSongs + state.recentlyPlayed + state.downloadedSongs +
@@ -195,27 +206,19 @@ fun FluidArtistDetailOverlay(
                     }
                 } catch (_: Exception) {}
             }
-
-            if (progress.value > 0.4f) {
-                progress.snapTo(0.12f)
-            }
-            progress.animateTo(
-                targetValue = 1f,
-                animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f)
-            )
         } else if (!isClosing && currentArtist != null) {
             handleClose()
         }
     }
 
     val p = progress.value
-    val curArtist = currentArtist
+    val curArtist = currentArtist ?: artist
 
     BackHandler(enabled = state.selectedAlbum == null && (p > 0.01f || artist != null)) {
         handleClose()
     }
 
-    if (curArtist != null && p > 0.001f) {
+    if (curArtist != null && (p > 0.001f || artist != null)) {
         val artistImage = remember(curArtist, artistTracks) {
             val raw = CURATED_ONBOARD_ARTISTS.find { it.name.equals(curArtist, ignoreCase = true) }?.imageUrl
                 ?: state.albums.find { it.artist.equals(curArtist, ignoreCase = true) }?.coverUrl

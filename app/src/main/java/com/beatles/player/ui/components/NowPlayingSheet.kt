@@ -1139,13 +1139,7 @@ fun NowPlayingSheet(
                                     scaleY = heartScale
                                 }
                                 .clip(CircleShape)
-                                .then(
-                                    if (isHeartActive) {
-                                        Modifier.background(Color.White.copy(alpha = 0.85f))
-                                    } else {
-                                        Modifier.liquidGlass(CircleShape, surfaceTint = Color.White.copy(alpha = 0.08f), showBorder = false)
-                                    }
-                                )
+                                .background(if (isHeartActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.14f))
                                 .pointerInput(isFavorite) {
                                     detectTapGestures(
                                         onPress = {
@@ -1183,13 +1177,7 @@ fun NowPlayingSheet(
                                 }
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .then(
-                                    if (isThreeDotActive) {
-                                        Modifier.background(Color.White.copy(alpha = 0.85f))
-                                    } else {
-                                        Modifier.liquidGlass(CircleShape, surfaceTint = Color.White.copy(alpha = 0.08f), showBorder = false)
-                                    }
-                                )
+                                .background(if (isThreeDotActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.14f))
                                 .pointerInput(showMiniMenu) {
                                     detectTapGestures(
                                         onPress = {
@@ -1294,23 +1282,36 @@ fun NowPlayingSheet(
                             val centerY = size.height / 2f
                             val activeWidth = w * currentFraction
                             val corner = CornerRadius(h / 2f, h / 2f)
-
-                            // 1. Inactive Track (translucent background line, expands together with active)
-                            drawRoundRect(
-                                color = Color.White.copy(alpha = 0.20f),
-                                topLeft = Offset(0f, centerY - h / 2f),
-                                size = Size(w, h),
-                                cornerRadius = corner
-                            )
-
-                            // 2. Active Track: 60% white overlay idle, 85% when touched or dragged
-                            if (activeWidth > 0f) {
-                                drawRoundRect(
-                                    color = Color.White.copy(alpha = activeTrackAlpha),
-                                    topLeft = Offset(0f, centerY - h / 2f),
-                                    size = Size(activeWidth, h),
-                                    cornerRadius = corner
+                            val trackPath = androidx.compose.ui.graphics.Path().apply {
+                                addRoundRect(
+                                    androidx.compose.ui.geometry.RoundRect(
+                                        left = 0f,
+                                        top = centerY - h / 2f,
+                                        right = w,
+                                        bottom = centerY + h / 2f,
+                                        cornerRadius = corner
+                                    )
                                 )
+                            }
+
+                            // Clip to the track capsule so active fill has perfect matching rounded corners from 0:00 start
+                            clipPath(trackPath) {
+                                // 1. Inactive Track
+                                drawRect(
+                                    color = Color.White.copy(alpha = 0.20f),
+                                    topLeft = Offset(0f, centerY - h / 2f),
+                                    size = Size(w, h)
+                                )
+
+                                // 2. Active Track: 60% white overlay idle, 85% when touched or dragged
+                                if (activeWidth > 0f) {
+                                    drawRoundRect(
+                                        color = Color.White.copy(alpha = activeTrackAlpha),
+                                        topLeft = Offset(0f, centerY - h / 2f),
+                                        size = Size(activeWidth, h),
+                                        cornerRadius = corner
+                                    )
+                                }
                             }
                         }
                     }
@@ -1516,13 +1517,7 @@ fun NowPlayingSheet(
                         .weight(1f)
                         .height(44.dp)
                         .clip(pillShape)
-                        .then(
-                            if (isLyricsActive) {
-                                Modifier.background(Color.White.copy(alpha = 0.85f))
-                            } else {
-                                Modifier.liquidGlass(pillShape, surfaceTint = Color.White.copy(alpha = 0.08f), showBorder = false)
-                            }
-                        )
+                        .background(if (isLyricsActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleLyrics()
                         },
@@ -1535,13 +1530,7 @@ fun NowPlayingSheet(
                         .weight(1f)
                         .height(44.dp)
                         .clip(pillShape)
-                        .then(
-                            if (isNextUpActive) {
-                                Modifier.background(Color.White.copy(alpha = 0.85f))
-                            } else {
-                                Modifier.liquidGlass(pillShape, surfaceTint = Color.White.copy(alpha = 0.08f), showBorder = false)
-                            }
-                        )
+                        .background(if (isNextUpActive) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                             onToggleNextUp()
                         },

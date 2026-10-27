@@ -51,9 +51,9 @@ object LyricsProcessor {
         val sortedLyrics = lyrics.sortedBy { it.timeMs }
         val result = mutableListOf<SyncedLyricLine>()
 
-        // 1. Intro Instrumental Detection (only for true extended intros >= 10s)
+        // 1. Intro Instrumental Detection (for intros >= 3s so lyrics never get stuck on speech/music)
         val firstLineTime = sortedLyrics.first().timeMs
-        if (firstLineTime >= 10000L) {
+        if (firstLineTime >= 3000L) {
             result.add(
                 SyncedLyricLine(
                     timeMs = 0L,
@@ -102,32 +102,35 @@ object LyricsProcessor {
             val totalGap = if (nextLine != null && nextLine.timeMs > line.timeMs) {
                 nextLine.timeMs - line.timeMs
             } else {
-                (rawWords.size * 650L + 1500L).coerceIn(3000L, 9000L)
+                (rawWords.size * 500L + 1200L).coerceIn(2000L, 8000L)
             }
 
-            // Only insert instrumental break for true musical solos/interludes (gap >= 14 seconds)
-            val hasInstrumentalBreak = totalGap >= 14000L
+            // Only insert instrumental break for true musical solos/interludes (gap >= 9 seconds)
+            val hasInstrumentalBreak = totalGap >= 9000L
             val lineDur = if (hasInstrumentalBreak) {
-                val vocalDur = (rawWords.size * 650L + 1500L).coerceIn(3000L, 10000L)
-                minOf(vocalDur, totalGap - 4000L)
+                val vocalDur = (rawWords.size * 500L + 1200L).coerceIn(2500L, 8000L)
+                minOf(vocalDur, totalGap - 2000L)
+            } else if (nextLine != null && nextLine.timeMs > line.timeMs) {
+                // Ensure conversation & music lines end seamlessly right before next line arrival (down to 200ms)
+                (totalGap - 30L).coerceAtLeast(200L)
             } else {
-                // Keep the lyric line active up to the next line arrival so lyrics never lag behind
-                (totalGap - 80L).coerceAtLeast(1000L)
+                totalGap
             }
 
             val words = if (rawWords.isEmpty()) {
                 emptyList()
             } else {
-                val totalChars = rawWords.sumOf { it.length }.coerceAtLeast(1)
+                val totalWeight = rawWords.sumOf { it.length.coerceAtLeast(2) }
                 var currentStart = line.timeMs
                 val wordList = mutableListOf<SyncedWord>()
                 for (wIdx in rawWords.indices) {
                     val w = rawWords[wIdx]
                     val isLastWord = wIdx == rawWords.size - 1
+                    val wWeight = w.length.coerceAtLeast(2)
                     val wDur = if (isLastWord) {
-                        (line.timeMs + lineDur - currentStart).coerceAtLeast(150L)
+                        (line.timeMs + lineDur - currentStart).coerceAtLeast(60L)
                     } else {
-                        (lineDur * w.length.toFloat() / totalChars).toLong().coerceAtLeast(150L)
+                        ((lineDur * wWeight.toFloat()) / totalWeight).toLong().coerceAtLeast(60L)
                     }
                     val wEnd = currentStart + wDur
                     wordList.add(SyncedWord(text = w, startMs = currentStart, endMs = wEnd))
@@ -187,17 +190,17 @@ object LyricsProcessor {
     /**
      * Binary-search active line lookup over sorted start times with anticipatory lead time.
      * Guaranteed O(log N) lookup without drift or stale cached indexing.
-     * Returns -1 if position is before the first line.
+     * Always returns index 0 when position is during intro/music before line 1.
      */
     fun findActiveLineIndex(lines: List<SyncedLyricLine>, positionMs: Long): Int {
-        val effectivePos = positionMs
-        if (lines.isEmpty() || effectivePos < lines.first().timeMs) return -1
+        if (lines.isEmpty()) return -1
+        if (positionMs <= lines.first().timeMs) return 0
         var low = 0
         var high = lines.size - 1
-        var result = -1
+        var result = 0
         while (low <= high) {
             val mid = (low + high) ushr 1
-            if (lines[mid].timeMs <= effectivePos) {
+            if (lines[mid].timeMs <= positionMs) {
                 result = mid
                 low = mid + 1
             } else {

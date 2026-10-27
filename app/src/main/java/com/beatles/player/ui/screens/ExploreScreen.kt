@@ -237,7 +237,8 @@ fun ExploreScreen(
     headerAlpha: () -> Float = { 1f },
     onPlay: (Song, List<Song>, Rect?) -> Unit,
     onSearch: (String) -> Unit,
-    onSelectGenre: ((String, Rect?) -> Unit)? = null
+    onSelectGenre: ((String, Rect?) -> Unit)? = null,
+    onSelectArtist: ((String, Rect?) -> Unit)? = null
 ) {
     val isDark = isDarkTheme(state.themeMode)
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
@@ -278,34 +279,32 @@ fun ExploreScreen(
                 .edgeFade(if (isDark) Color(0xFF141416) else Color(0xFFF6F7F9)),
             contentPadding = PaddingValues(top = 185.dp, bottom = LocalDynamicBottomPadding.current)
         ) {
-            // Horizontal Genre Selector Pills
+            // Upper Horizontal Mood & Activity Selector Pills (Workout, Chill, Focus, Party, etc.) — Crisp, completely unblurred!
             item {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(GENRES) { (name, color) ->
+                    items(MOODS_AND_ACTIVITIES) { mood ->
                         var pillBounds by remember { mutableStateOf<Rect?>(null) }
                         val pillInteraction = remember { MutableInteractionSource() }
                         val pillShape = RoundedCornerShape(50)
+                        val pillBg = if (isDark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.85f)
                         Box(
                             modifier = Modifier
                                 .liquidPress(pillInteraction)
-                                .shadow(2.dp, pillShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                                .shadow(2.dp, pillShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.08f))
                                 .clip(pillShape)
-                                .liquidGlass(
-                                    shape = pillShape,
-                                    surfaceTint = if (isDark) Color(0xFF383842).copy(alpha = 0.35f) else Color(0xFFE2E2E2).copy(alpha = 0.55f),
-                                    showBorder = false
-                                )
+                                .background(pillBg, pillShape)
+                                .liquidGlassRim(pillShape, isDark = isDark)
                                 .onGloballyPositioned { pillBounds = it.boundsInRoot() }
                                 .clickable(interactionSource = pillInteraction, indication = null) {
                                     if (onSelectGenre != null) {
-                                        onSelectGenre(name, pillBounds)
+                                        onSelectGenre(mood.title, pillBounds)
                                     } else {
                                         selectedGenreOriginBounds = pillBounds
-                                        selectedGenreForDetail = name
+                                        selectedGenreForDetail = mood.title
                                     }
                                 }
                                 .padding(horizontal = 14.dp, vertical = 8.dp)
@@ -315,11 +314,11 @@ fun ExploreScreen(
                                     modifier = Modifier
                                         .size(8.dp)
                                         .clip(CircleShape)
-                                        .background(color)
+                                        .background(mood.color)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    name,
+                                    mood.title,
                                     color = if (isDark) Color.White else Color(0xFF141416),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -640,7 +639,13 @@ fun ExploreScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(song.title, color = textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                                    Text(song.artist, color = textSecondary, fontSize = 12.sp, maxLines = 1)
+                                    Text(
+                                        song.artist,
+                                        color = textSecondary,
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        modifier = Modifier.clickable { onSelectArtist?.invoke(song.artist, rowBounds) }
+                                    )
                                 }
                                 val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
                                 Text(dur, color = textMuted, fontSize = 12.sp)
@@ -677,7 +682,8 @@ fun ExploreScreen(
                 sourceBounds = selectedGenreOriginBounds,
                 state = state,
                 onClose = { selectedGenreForDetail = null },
-                onPlay = onPlay
+                onPlay = onPlay,
+                onSelectArtist = onSelectArtist
             )
         }
     }
@@ -690,7 +696,8 @@ fun FluidGenreDetailOverlay(
     state: PlayerUiState,
     onClose: () -> Unit,
     onPlay: (Song, List<Song>, Rect?) -> Unit,
-    onSelectAlbum: ((Album, Rect?) -> Unit)? = null
+    onSelectAlbum: ((Album, Rect?) -> Unit)? = null,
+    onSelectArtist: ((String, Rect?) -> Unit)? = null
 ) {
     val density = LocalDensity.current
     val config = LocalConfiguration.current
@@ -1103,7 +1110,8 @@ fun FluidGenreDetailOverlay(
                                                 color = Color.White.copy(alpha = 0.65f),
                                                 fontSize = 11.sp,
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.clickable { onSelectArtist?.invoke(song.artist, songBounds) }
                                             )
                                         }
                                     }
@@ -1182,7 +1190,8 @@ fun FluidGenreDetailOverlay(
                                                 color = Color.White.copy(alpha = 0.65f),
                                                 fontSize = 11.sp,
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.clickable { onSelectArtist?.invoke(album.artist, albBounds) }
                                             )
                                         }
                                     }
@@ -1284,7 +1293,13 @@ fun FluidGenreDetailOverlay(
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                            Text(song.artist, color = Color.White.copy(alpha = 0.70f), fontSize = 12.sp, maxLines = 1)
+                                            Text(
+                                                song.artist,
+                                                color = Color.White.copy(alpha = 0.70f),
+                                                fontSize = 12.sp,
+                                                maxLines = 1,
+                                                modifier = Modifier.clickable { onSelectArtist?.invoke(song.artist, rowBounds) }
+                                            )
                                         }
                                         val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
                                         Text(dur, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp)
