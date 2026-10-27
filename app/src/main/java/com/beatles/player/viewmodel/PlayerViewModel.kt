@@ -670,6 +670,25 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val initialVideo = album?.let { it.videoUrl ?: repo.getCuratedMotionArtwork(it.title, it.artist, it.title) }
         val effectiveAlbum = if (album != null && initialVideo != null && album.videoUrl == null) album.copy(videoUrl = initialVideo) else album
         _uiState.update { it.copy(selectedAlbum = effectiveAlbum, selectedAlbumBounds = bounds) }
+        if (effectiveAlbum != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val hq = repo.getHighestQualityCover(effectiveAlbum.coverUrl)
+                    if (hq.isNotBlank() && hq.startsWith("http")) {
+                        val req = coil.request.ImageRequest.Builder(getApplication())
+                            .data(hq)
+                            .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                            .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                            .build()
+                        coil.Coil.imageLoader(getApplication()).enqueue(req)
+                    }
+                    val albVid = effectiveAlbum.videoUrl ?: effectiveAlbum.songs.firstOrNull()?.videoUrl
+                    if (!albVid.isNullOrBlank() && albVid.startsWith("http")) {
+                        com.beatles.player.player.BeatlesMediaCache.preload(getApplication(), albVid)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
         if (album != null) {
             viewModelScope.launch {
                 val motionVideo = effectiveAlbum?.videoUrl ?: repo.resolveMotionArtwork(album.title, album.artist, album.title)
@@ -1276,6 +1295,38 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
         _uiState.update { it.copy(recentlyPlayed = storage.getRecentlyPlayed(getApplication())) }
         fetchLyrics(readySong)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val hqCover = repo.getHighestQualityCover(readySong.coverUrl)
+                if (hqCover.isNotBlank() && hqCover.startsWith("http")) {
+                    val req = coil.request.ImageRequest.Builder(getApplication())
+                        .data(hqCover)
+                        .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                        .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                        .build()
+                    coil.Coil.imageLoader(getApplication()).enqueue(req)
+                }
+                if (!readySong.videoUrl.isNullOrBlank() && readySong.videoUrl.startsWith("http")) {
+                    com.beatles.player.player.BeatlesMediaCache.preload(getApplication(), readySong.videoUrl)
+                }
+                val nextSong = pl.getOrNull(1)
+                if (nextSong != null) {
+                    val nextCover = repo.getHighestQualityCover(nextSong.coverUrl)
+                    if (nextCover.isNotBlank() && nextCover.startsWith("http")) {
+                        val reqNext = coil.request.ImageRequest.Builder(getApplication())
+                            .data(nextCover)
+                            .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                            .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                            .build()
+                        coil.Coil.imageLoader(getApplication()).enqueue(reqNext)
+                    }
+                    if (!nextSong.videoUrl.isNullOrBlank() && nextSong.videoUrl.startsWith("http")) {
+                        com.beatles.player.player.BeatlesMediaCache.preload(getApplication(), nextSong.videoUrl)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
         
         activePlayJob?.cancel()
         activeTargetSongId = readySong.id

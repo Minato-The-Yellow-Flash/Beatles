@@ -198,20 +198,17 @@ fun AppleMusicLiveCover(
                 cornerRadius = cornerRadius,
                 modifier = Modifier.fillMaxSize()
             )
-            // Instant cached image (0ms latency from tapped/active track)
-            if (song.coverUrl.isNotBlank() && song.coverUrl.startsWith("http")) {
+            // Instant cached highest quality cover (loads immediately in highest quality without double-layered pops)
+            val primaryCover = if (coverUrl.isNotBlank() && coverUrl.startsWith("http")) coverUrl else song.coverUrl
+            if (primaryCover.isNotBlank() && primaryCover.startsWith("http")) {
                 AsyncImage(
-                    model = song.coverUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    alignment = Alignment.TopCenter,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-            // Crisp high-resolution image overlay
-            if (coverUrl.isNotBlank() && coverUrl != song.coverUrl && coverUrl.startsWith("http")) {
-                AsyncImage(
-                    model = coverUrl,
+                    model = coil.request.ImageRequest.Builder(context)
+                        .data(primaryCover)
+                        .placeholderMemoryCacheKey(song.coverUrl)
+                        .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                        .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                        .crossfade(180)
+                        .build(),
                     contentDescription = song.title,
                     contentScale = ContentScale.Crop,
                     alignment = Alignment.TopCenter,
@@ -267,7 +264,8 @@ fun AppleMusicLiveCover(
                     com.beatles.player.player.BeatlesMediaCache.createDataSourceFactory(context)
                 )
                 val fastLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(500, 3000, 200, 500)
+                    .setBufferDurationsMs(250, 2000, 50, 150)
+                    .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
                 ExoPlayer.Builder(context)
                     .setMediaSourceFactory(mediaSourceFactory)
@@ -1035,24 +1033,33 @@ fun NowPlayingSheet(
             animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f),
             label = "controlsSlideDownAnim"
         )
-        val controlsMorphWeight = ((morphProgress - 0.55f) / 0.45f).coerceIn(0f, 1f)
+        val controlsMorphWeight = ((morphProgress - 0.48f) / 0.52f).coerceIn(0f, 1f)
         val controlsVisibilityAlpha = (if (isLyricsActive && isLyricsFullScreen) 0f else controlsAlpha) * controlsMorphWeight
-        val controlsMorphSlideY = with(density) { 36.dp.toPx() * (1f - controlsMorphWeight) }
+        val controlsMorphSlideY = with(density) { 32.dp.toPx() * (1f - controlsMorphWeight) }
+        val midpointBlurFactor = (1f - kotlin.math.abs(morphProgress - 0.5f) * 2f).coerceIn(0f, 1f)
+        val controlsBlurDp = 14.dp * midpointBlurFactor
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
                     alpha = controlsVisibilityAlpha
                     translationY = with(density) { controlsSlideDownAnim.toPx() } + controlsMorphSlideY
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && controlsBlurDp > 0.5.dp && morphProgress < 0.95f) {
+                        val blurPx = with(density) { controlsBlurDp.toPx() }
+                        renderEffect = android.graphics.RenderEffect.createBlurEffect(
+                            blurPx, blurPx, android.graphics.Shader.TileMode.CLAMP
+                        ).asComposeRenderEffect()
+                    }
                 }
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.Bottom
         ) {
             val isAnySubpageActive = isLyricsActive || isNextUpActive || isSwitchingSubpages || showLyrics || showNextUp
             val songInfoProgress = if (isAnySubpageActive) 0f else (1f - maxOf(lyricsProgress, nextUpProgress)).coerceIn(0f, 1f)
-            val songInfoMorphWeight = ((morphProgress - 0.50f) / 0.50f).coerceIn(0f, 1f)
+            val songInfoMorphWeight = ((morphProgress - 0.45f) / 0.55f).coerceIn(0f, 1f)
             val songInfoAlpha = songInfoProgress * songInfoMorphWeight
-            val songInfoSlideY = with(density) { 20.dp.toPx() * (1f - songInfoMorphWeight) }
+            val songInfoSlideY = with(density) { 18.dp.toPx() * (1f - songInfoMorphWeight) }
             if (songInfoProgress > 0.001f) {
                 Column(
                     modifier = Modifier
@@ -3008,8 +3015,15 @@ fun NowPlayingLyricsLayer(
     var anchorPos by remember { mutableLongStateOf(currentPosition) }
 
     LaunchedEffect(currentPosition) {
-        val diff = kotlin.math.abs(livePositionMs - currentPosition)
-        if (diff > 400L || !isPlaying) {
+        if (!isPlaying) {
+            anchorPos = currentPosition
+            anchorRealtime = android.os.SystemClock.elapsedRealtime()
+            livePositionMs = currentPosition.coerceAtLeast(0L)
+            return@LaunchedEffect
+        }
+        val estimated = (anchorPos + (android.os.SystemClock.elapsedRealtime() - anchorRealtime)).coerceAtLeast(0L)
+        val drift = currentPosition - estimated
+        if (kotlin.math.abs(drift) > 65L) {
             anchorPos = currentPosition
             anchorRealtime = android.os.SystemClock.elapsedRealtime()
             livePositionMs = currentPosition.coerceAtLeast(0L)
@@ -3227,26 +3241,38 @@ fun NowPlayingLyricsLayer(
                         val targetScale = if (isActive) 1.03f else 1.0f
                         val targetAlpha = if (isActive) 1.0f else (0.50f - cappedDistance * 0.08f).coerceAtLeast(0.20f)
                         val targetBlur = if (isActive) 0.dp else (cappedDistance.coerceAtMost(2) * 0.8f).dp
+                        val lineDelta = idx - currentIdx
                         val targetBounceY = when {
-                            isActive -> (-4.5).dp
-                            idx == currentIdx - 1 -> (-2.0).dp
-                            idx == currentIdx + 1 -> (6.2).dp
-                            idx == currentIdx + 2 -> (4.4).dp
-                            idx == currentIdx + 3 -> (3.0).dp
-                            idx > currentIdx + 3 -> (1.8).dp
+                            isActive -> (-3.8).dp
+                            lineDelta == -1 -> (-1.8).dp
+                            lineDelta == 1 -> 4.5.dp
+                            lineDelta == 2 -> 7.2.dp
+                            lineDelta == 3 -> 9.8.dp
+                            lineDelta >= 4 -> 12.5.dp
                             else -> 0.dp
                         }
 
                         val lineBounceDamping = when {
-                            isActive -> 0.52f
-                            idx > currentIdx -> 0.28f
-                            else -> 0.65f
+                            isActive -> 0.55f
+                            lineDelta == -1 -> 0.65f
+                            lineDelta == 1 -> 0.46f
+                            lineDelta == 2 -> 0.36f
+                            lineDelta == 3 -> 0.28f
+                            lineDelta >= 4 -> 0.22f
+                            else -> 0.70f
                         }
+
+                        val lineBounceStiffness = when {
+                            isActive -> 75f
+                            lineDelta > 0 -> 65f
+                            else -> 80f
+                        }
+
                         val lineBounceY by animateDpAsState(
                             targetValue = targetBounceY,
                             animationSpec = spring(
                                 dampingRatio = lineBounceDamping,
-                                stiffness = 95f
+                                stiffness = lineBounceStiffness
                             ),
                             label = "lineBounceY_$idx"
                         )

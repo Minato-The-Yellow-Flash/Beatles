@@ -404,20 +404,17 @@ fun FluidAlbumDetailOverlay(
                         cornerRadius = with(density) { curArtCorner.toDp() },
                         modifier = Modifier.fillMaxSize()
                     )
-                    // Initial cached cover (immediate 0ms display, matching origin card precisely)
-                    if (initialCover.isNotBlank() && initialCover.startsWith("http")) {
+                    // Instant cached highest-quality cover (immediate display without double-layer pop)
+                    val primaryCover = highResCover.ifBlank { initialCover }
+                    if (primaryCover.isNotBlank() && primaryCover.startsWith("http")) {
                         AsyncImage(
-                            model = initialCover,
-                            contentDescription = alb.title,
-                            contentScale = ContentScale.Crop,
-                            alignment = Alignment.TopCenter,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    // High-resolution crisp upgrade (rendered silently on top without any glitch or reload)
-                    if (highResCover.isNotBlank() && highResCover != initialCover && highResCover.startsWith("http")) {
-                        AsyncImage(
-                            model = highResCover,
+                            model = coil.request.ImageRequest.Builder(LocalContext.current)
+                                .data(primaryCover)
+                                .placeholderMemoryCacheKey(initialCover)
+                                .memoryCachePolicy(coil.request.CachePolicy.ENABLED)
+                                .diskCachePolicy(coil.request.CachePolicy.ENABLED)
+                                .crossfade(180)
+                                .build(),
                             contentDescription = alb.title,
                             contentScale = ContentScale.Crop,
                             alignment = Alignment.TopCenter,
@@ -453,7 +450,8 @@ fun FluidAlbumDetailOverlay(
                                 com.beatles.player.player.BeatlesMediaCache.createDataSourceFactory(ctx)
                             )
                             val fastLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                                .setBufferDurationsMs(500, 3000, 200, 500)
+                                .setBufferDurationsMs(250, 2000, 50, 150)
+                                .setPrioritizeTimeOverSizeThresholds(true)
                                 .build()
                             ExoPlayer.Builder(ctx)
                                 .setMediaSourceFactory(mediaSourceFactory)

@@ -9,6 +9,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -49,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
@@ -119,6 +121,15 @@ val AppleEase = SmoothEase
 private val TranslucentBarBg = Color(0xFF383842).copy(alpha = 0.28f)
 private val GlassHazeStyle = HazeStyle(blurRadius = 4.dp, noiseFactor = 0.06f)
 
+// Single-owner morph state machine for fluid player sheet transitions
+enum class PlayerMorphState {
+    COLLAPSED,
+    EXPANDING,
+    EXPANDED,
+    DRAGGING,
+    COLLAPSING
+}
+
 @Composable
 fun BeatlesApp(viewModel: PlayerViewModel) {
     val stateHolder = viewModel.uiState.collectAsStateWithLifecycle()
@@ -144,7 +155,9 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
     var openedFromMidCapsule by remember { mutableStateOf(false) }
     var activeMiniPillBounds by remember { mutableStateOf<Rect?>(null) }
     var activeMiniPillCorner by remember { mutableStateOf(22.dp) }
-    val playerProgress = remember { Animatable(0f) }
+    var morphState by remember { mutableStateOf(if (state.isExpanded) PlayerMorphState.EXPANDED else PlayerMorphState.COLLAPSED) }
+    val playerProgress = remember { Animatable(if (state.isExpanded) 1f else 0f) }
+    var dragOffsetXPx by remember { mutableFloatStateOf(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
 
     val density = LocalDensity.current
@@ -154,15 +167,24 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
 
     LaunchedEffect(state.isExpanded) {
         if (state.isExpanded) {
-            playerProgress.animateTo(
-                targetValue = 1f,
-                animationSpec = spring(dampingRatio = 0.82f, stiffness = 320f)
-            )
+            if (morphState != PlayerMorphState.EXPANDED) {
+                morphState = PlayerMorphState.EXPANDING
+                playerProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
+                )
+                morphState = PlayerMorphState.EXPANDED
+            }
         } else {
-            playerProgress.animateTo(
-                targetValue = 0f,
-                animationSpec = spring(dampingRatio = 0.86f, stiffness = 340f)
-            )
+            if (morphState != PlayerMorphState.COLLAPSED) {
+                morphState = PlayerMorphState.COLLAPSING
+                playerProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = spring(dampingRatio = 1.0f, stiffness = 380f)
+                )
+                morphState = PlayerMorphState.COLLAPSED
+                dragOffsetXPx = 0f
+            }
         }
     }
 
@@ -244,10 +266,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         try { progress.collect {}; viewModel.toggleLyrics() } catch (_: Exception) {}
     }
 
-    // 3. Player collapse: if the player is expanded on its main view, collapse it back to the mini player
-    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && state.isExpanded && !state.showLyrics && state.showSeeAllSection != "next_up") { progress ->
+    // 3. Player collapse: if the player is expanded on its main view, collapse it back to the mini player with predictive back
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && (state.isExpanded || morphState != PlayerMorphState.COLLAPSED || playerProgress.value > 0.001f) && !state.showLyrics && state.showSeeAllSection != "next_up") { progress ->
         try {
-            progress.collect {}
+            morphState = PlayerMorphState.DRAGGING
+            progress.collect { backEvent ->
+                val p = (1f - backEvent.progress).coerceIn(0f, 1f)
+                playerProgress.snapTo(p)
+            }
+            morphState = PlayerMorphState.COLLAPSING
             if (openedFromMidCapsule && midMiniPillBounds != null) {
                 activeMiniPillBounds = midMiniPillBounds
                 activeMiniPillCorner = 28.dp
@@ -256,7 +283,21 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 activeMiniPillCorner = 22.dp
             }
             viewModel.setExpanded(false)
-        } catch (_: Exception) {}
+            playerProgress.animateTo(
+                targetValue = 0f,
+                animationSpec = spring(dampingRatio = 1.0f, stiffness = 380f)
+            )
+            morphState = PlayerMorphState.COLLAPSED
+            dragOffsetXPx = 0f
+        } catch (_: Exception) {
+            morphState = PlayerMorphState.EXPANDING
+            playerProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
+            )
+            morphState = PlayerMorphState.EXPANDED
+            dragOffsetXPx = 0f
+        }
     }
 
     // 4. Detail screens: album detail takes precedence over artist detail
@@ -401,9 +442,11 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     .nestedScroll(nestedScrollConnection)
             ) {
                 
-                // Base Tab content layer (with live backdrop blur sampling and sheet scale-down)
-                val contentBehindScale = 1f - 0.08f * playerProgress.value.coerceIn(0f, 1f)
-                val contentBehindAlpha = 1f - 0.30f * playerProgress.value.coerceIn(0f, 1f)
+                // Base Tab content layer (with live backdrop blur sampling, light dim tint, and subtle sheet scale-down)
+                val smoothBehindP = (playerProgress.value * playerProgress.value * (3f - 2f * playerProgress.value)).coerceIn(0f, 1f)
+                val contentBehindScale = 1f - 0.05f * smoothBehindP
+                val contentBehindCorner = (16.dp * smoothBehindP)
+                val dimTintAlpha = 0.14f * smoothBehindP
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -411,7 +454,10 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         .graphicsLayer {
                             scaleX = contentBehindScale
                             scaleY = contentBehindScale
-                            alpha = contentBehindAlpha
+                            if (contentBehindCorner > 0.5.dp) {
+                                shape = RoundedCornerShape(contentBehindCorner)
+                                clip = true
+                            }
                             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 0.5f)
                         }
                 ) {
@@ -493,6 +539,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         UserRole.ADMIN -> {
                             AdminScreen(state = state, viewModel = viewModel)
                         }
+                    }
+
+                    // Soft light grey dim tint behind the full player (NEVER a black opaque scrim)
+                    if (dimTintAlpha > 0.001f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color(0xFF686868).copy(alpha = dimTintAlpha))
+                        )
                     }
                 }
 
@@ -798,7 +853,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                                     activeMiniArtBounds = topMiniArtBounds
                                                                 }
                                                             }
+                                                            morphState = PlayerMorphState.EXPANDING
                                                             viewModel.setExpanded(true)
+                                                            scope.launch {
+                                                                playerProgress.animateTo(
+                                                                    targetValue = 1f,
+                                                                    animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
+                                                                )
+                                                                morphState = PlayerMorphState.EXPANDED
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -1726,7 +1789,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 if (state.currentSong != null) {
                     val p = playerProgress.value.coerceIn(0f, 1f)
 
-                    if (playerProgress.value > 0.001f || state.isExpanded) {
+                    if (playerProgress.value > 0.001f || state.isExpanded || morphState != PlayerMorphState.COLLAPSED) {
                         val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
                         val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
                         val screenWidthPx = with(density) { screenWidthDp.toPx() }
@@ -1742,17 +1805,19 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 Rect(artLeft, artTop, artLeft + artSize, artTop + artSize)
                             }
                         }
+                        val restingMiniPillBounds = remember(screenWidthPx, screenHeightPx, density) {
+                            val left = with(density) { 16.dp.toPx() }
+                            val right = screenWidthPx - with(density) { 16.dp.toPx() }
+                            val bottom = screenHeightPx - with(density) { 68.dp.toPx() }
+                            val top = bottom - with(density) { 56.dp.toPx() }
+                            Rect(left, top, right, bottom)
+                        }
                         val startBounds = if (isExpandingFromSongCard) {
                             state.selectedSongBounds!!
                         } else if (openedFromMidCapsule && midMiniPillBounds != null) {
                             midMiniPillBounds!!
                         } else {
-                            activeMiniPillBounds ?: standardMiniPillBounds ?: Rect(
-                                left = with(density) { 16.dp.toPx() },
-                                top = with(density) { 60.dp.toPx() },
-                                right = screenWidthPx - with(density) { 16.dp.toPx() },
-                                bottom = with(density) { 110.dp.toPx() }
-                            )
+                            activeMiniPillBounds ?: standardMiniPillBounds ?: restingMiniPillBounds
                         }
                         val startCorner = if (isExpandingFromSongCard) 16.dp else activeMiniPillCorner
 
@@ -1769,11 +1834,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         }
 
                         val smoothP = (p * p * (3f - 2f * p)).coerceIn(0f, 1f)
-                        val curLeft = startBounds.left * (1f - smoothP)
-                        val curTop = startBounds.top * (1f - smoothP)
-                        val curWidth = startBounds.width + (screenWidthPx - startBounds.width) * smoothP
-                        val curHeight = startBounds.height + (screenHeightPx - startBounds.height) * smoothP
-                        val curCorner = (startCorner * (1f - smoothP)).coerceAtLeast(0.dp)
+                        val curLeft = androidx.compose.ui.util.lerp(startBounds.left, 0f, smoothP) + dragOffsetXPx * (1f - smoothP) * 0.35f
+                        val curTop = androidx.compose.ui.util.lerp(startBounds.top, 0f, smoothP)
+                        val curRight = androidx.compose.ui.util.lerp(startBounds.right, screenWidthPx, smoothP) + dragOffsetXPx * (1f - smoothP) * 0.35f
+                        val curBottom = androidx.compose.ui.util.lerp(startBounds.bottom, screenHeightPx, smoothP)
+                        val curWidth = (curRight - curLeft).coerceAtLeast(1f)
+                        val curHeight = (curBottom - curTop).coerceAtLeast(1f)
+                        val curCorner = androidx.compose.ui.unit.lerp(startCorner, 0.dp, smoothP)
 
                         val curCornerShape = RoundedCornerShape(curCorner)
                         val curWidthDp = with(density) { curWidth.toDp() }
@@ -1806,13 +1873,32 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     )
                                     .clip(curCornerShape)
                                     .background(containerBg)
-                                    .pointerInput(Unit) {
-                                        detectVerticalDragGestures(
+                                    .pointerInput(state.isExpanded, state.showLyrics, state.showSeeAllSection) {
+                                        val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
+                                        if (isInSubPage) return@pointerInput
+                                        val velocityTracker = androidx.compose.ui.input.pointer.util.VelocityTracker()
+                                        detectDragGestures(
+                                            onDragStart = {
+                                                morphState = PlayerMorphState.DRAGGING
+                                                velocityTracker.resetTracking()
+                                            },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                                dragOffsetXPx = (dragOffsetXPx + dragAmount.x).coerceIn(-screenWidthPx * 0.35f, screenWidthPx * 0.35f)
+                                                val deltaP = -dragAmount.y / screenHeightPx.toFloat()
+                                                val newP = (playerProgress.value + deltaP).coerceIn(0f, 1f)
+                                                scope.launch {
+                                                    playerProgress.snapTo(newP)
+                                                }
+                                            },
                                             onDragEnd = {
-                                                val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
-                                                if (isInSubPage) return@detectVerticalDragGestures
-                                                if (playerProgress.value < 0.72f) {
-                                                    // Collapse back into the exact originating pill (mid capsule or standard bottom mini player)
+                                                val velocity = velocityTracker.calculateVelocity()
+                                                val vy = velocity.y
+                                                val isFlingDown = vy > 800f * density.density
+                                                val isPastThreshold = playerProgress.value < 0.62f
+                                                if (isFlingDown || isPastThreshold) {
+                                                    morphState = PlayerMorphState.COLLAPSING
                                                     if (openedFromMidCapsule && midMiniPillBounds != null) {
                                                         activeMiniPillBounds = midMiniPillBounds
                                                         activeMiniPillCorner = 28.dp
@@ -1821,22 +1907,49 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         activeMiniPillCorner = 22.dp
                                                     }
                                                     viewModel.setExpanded(false)
-                                                } else {
                                                     scope.launch {
+                                                        launch {
+                                                            androidx.compose.animation.core.Animatable(dragOffsetXPx).animateTo(
+                                                                targetValue = 0f,
+                                                                animationSpec = spring(dampingRatio = 1.0f, stiffness = 380f)
+                                                            ) { dragOffsetXPx = value }
+                                                        }
+                                                        playerProgress.animateTo(
+                                                            targetValue = 0f,
+                                                            initialVelocity = (-vy / screenHeightPx.toFloat()).coerceIn(-15f, 0f),
+                                                            animationSpec = spring(dampingRatio = 1.0f, stiffness = 380f)
+                                                        )
+                                                        morphState = PlayerMorphState.COLLAPSED
+                                                        dragOffsetXPx = 0f
+                                                    }
+                                                } else {
+                                                    morphState = PlayerMorphState.EXPANDING
+                                                    scope.launch {
+                                                        launch {
+                                                            androidx.compose.animation.core.Animatable(dragOffsetXPx).animateTo(
+                                                                targetValue = 0f,
+                                                                animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
+                                                            ) { dragOffsetXPx = value }
+                                                        }
                                                         playerProgress.animateTo(
                                                             targetValue = 1f,
-                                                            animationSpec = spring(dampingRatio = 0.84f, stiffness = 380f)
+                                                            initialVelocity = (-vy / screenHeightPx.toFloat()).coerceIn(0f, 15f),
+                                                            animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
                                                         )
+                                                        morphState = PlayerMorphState.EXPANDED
+                                                        dragOffsetXPx = 0f
                                                     }
                                                 }
                                             },
-                                            onVerticalDrag = { _, dragAmount ->
-                                                val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
-                                                if (state.isExpanded && !isInSubPage) {
-                                                    scope.launch {
-                                                        val newP = (playerProgress.value - dragAmount / screenHeightPx.toFloat()).coerceIn(0f, 1f)
-                                                        playerProgress.snapTo(newP)
-                                                    }
+                                            onDragCancel = {
+                                                morphState = PlayerMorphState.EXPANDING
+                                                scope.launch {
+                                                    playerProgress.animateTo(
+                                                        targetValue = 1f,
+                                                        animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
+                                                    )
+                                                    morphState = PlayerMorphState.EXPANDED
+                                                    dragOffsetXPx = 0f
                                                 }
                                             }
                                         )
@@ -1935,15 +2048,28 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                     }
                                 }
 
-                                // 2. Mini Player Pill Content (crossfades in when closing/expanding, hero artwork morphs continuously into the leading slot)
-                                val miniPillAlpha = if (p >= 0.42f) 0f else ((0.42f - p) / 0.42f).coerceIn(0f, 1f)
+                                // 2. Mini Player Pill Content (crossfades in when closing/expanding with RenderEffect blur, hero artwork morphs continuously into the leading slot)
+                                val miniPillAlpha = if (p >= 0.48f) 0f else ((0.48f - p) / 0.48f).coerceIn(0f, 1f)
+                                val midpointBlurFactor = (1f - kotlin.math.abs(p - 0.5f) * 2f).coerceIn(0f, 1f)
+                                val miniBlurDp = 14.dp * midpointBlurFactor
+                                val miniScale = 1f + 0.04f * p
                                 if (miniPillAlpha > 0.001f) {
                                     val isCircleMini = startBounds.width < 100f
                                     val isMidCompact = !isCircleMini && !isExpandingFromSongCard && (openedFromMidCapsule || activeMiniPillBounds == midMiniPillBounds || startBounds.width < screenWidthPx * 0.85f)
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .graphicsLayer { alpha = miniPillAlpha }
+                                            .graphicsLayer {
+                                                alpha = miniPillAlpha
+                                                scaleX = miniScale
+                                                scaleY = miniScale
+                                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && miniBlurDp > 0.5.dp && p > 0.05f) {
+                                                    val blurPx = with(density) { miniBlurDp.toPx() }
+                                                    renderEffect = android.graphics.RenderEffect.createBlurEffect(
+                                                        blurPx, blurPx, android.graphics.Shader.TileMode.CLAMP
+                                                    ).asComposeRenderEffect()
+                                                }
+                                            }
                                             .padding(horizontal = if (isCircleMini) 0.dp else 8.dp),
                                         contentAlignment = if (isCircleMini) Alignment.Center else Alignment.CenterStart
                                     ) {
