@@ -156,12 +156,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         if (state.isExpanded) {
             playerProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = spring(dampingRatio = 0.94f, stiffness = 320f)
+                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 320f)
             )
         } else {
             playerProgress.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(dampingRatio = 0.96f, stiffness = 320f)
+                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 320f)
             )
         }
     }
@@ -1824,7 +1824,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                     scope.launch {
                                                         playerProgress.animateTo(
                                                             targetValue = 1f,
-                                                            animationSpec = spring(dampingRatio = 0.95f, stiffness = 390f)
+                                                            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 360f)
                                                         )
                                                     }
                                                 }

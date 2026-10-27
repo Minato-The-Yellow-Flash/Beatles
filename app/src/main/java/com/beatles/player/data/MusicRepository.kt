@@ -25,18 +25,28 @@ object MusicRepository {
 
     init { NewPipe.init(OkHttpDownloader()) }
 
-    fun getBestThumbnailUrl(thumb: String): String {
-        if (thumb.isEmpty()) return ""
+    fun getHighestQualityCover(thumb: String): String {
+        if (thumb.isBlank()) return ""
         val ytMatch = Regex(".*/vi/([^/]+)/.*").find(thumb)
         if (ytMatch != null) {
             val vid = ytMatch.groupValues[1]
-            return "https://i.ytimg.com/vi/$vid/hqdefault.jpg"
+            return "https://i.ytimg.com/vi/$vid/maxresdefault.jpg"
         }
         if (thumb.contains("googleusercontent.com") || thumb.contains("ggpht.com")) {
-            return thumb.replace(Regex("=w\\d+-h\\d+.*"), "=w800-h800-l90-rj")
-                .replace(Regex("=s\\d+.*"), "=s800-c")
+            return thumb.replace(Regex("=w\\d+-h\\d+.*"), "=w1200-h1200-l90-rj")
+                .replace(Regex("=s\\d+.*"), "=s1200")
         }
-        return thumb
+        if (thumb.contains("mzstatic.com")) {
+            return thumb.replace(Regex("/\\d+x\\d+bb\\."), "/1200x1200bb.")
+        }
+        return thumb.replace("/hqdefault.jpg", "/maxresdefault.jpg")
+            .replace("/mqdefault.jpg", "/maxresdefault.jpg")
+            .replace("/sddefault.jpg", "/maxresdefault.jpg")
+            .replace("/default.jpg", "/maxresdefault.jpg")
+    }
+
+    fun getBestThumbnailUrl(thumb: String): String {
+        return getHighestQualityCover(thumb)
     }
 
     suspend fun getSearchSuggestions(query: String): List<String> = withContext(Dispatchers.IO) {

@@ -141,10 +141,11 @@ fun FluidAlbumDetailOverlay(
     }
 
     val resolvedCover = remember(alb) {
-        if (alb.coverUrl.isNotBlank() && alb.coverUrl.startsWith("http")) alb.coverUrl
+        val raw = if (alb.coverUrl.isNotBlank() && alb.coverUrl.startsWith("http")) alb.coverUrl
         else alb.songs.firstOrNull { it.coverUrl.isNotBlank() && it.coverUrl.startsWith("http") }?.coverUrl
             ?: com.beatles.player.ui.screens.CURATED_ONBOARD_ARTISTS.find { it.name.equals(alb.artist, ignoreCase = true) }?.imageUrl
             ?: ""
+        com.beatles.player.data.MusicRepository.getHighestQualityCover(raw)
     }
 
     if (p > 0f) {
@@ -316,8 +317,8 @@ fun FluidAlbumDetailOverlay(
                         height = with(density) { curArtHeight.toDp() }
                     )
                     .graphicsLayer {
-                        scaleX = if (clampedP >= 0.95f) artScale else 1f
-                        scaleY = if (clampedP >= 0.95f) artScale else 1f
+                        scaleX = 1f
+                        scaleY = 1f
                         alpha = if (clampedP >= 0.95f) artAlpha.coerceIn(0f, 1f) else 1f
                         compositingStrategy = CompositingStrategy.Offscreen
                     }
@@ -337,7 +338,6 @@ fun FluidAlbumDetailOverlay(
                             )
                         }
                     }
-                    .then(if (artBlur > 0.dp && clampedP >= 0.95f && artAlpha > 0.01f) Modifier.blur(artBlur) else Modifier)
                     .clip(
                         RoundedCornerShape(
                             bottomStart = with(density) { curArtCorner.toDp() },
@@ -352,6 +352,7 @@ fun FluidAlbumDetailOverlay(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .then(if (artBlur > 0.dp && clampedP >= 0.95f && artAlpha > 0.01f) Modifier.blur(artBlur) else Modifier)
                         .graphicsLayer {
                             if (clampedP >= 0.9f) {
                                 scaleX = bannerScale

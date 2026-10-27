@@ -4,23 +4,24 @@ import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.View
 
-/** Consistent, OS-native haptic vocabulary for the player. */
+/** Consistent, soft OS-native haptic vocabulary for the player. */
 object Haptics {
     /** Light tap – play/pause, skip buttons, toggles. */
     fun click(view: View) {
-        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        val c = if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.SEGMENT_TICK else HapticFeedbackConstants.CLOCK_TICK
+        view.performHapticFeedback(c)
     }
 
     /** Tiny detent – reordering, crossing a swipe threshold. */
     fun tick(view: View) {
-        val c = if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.SEGMENT_TICK else HapticFeedbackConstants.CLOCK_TICK
+        val c = if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.SEGMENT_FREQUENT_TICK else HapticFeedbackConstants.CLOCK_TICK
         view.performHapticFeedback(c)
     }
 
     /** Light slider tick for continuous seekbar scrubbing. */
     fun lightScrubTick(view: View) {
         val c = if (Build.VERSION.SDK_INT >= 34) {
-            HapticFeedbackConstants.SEGMENT_TICK
+            HapticFeedbackConstants.SEGMENT_FREQUENT_TICK
         } else {
             HapticFeedbackConstants.CLOCK_TICK
         }
@@ -29,19 +30,19 @@ object Haptics {
 
     /** Swipe crossed its action threshold. */
     fun threshold(view: View) {
-        val c = if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.GESTURE_THRESHOLD_ACTIVATE else HapticFeedbackConstants.KEYBOARD_TAP
+        val c = if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.SEGMENT_TICK else HapticFeedbackConstants.CLOCK_TICK
         view.performHapticFeedback(c)
     }
 
-    /** Positive completion – song changed by swipe, added to Play Next, liked. */
+    /** Gentle positive feedback – liked, added to playlist, actions. */
     fun confirm(view: View) {
-        val c = if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.LONG_PRESS
+        val c = if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.SEGMENT_TICK else HapticFeedbackConstants.CLOCK_TICK
         view.performHapticFeedback(c)
     }
 
-    /** Destructive completion – removed from queue. */
+    /** Soft notification. */
     fun reject(view: View) {
-        val c = if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS
+        val c = if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.SEGMENT_TICK else HapticFeedbackConstants.KEYBOARD_TAP
         view.performHapticFeedback(c)
     }
 }
