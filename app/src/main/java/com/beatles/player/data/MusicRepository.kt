@@ -225,14 +225,17 @@ object MusicRepository {
                             }
                             val highRes = getBestThumbnailUrl(item.thumbnails.firstOrNull()?.url ?: "")
                             val cleanTitle = cleanSongTitle(item.name)
+                            val cleanArtist = item.uploaderName.replace(" - Topic", "").trim()
+                            val motionVideo = getCuratedMotionArtwork(cleanTitle, cleanArtist, "")
                             val song = Song(
                                 item.url,
                                 cleanTitle,
-                                item.uploaderName.replace(" - Topic", "").trim(),
+                                cleanArtist,
                                 "Single",
                                 highRes,
                                 item.duration.toInt(),
-                                isAlbum = false
+                                isAlbum = false,
+                                videoUrl = motionVideo
                             )
 
                             list.add(song)
@@ -627,6 +630,8 @@ object MusicRepository {
         }
     }
 
+    const val MOTION_ART_1989 = "android.resource://com.beatles.player/raw/motion_1989"
+
     fun getFeaturedAlbums(): List<Album> {
         return listOf(
             Album(
@@ -638,12 +643,13 @@ object MusicRepository {
                 releaseYear = "2023",
                 releaseDate = "Oct 27, 2023",
                 type = "Album",
+                videoUrl = MOTION_ART_1989,
                 songs = listOf(
-                    Song("ts_1", "Style (Taylor's Version)", "Taylor Swift", "1989 (Taylor's Version)", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg", 231),
-                    Song("ts_2", "Blank Space (Taylor's Version)", "Taylor Swift", "1989 (Taylor's Version)", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg", 231),
-                    Song("ts_3", "Shake It Off (Taylor's Version)", "Taylor Swift", "1989 (Taylor's Version)", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg", 219),
-                    Song("ts_4", "Bad Blood (Taylor's Version)", "Taylor Swift", "1989 (Taylor's Version)", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg", 211),
-                    Song("ts_5", "Wildest Dreams (Taylor's Version)", "Taylor Swift", "1989 (Taylor's Version)", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg", 220)
+                    Song("ts_1", "Style (Taylor's Version)", "Taylor Swift", "1989 (Taylor's Version)", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg", 231, videoUrl = MOTION_ART_1989),
+                    Song("ts_2", "Blank Space (Taylor's Version)", "Taylor Swift", "1989 (Taylor's Version)", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg", 231, videoUrl = MOTION_ART_1989),
+                    Song("ts_3", "Shake It Off (Taylor's Version)", "Taylor Swift", "1989 (Taylor's Version)", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg", 219, videoUrl = MOTION_ART_1989),
+                    Song("ts_4", "Bad Blood (Taylor's Version)", "Taylor Swift", "1989 (Taylor's Version)", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg", 211, videoUrl = MOTION_ART_1989),
+                    Song("ts_5", "Wildest Dreams (Taylor's Version)", "Taylor Swift", "1989 (Taylor's Version)", "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg", 220, videoUrl = MOTION_ART_1989)
                 )
             ),
             Album(
@@ -1082,7 +1088,8 @@ object MusicRepository {
                 artist = "Taylor Swift",
                 album = "1989 (Taylor's Version)",
                 coverUrl = "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/11/a6/80/11a680e6-2e48-08fa-5e87-3f18e838d31f/23UM1IM11868.rgb.jpg/1000x1000bb.jpg",
-                durationSeconds = 231
+                durationSeconds = 231,
+                videoUrl = MOTION_ART_1989
             ),
             Song(
                 id = "45cYwDMibGo",
@@ -1487,6 +1494,57 @@ object MusicRepository {
 
             fallback
         } catch (e: Exception) { fallback }
+    }
+
+    fun getCuratedMotionArtwork(title: String, artist: String, album: String = ""): String? {
+        val t = title.lowercase()
+        val a = artist.lowercase()
+        val alb = album.lowercase()
+        if (a.contains("taylor swift") && (alb.contains("1989") || t.contains("style") || t.contains("blank space") || t.contains("shake it off") || t.contains("bad blood") || t.contains("wildest dreams"))) {
+            return MOTION_ART_1989
+        }
+        return null
+    }
+
+    private val motionArtworkCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    suspend fun resolveMotionArtwork(title: String, artist: String, album: String = ""): String? = withContext(Dispatchers.IO) {
+        val curated = getCuratedMotionArtwork(title, artist, album)
+        if (curated != null) return@withContext curated
+
+        val cleanTitle = title.replace(Regex("(?i)\\[.*?\\]|\\(.*?\\)"), "").replace(Regex("(?i)ft\\..*|feat\\..*|\\|.*|-.*"), "").trim()
+        val cleanArtist = artist.replace(" - Topic", "").trim()
+        val cacheKey = "$cleanTitle|$cleanArtist".lowercase()
+        motionArtworkCache[cacheKey]?.let { return@withContext it }
+
+        try {
+            val q = URLEncoder.encode("$cleanTitle $cleanArtist", "UTF-8")
+            val req = Request.Builder().url("https://itunes.apple.com/search?term=$q&media=music&entity=song&limit=1").build()
+            val resp = httpClient.newCall(req).execute()
+            val body = resp.body?.string() ?: return@withContext null
+            val json = gson.fromJson(body, JsonObject::class.java)
+            val results = json.getAsJsonArray("results")
+            if (results != null && results.size() > 0) {
+                val collectionUrl = results[0].asJsonObject.get("collectionViewUrl")?.asString 
+                    ?: results[0].asJsonObject.get("trackViewUrl")?.asString
+                if (!collectionUrl.isNullOrEmpty()) {
+                    val pageReq = Request.Builder()
+                        .url(collectionUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                        .build()
+                    val pageResp = httpClient.newCall(pageReq).execute()
+                    val pageHtml = pageResp.body?.string()
+                    if (pageHtml != null) {
+                        val mvodMatch = Regex("https://mvod\\.itunes\\.apple\\.com/[^\"]+\\.m3u8").find(pageHtml)?.value
+                        if (!mvodMatch.isNullOrEmpty()) {
+                            motionArtworkCache[cacheKey] = mvodMatch
+                            return@withContext mvodMatch
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        null
     }
 
     suspend fun getSuggestedArtists(artistName: String): List<Pair<String, String>> = withContext(Dispatchers.IO) {

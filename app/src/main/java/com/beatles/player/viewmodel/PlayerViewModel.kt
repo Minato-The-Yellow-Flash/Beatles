@@ -663,17 +663,30 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setAdminTab(tab: AdminTab) { _uiState.update { it.copy(adminTab = tab) } }
 
     fun setSelectedAlbum(album: Album?, bounds: Rect? = null) {
-        _uiState.update { it.copy(selectedAlbum = album, selectedAlbumBounds = bounds) }
-        if (album != null && album.songs.isEmpty()) {
+        val initialVideo = album?.let { it.videoUrl ?: repo.getCuratedMotionArtwork(it.title, it.artist, it.title) }
+        val effectiveAlbum = if (album != null && initialVideo != null && album.videoUrl == null) album.copy(videoUrl = initialVideo) else album
+        _uiState.update { it.copy(selectedAlbum = effectiveAlbum, selectedAlbumBounds = bounds) }
+        if (album != null) {
             viewModelScope.launch {
-                val resolved = try {
-                    repo.lookupAlbumById(album.id) ?: repo.searchOriginalAlbum("${album.title} ${album.artist}")
-                } catch (_: Exception) { null }
-                if (resolved != null && resolved.songs.isNotEmpty()) {
-                    val fullAlbum = album.copy(songs = resolved.songs)
+                val motionVideo = effectiveAlbum?.videoUrl ?: repo.resolveMotionArtwork(album.title, album.artist, album.title)
+                if (album.songs.isEmpty()) {
+                    val resolved = try {
+                        repo.lookupAlbumById(album.id) ?: repo.searchOriginalAlbum("${album.title} ${album.artist}")
+                    } catch (_: Exception) { null }
+                    if (resolved != null && resolved.songs.isNotEmpty()) {
+                        val fullAlbum = album.copy(songs = resolved.songs, videoUrl = motionVideo ?: album.videoUrl)
+                        _uiState.update { st ->
+                            if (st.selectedAlbum?.id == album.id) {
+                                st.copy(selectedAlbum = fullAlbum)
+                            } else st
+                        }
+                        return@launch
+                    }
+                }
+                if (motionVideo != null && effectiveAlbum?.videoUrl != motionVideo) {
                     _uiState.update { st ->
                         if (st.selectedAlbum?.id == album.id) {
-                            st.copy(selectedAlbum = fullAlbum)
+                            st.copy(selectedAlbum = st.selectedAlbum?.copy(videoUrl = motionVideo))
                         } else st
                     }
                 }
@@ -1222,53 +1235,56 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             (_uiState.value.playlist.any { it.id == song.id } || pl.any { it.id == song.id } || isAutoMix ||
              (_uiState.value.artistMixTarget != null && ArtistMixEngine.isArtistMatch(song, _uiState.value.artistMixTarget!!)))
 
+        val effectiveVideo = song.videoUrl ?: repo.getCuratedMotionArtwork(song.title, song.artist, song.album)
+        val readySong = if (effectiveVideo != null && song.videoUrl == null) song.copy(videoUrl = effectiveVideo) else song
+
         _uiState.update { it.copy(
-            currentSong = song, isPlaying = true, isExpanded = if (isAutoMix || keepExpandedState) it.isExpanded else true, isLoadingStream = true,
+            currentSong = readySong, isPlaying = true, isExpanded = if (isAutoMix || keepExpandedState) it.isExpanded else true, isLoadingStream = true,
             selectedSongBounds = sourceBounds,
             isArtistMixActive = isRetainingArtistMix,
             queueTitle = if (isRetainingArtistMix) it.queueTitle else null,
             artistMixTarget = if (isRetainingArtistMix) it.artistMixTarget else null,
-            playlist = pl, currentPosition = 0L, duration = song.durationSeconds * 1000L,
-            isFavorite = storage.isFavorite(getApplication(), song.id), lyrics = emptyList(), showLyrics = false
+            playlist = pl.map { s -> if (s.id == readySong.id) readySong else s }, currentPosition = 0L, duration = readySong.durationSeconds * 1000L,
+            isFavorite = storage.isFavorite(getApplication(), readySong.id), lyrics = emptyList(), showLyrics = false
         )}
-        com.beatles.player.player.PlaybackService.activeSong = song
+        com.beatles.player.player.PlaybackService.activeSong = readySong
         com.beatles.player.player.PlaybackService.activePlaylist = pl
-        storage.saveLastPlayedSong(getApplication(), song)
+        storage.saveLastPlayedSong(getApplication(), readySong)
         storage.saveLastPlayedPlaylist(getApplication(), pl)
-        storage.addToRecentlyPlayed(getApplication(), song)
-        sessionPlayedSongIds.add(song.id)
+        storage.addToRecentlyPlayed(getApplication(), readySong)
+        sessionPlayedSongIds.add(readySong.id)
         viewModelScope.launch {
             try {
                 AnalyticsManager.logEvent(
                     getApplication(),
                     "song_play",
-                    mapOf("title" to song.title, "artist" to song.artist, "genre" to song.genre)
+                    mapOf("title" to readySong.title, "artist" to readySong.artist, "genre" to readySong.genre)
                 )
             } catch (_: Exception) {}
         }
         _uiState.update { it.copy(recentlyPlayed = storage.getRecentlyPlayed(getApplication())) }
-        fetchLyrics(song)
+        fetchLyrics(readySong)
         
         activePlayJob?.cancel()
-        activeTargetSongId = song.id
+        activeTargetSongId = readySong.id
 
         activePlayJob = viewModelScope.launch {
             try {
-                val url = resolvePlayableUrl(song) ?: throw Exception("No playable source")
+                val url = resolvePlayableUrl(readySong) ?: throw Exception("No playable source")
 
-                if (activeTargetSongId != song.id) return@launch
+                if (activeTargetSongId != readySong.id) return@launch
 
                 if (isAutoMix) {
-                    player.playWithFadeIn(url, song, 1800L)
+                    player.playWithFadeIn(url, readySong, 1800L)
                 } else {
-                    player.play(url, song)
+                    player.play(url, readySong)
                 }
 
-                if (activeTargetSongId != song.id) return@launch
+                if (activeTargetSongId != readySong.id) return@launch
 
                 _uiState.update { it.copy(isLoadingStream = false) }
-                triggerCandidatePrecomputation(song)
-                enhanceCoverArt(song)
+                triggerCandidatePrecomputation(readySong)
+                enhanceCoverArt(readySong)
                 
                 // Only fetch and append related songs if autoplay is enabled AND we are near the end of the current playlist
                 if (_uiState.value.autoPlayEnabled) {
@@ -1718,8 +1734,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private fun enhanceCoverArt(song: Song) {
         viewModelScope.launch(Dispatchers.IO) {
             val hqCover = repo.getHighResCover(song.title, song.artist, song.coverUrl)
-            if (hqCover != song.coverUrl) {
-                val updatedSong = song.copy(coverUrl = hqCover)
+            val motionVideo = song.videoUrl ?: repo.resolveMotionArtwork(song.title, song.artist, song.album)
+            val hasNewCover = hqCover.isNotBlank() && hqCover != song.coverUrl
+            val hasNewVideo = motionVideo != null && motionVideo != song.videoUrl
+            if (hasNewCover || hasNewVideo) {
+                val updatedSong = song.copy(
+                    coverUrl = if (hasNewCover) hqCover else song.coverUrl,
+                    videoUrl = if (hasNewVideo) motionVideo else song.videoUrl
+                )
                 storage.addToRecentlyPlayed(getApplication(), updatedSong)
                 withContext(Dispatchers.Main) {
                     _uiState.update { 

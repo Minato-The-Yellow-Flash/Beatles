@@ -48,6 +48,12 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
+import android.view.TextureView
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -373,6 +379,61 @@ fun FluidAlbumDetailOverlay(
                             contentDescription = alb.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
+                        )
+                    }
+
+                    // Motion Video Layer for Album Detail View (Preferred first when available)
+                    val albumVideoUrl = alb.videoUrl ?: alb.songs.firstOrNull()?.videoUrl
+                    if (!albumVideoUrl.isNullOrBlank()) {
+                        val ctx = LocalContext.current
+                        var isAlbumVideoReady by remember(albumVideoUrl) { mutableStateOf(false) }
+                        val exoPlayer = remember(albumVideoUrl) {
+                            val uri = when {
+                                albumVideoUrl.startsWith("raw://") -> {
+                                    val resName = albumVideoUrl.removePrefix("raw://")
+                                    val resId = ctx.resources.getIdentifier(resName, "raw", ctx.packageName)
+                                    if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
+                                    else android.net.Uri.parse("android.resource://${ctx.packageName}/raw/$resName")
+                                }
+                                albumVideoUrl.startsWith("android.resource://") -> {
+                                    val parts = albumVideoUrl.split("/")
+                                    val resName = parts.lastOrNull() ?: ""
+                                    val resId = if (resName.isNotEmpty()) ctx.resources.getIdentifier(resName, "raw", ctx.packageName) else 0
+                                    if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
+                                    else android.net.Uri.parse(albumVideoUrl)
+                                }
+                                else -> android.net.Uri.parse(albumVideoUrl)
+                            }
+                            ExoPlayer.Builder(ctx).build().apply {
+                                setMediaItem(MediaItem.fromUri(uri))
+                                repeatMode = Player.REPEAT_MODE_ALL
+                                volume = 0f
+                                addListener(object : Player.Listener {
+                                    override fun onRenderedFirstFrame() { isAlbumVideoReady = true }
+                                    override fun onPlaybackStateChanged(state: Int) {
+                                        if (state == Player.STATE_READY) isAlbumVideoReady = true
+                                    }
+                                })
+                                prepare()
+                                playWhenReady = true
+                            }
+                        }
+                        DisposableEffect(exoPlayer) {
+                            onDispose { exoPlayer.release() }
+                        }
+                        val albumVideoAlpha by animateFloatAsState(
+                            targetValue = if (isAlbumVideoReady) 1f else 0f,
+                            animationSpec = tween(350),
+                            label = "albumVideoAlpha"
+                        )
+                        AndroidView(
+                            factory = { c ->
+                                TextureView(c).apply { exoPlayer.setVideoTextureView(this) }
+                            },
+                            update = { tv -> exoPlayer.setVideoTextureView(tv) },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { alpha = albumVideoAlpha }
                         )
                     }
                 }

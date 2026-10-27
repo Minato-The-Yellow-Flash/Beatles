@@ -179,13 +179,69 @@ fun AppleMusicLiveCover(
             .fillMaxSize()
             .clip(RoundedCornerShape(cornerRadius))
     ) {
+        // 1. Base Layer: High-Res Static Artwork (always rendered first as instant backdrop)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = currentScale
+                    scaleY = currentScale
+                    translationX = currentDriftX
+                    translationY = currentDriftY
+                }
+        ) {
+            if (coverUrl.isNotBlank()) {
+                AsyncImage(
+                    model = coverUrl,
+                    contentDescription = song.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                AppleMusicGradientCover(
+                    title = song.title,
+                    artist = song.artist,
+                    cornerRadius = cornerRadius,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+
+        // 2. Motion Video Layer (First Preference: smoothly crossfades over image when videoUrl is present)
         val videoUrl = song.videoUrl
         if (!videoUrl.isNullOrBlank()) {
+            var isVideoReady by remember(videoUrl) { mutableStateOf(false) }
             val exoPlayer = remember(videoUrl) {
+                val uri = when {
+                    videoUrl.startsWith("raw://") -> {
+                        val resName = videoUrl.removePrefix("raw://")
+                        val resId = context.resources.getIdentifier(resName, "raw", context.packageName)
+                        if (resId != 0) android.net.Uri.parse("android.resource://${context.packageName}/$resId")
+                        else android.net.Uri.parse("android.resource://${context.packageName}/raw/$resName")
+                    }
+                    videoUrl.startsWith("android.resource://") -> {
+                        val parts = videoUrl.split("/")
+                        val resName = parts.lastOrNull() ?: ""
+                        val resId = if (resName.isNotEmpty()) context.resources.getIdentifier(resName, "raw", context.packageName) else 0
+                        if (resId != 0) android.net.Uri.parse("android.resource://${context.packageName}/$resId")
+                        else android.net.Uri.parse(videoUrl)
+                    }
+                    else -> android.net.Uri.parse(videoUrl)
+                }
                 ExoPlayer.Builder(context).build().apply {
-                    setMediaItem(MediaItem.fromUri(videoUrl))
+                    setMediaItem(MediaItem.fromUri(uri))
                     repeatMode = Player.REPEAT_MODE_ALL
                     volume = 0f
+                    addListener(object : Player.Listener {
+                        override fun onRenderedFirstFrame() {
+                            isVideoReady = true
+                        }
+                        override fun onPlaybackStateChanged(state: Int) {
+                            if (state == Player.STATE_READY) {
+                                isVideoReady = true
+                            }
+                        }
+                    })
                     prepare()
                     playWhenReady = isPlaying
                 }
@@ -198,48 +254,30 @@ fun AppleMusicLiveCover(
                     exoPlayer.release()
                 }
             }
+            val videoAlpha by animateFloatAsState(
+                targetValue = if (isVideoReady) 1f else 0f,
+                animationSpec = tween(350, easing = LinearEasing),
+                label = "videoAlpha"
+            )
             AndroidView(
                 factory = { ctx ->
                     TextureView(ctx).apply {
                         exoPlayer.setVideoTextureView(this)
                     }
                 },
+                update = { textureView ->
+                    exoPlayer.setVideoTextureView(textureView)
+                },
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
+                        alpha = videoAlpha
                         scaleX = currentScale
                         scaleY = currentScale
                         translationX = currentDriftX
                         translationY = currentDriftY
                     }
             )
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = currentScale
-                        scaleY = currentScale
-                        translationX = currentDriftX
-                        translationY = currentDriftY
-                    }
-            ) {
-                if (coverUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = coverUrl,
-                        contentDescription = song.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    AppleMusicGradientCover(
-                        title = song.title,
-                        artist = song.artist,
-                        cornerRadius = cornerRadius,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
         }
 
         // Apple Music Dynamic specular light reflection sheen
