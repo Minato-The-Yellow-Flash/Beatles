@@ -47,6 +47,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
+import android.view.TextureView
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import com.beatles.player.ui.components.applyTopCenterCropMatrix
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -330,105 +340,7 @@ fun ExploreScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Moods & Activities Rich Recommendations Section (BitChord Sleeve Cards)
-            item {
-                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Text(
-                        text = "Moods & Activities",
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color.White else Color(0xFF141416),
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        contentPadding = PaddingValues(bottom = 16.dp)
-                    ) {
-                        items(MOODS_AND_ACTIVITIES) { mood ->
-                            val moodInteraction = remember { MutableInteractionSource() }
-                            var moodCardBounds by remember { mutableStateOf<Rect?>(null) }
-                            val cardShape = RoundedCornerShape(18.dp)
-                            Box(
-                                modifier = Modifier
-                                    .width(160.dp)
-                                    .height(92.dp)
-                                    .liquidPress(moodInteraction)
-                                    .shadow(4.dp, cardShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
-                                    .clip(cardShape)
-                                    .onGloballyPositioned { moodCardBounds = it.boundsInRoot() }
-                                    .clickable(interactionSource = moodInteraction, indication = null) {
-                                        if (onSelectGenre != null) {
-                                            onSelectGenre(mood.title, moodCardBounds)
-                                        } else {
-                                            selectedGenreOriginBounds = moodCardBounds
-                                            selectedGenreForDetail = mood.title
-                                        }
-                                    }
-                            ) {
-                                // BitChord Signature Sleeve: 28% solid color stripe + 72% soft duotone gradient fill
-                                Row(modifier = Modifier.fillMaxSize()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxHeight()
-                                            .weight(0.28f)
-                                            .background(mood.color)
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxHeight()
-                                            .weight(0.72f)
-                                            .background(
-                                                Brush.horizontalGradient(
-                                                    listOf(mood.color.copy(alpha = 0.80f), mood.color.copy(alpha = 0.35f))
-                                                )
-                                            )
-                                    )
-                                }
-                                // Subtle top-to-bottom shade for sharp text contrast
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(
-                                            Brush.verticalGradient(
-                                                0f to Color.Black.copy(alpha = 0.35f),
-                                                0.65f to Color.Transparent
-                                            )
-                                        )
-                                )
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = mood.title,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
-                                        style = TextStyle(
-                                            shadow = Shadow(Color.Black.copy(alpha = 0.45f), offset = Offset(0f, 1f), blurRadius = 4f)
-                                        )
-                                    )
-                                    Text(
-                                        text = mood.subtitle,
-                                        color = Color.White.copy(alpha = 0.85f),
-                                        fontSize = 11.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                                // Restored dual-curve lens refraction
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .liquidGlassRim(cardShape, isDark = isDark)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+
 
             // All Genres 2-Column Grid
             item {
@@ -827,6 +739,14 @@ fun FluidGenreDetailOverlay(
         val artAlpha = (1f - (scrollOffset / 340f) * p).coerceIn(0f, 1f)
 
         var dragY by remember { mutableFloatStateOf(0f) }
+        val genreVideoUrl = remember(curGenre, genreTracks) {
+            genreTracks.firstOrNull { !it.videoUrl.isNullOrBlank() }?.videoUrl
+                ?: MusicRepository.getCuratedMotionArtwork(curGenre, curGenre, "")
+        }
+        val hasGenreVideo = !genreVideoUrl.isNullOrBlank()
+        var showAllSuggestions by remember { mutableStateOf(false) }
+        var showAllAlbums by remember { mutableStateOf(false) }
+
         val pageOpaqueBg = if (isDark) Color(0xFF0F0F12) else Color(0xFFF6F7F9)
 
         Box(modifier = Modifier.fillMaxSize()) {
@@ -882,26 +802,153 @@ fun FluidGenreDetailOverlay(
                     )
                 }
 
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(top = 44.dp, bottom = LocalDynamicBottomPadding.current + 28.dp)
-                        ) {
-                    // Album Page Hero Section: Centered 200dp Cover placeholder + Parallax & Blur
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = 0.dp, bottom = LocalDynamicBottomPadding.current + 28.dp)
+                ) {
+                    // Hero Section: Full-width live gradient motion video banner with DstIn fade
                     item {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(270.dp)
+                                .graphicsLayer {
+                                    alpha = (1f - (scrollOffset / 320f) * p).coerceIn(0f, 1f)
+                                    translationY = (-scrollOffset * 0.4f).coerceAtLeast(-200f) * p
+                                    compositingStrategy = CompositingStrategy.Offscreen
+                                }
+                                .drawWithContent {
+                                    drawContent()
+                                    drawRect(
+                                        brush = Brush.verticalGradient(
+                                            0.0f to Color.Black,
+                                            0.55f to Color.Black.copy(alpha = 0.90f),
+                                            0.80f to Color.Black.copy(alpha = 0.35f),
+                                            1.0f to Color.Transparent
+                                        ),
+                                        blendMode = BlendMode.DstIn
+                                    )
+                                }
                         ) {
-                            Spacer(modifier = Modifier.size(200.dp))
-                            Spacer(modifier = Modifier.height(20.dp))
+                            // Live breathing morphing gradient
+                            LiveMorphingGradientBackground(
+                                palette = palette,
+                                modifier = Modifier.fillMaxSize()
+                            )
+
+                            // Motion Video Layer if video artwork available
+                            if (hasGenreVideo) {
+                                val ctx = LocalContext.current
+                                var isGenreVideoReady by remember(genreVideoUrl) { mutableStateOf(false) }
+                                var gVideoWidth by remember(genreVideoUrl) { mutableFloatStateOf(1f) }
+                                var gVideoHeight by remember(genreVideoUrl) { mutableFloatStateOf(1f) }
+                                var gTvRef by remember(genreVideoUrl) { mutableStateOf<TextureView?>(null) }
+                                val genreExoPlayer = remember(genreVideoUrl) {
+                                    val uri = when {
+                                        genreVideoUrl!!.startsWith("raw://") -> {
+                                            val resName = genreVideoUrl.removePrefix("raw://")
+                                            val resId = ctx.resources.getIdentifier(resName, "raw", ctx.packageName)
+                                            if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
+                                            else android.net.Uri.parse("android.resource://${ctx.packageName}/raw/$resName")
+                                        }
+                                        genreVideoUrl.startsWith("android.resource://") -> {
+                                            val parts = genreVideoUrl.split("/")
+                                            val resName = parts.lastOrNull() ?: ""
+                                            val resId = if (resName.isNotEmpty()) ctx.resources.getIdentifier(resName, "raw", ctx.packageName) else 0
+                                            if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
+                                            else android.net.Uri.parse(genreVideoUrl)
+                                        }
+                                        else -> android.net.Uri.parse(genreVideoUrl)
+                                    }
+                                    val bandwidthMeter = androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.Builder(ctx).setInitialBitrateEstimate(50_000_000L).build()
+                                    val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                                        com.beatles.player.player.BeatlesMediaCache.createDataSourceFactory(ctx)
+                                    )
+                                    val fastLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                                        .setBufferDurationsMs(250, 4000, 100, 200)
+                                        .setPrioritizeTimeOverSizeThresholds(true)
+                                        .build()
+                                    ExoPlayer.Builder(ctx)
+                                        .setBandwidthMeter(bandwidthMeter)
+                                        .setMediaSourceFactory(mediaSourceFactory)
+                                        .setLoadControl(fastLoadControl)
+                                        .build().apply {
+                                            setMediaItem(MediaItem.fromUri(uri))
+                                            repeatMode = Player.REPEAT_MODE_ALL
+                                            volume = 0f
+                                            addListener(object : Player.Listener {
+                                                override fun onRenderedFirstFrame() {
+                                                    isGenreVideoReady = true
+                                                    gTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, gVideoWidth, gVideoHeight) } }
+                                                }
+                                                override fun onPlaybackStateChanged(state: Int) {
+                                                    if (state == Player.STATE_READY) {
+                                                        isGenreVideoReady = true
+                                                        gTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, gVideoWidth, gVideoHeight) } }
+                                                    }
+                                                }
+                                                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                                    if (videoSize.width > 0 && videoSize.height > 0) {
+                                                        gVideoWidth = videoSize.width.toFloat()
+                                                        gVideoHeight = videoSize.height.toFloat()
+                                                        gTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, gVideoWidth, gVideoHeight) } }
+                                                    }
+                                                }
+                                            })
+                                            prepare()
+                                            playWhenReady = true
+                                        }
+                                }
+                                DisposableEffect(genreExoPlayer) {
+                                    onDispose { genreExoPlayer.release() }
+                                }
+                                val videoAlpha by animateFloatAsState(
+                                    targetValue = if (isGenreVideoReady) 0.85f else 0f,
+                                    animationSpec = tween(350),
+                                    label = "genreVideoAlpha"
+                                )
+                                AndroidView(
+                                    factory = { c ->
+                                        TextureView(c).apply {
+                                            gTvRef = this
+                                            genreExoPlayer.setVideoTextureView(this)
+                                            addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                                                if ((right - left) != (oldRight - oldLeft) || (bottom - top) != (oldBottom - oldTop)) {
+                                                    applyTopCenterCropMatrix(this, gVideoWidth, gVideoHeight)
+                                                }
+                                            }
+                                        }
+                                    },
+                                    update = { tv ->
+                                        gTvRef = tv
+                                        genreExoPlayer.setVideoTextureView(tv)
+                                        tv.post { applyTopCenterCropMatrix(tv, gVideoWidth, gVideoHeight) }
+                                    },
+                                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = videoAlpha }
+                                )
+                            }
+
+                            // Dark overlay for sharp text readability
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                Color.Transparent,
+                                                Color.Black.copy(alpha = 0.35f),
+                                                Color.Black.copy(alpha = 0.75f)
+                                            )
+                                        )
+                                    )
+                            )
+
+                            // Title & curated subtitle inside the banner
                             Column(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .graphicsLayer {
-                                        alpha = (1f - (scrollOffset / 320f) * p).coerceIn(0f, 1f)
-                                        translationY = (-scrollOffset * 0.4f).coerceAtLeast(-200f) * p
-                                    },
+                                    .align(Alignment.BottomCenter)
+                                    .padding(horizontal = 24.dp, vertical = 20.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
@@ -922,7 +969,7 @@ fun FluidGenreDetailOverlay(
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
                                     if (isGenreLoading) "Fetching curated tracks..." else "${genreTracks.size} tracks curated for you",
-                                    color = Color.White.copy(alpha = 0.70f),
+                                    color = Color.White.copy(alpha = 0.80f),
                                     fontSize = 13.sp,
                                     textAlign = TextAlign.Center
                                 )
@@ -1034,17 +1081,33 @@ fun FluidGenreDetailOverlay(
                     }
 
                     // BitChord-Style Shelf 1: Top Suggestions
-                    val topSuggestions = genreTracks.take(8)
+                    val topSuggestions = if (showAllSuggestions) genreTracks.take(30) else genreTracks.take(8)
                     if (topSuggestions.isNotEmpty()) {
                         item {
                             Column(modifier = Modifier.padding(bottom = 22.dp)) {
-                                Text(
-                                    text = "Top Suggestions",
-                                    fontSize = 19.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
-                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 20.dp, vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Top Suggestions",
+                                        fontSize = 19.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    if (genreTracks.size > 8) {
+                                        Text(
+                                            text = if (showAllSuggestions) "Show Less" else "Show More",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = AccentRed,
+                                            modifier = Modifier.clickable { showAllSuggestions = !showAllSuggestions }
+                                        )
+                                    }
+                                }
                                 Text(
                                     text = "Handpicked songs & mixes for $curGenre",
                                     fontSize = 12.sp,
@@ -1125,18 +1188,36 @@ fun FluidGenreDetailOverlay(
                         alb.genre.contains(curGenre, ignoreCase = true) ||
                         alb.title.contains(curGenre, ignoreCase = true) ||
                         alb.artist.contains(curGenre, ignoreCase = true)
-                    }.let { if (it.isNotEmpty()) it else state.albums.take(6) }
+                    }.let { if (it.isNotEmpty()) it else state.albums.take(12) }
 
-                    if (matchingAlbums.isNotEmpty()) {
+                    val displayedAlbums = if (showAllAlbums) matchingAlbums else matchingAlbums.take(6)
+
+                    if (displayedAlbums.isNotEmpty()) {
                         item {
                             Column(modifier = Modifier.padding(bottom = 22.dp)) {
-                                Text(
-                                    text = "Popular Albums",
-                                    fontSize = 19.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
-                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 20.dp, vertical = 2.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Popular Albums",
+                                        fontSize = 19.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    if (matchingAlbums.size > 6) {
+                                        Text(
+                                            text = if (showAllAlbums) "Show Less" else "Show More",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = AccentRed,
+                                            modifier = Modifier.clickable { showAllAlbums = !showAllAlbums }
+                                        )
+                                    }
+                                }
                                 Text(
                                     text = "Full records & sets curated in $curGenre",
                                     fontSize = 12.sp,
@@ -1147,7 +1228,7 @@ fun FluidGenreDetailOverlay(
                                     contentPadding = PaddingValues(horizontal = 20.dp),
                                     horizontalArrangement = Arrangement.spacedBy(14.dp)
                                 ) {
-                                    items(matchingAlbums) { album ->
+                                    items(displayedAlbums) { album ->
                                         val albInteraction = remember { MutableInteractionSource() }
                                         var albBounds by remember { mutableStateOf<Rect?>(null) }
                                         Column(

@@ -490,8 +490,8 @@ class AutoMixEngine(
             if (!isPlaying && !isReadyOrBuffering) {
                 logTransition("Watchdog rescue: secondary deck stalled after 4.5s, recovering gracefully")
                 withContext(Dispatchers.Main.immediate) {
-                    onWatchdogRecover?.invoke(incomingSong)
                     abortTransition()
+                    onWatchdogRecover?.invoke(incomingSong)
                 }
             }
         }

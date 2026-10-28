@@ -101,11 +101,7 @@ class AudioPlayerManager(private val context: Context) {
                     if (state != lastPlaybackState) {
                         lastPlaybackState = state
                         if (state == Player.STATE_ENDED) {
-                            val pos = p?.currentPosition ?: 0L
-                            val dur = p?.duration ?: 0L
-                            if (dur <= 0L || (dur - pos <= 4000L)) {
-                                onSongEnded?.invoke()
-                            }
+                            onSongEnded?.invoke()
                         }
                     }
                     val pos = p?.currentPosition ?: 0L

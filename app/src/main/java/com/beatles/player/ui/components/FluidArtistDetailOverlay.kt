@@ -1,5 +1,12 @@
 package com.beatles.player.ui.components
 
+import android.view.TextureView
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
@@ -227,6 +234,12 @@ fun FluidArtistDetailOverlay(
             com.beatles.player.data.MusicRepository.getHighestQualityCover(raw)
         }
 
+        val artistVideoUrl = remember(curArtist, artistTracks) {
+            MusicRepository.getCuratedMotionArtwork(curArtist, curArtist, "")
+                ?: artistTracks.firstOrNull { !it.videoUrl.isNullOrBlank() }?.videoUrl
+        }
+        val hasArtistVideo = !artistVideoUrl.isNullOrBlank()
+
         val targetArtworkSize = 200.dp
         val targetArtworkSizePx = with(density) { targetArtworkSize.toPx() }
         val screenWpx = with(density) { config.screenWidthDp.dp.toPx() }.coerceAtLeast(100f)
@@ -354,11 +367,11 @@ fun FluidArtistDetailOverlay(
                         .graphicsLayer { alpha = 0.55f }
                 )
 
-                // 2. Parallax Motion Banner at top
+                // 2. Parallax Motion Video Banner at top
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(340.dp)
+                            .height(350.dp)
                             .pointerInput(Unit) {
                                 detectVerticalDragGestures(
                                     onDragEnd = {
@@ -379,31 +392,127 @@ fun FluidArtistDetailOverlay(
                                 drawRect(
                                     brush = Brush.verticalGradient(
                                         0.0f to Color.Black,
-                                        0.65f to Color.Black.copy(alpha = 0.80f),
+                                        0.60f to Color.Black.copy(alpha = 0.90f),
+                                        0.80f to Color.Black.copy(alpha = 0.40f),
                                         1.0f to Color.Transparent
                                     ),
                                     blendMode = BlendMode.DstIn
                                 )
                             }
                     ) {
+                        // Crisp artist high-resolution cover
                         AsyncImage(
                             model = artistImage,
-                            contentDescription = null,
+                            contentDescription = curArtist,
                             contentScale = ContentScale.Crop,
+                            alignment = Alignment.TopCenter,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .scale(bannerScale)
                                 .offset { IntOffset(0, bannerShiftY.roundToInt()) }
-                                .blur(20.dp)
                         )
+
+                        // Motion Video Layer: Autoplays loop seamlessly
+                        if (hasArtistVideo) {
+                            val ctx = LocalContext.current
+                            var isArtistVideoReady by remember(artistVideoUrl) { mutableStateOf(false) }
+                            var aVideoWidth by remember(artistVideoUrl) { mutableFloatStateOf(1f) }
+                            var aVideoHeight by remember(artistVideoUrl) { mutableFloatStateOf(1f) }
+                            var aTvRef by remember(artistVideoUrl) { mutableStateOf<TextureView?>(null) }
+                            val artistExoPlayer = remember(artistVideoUrl) {
+                                val uri = when {
+                                    artistVideoUrl!!.startsWith("raw://") -> {
+                                        val resName = artistVideoUrl.removePrefix("raw://")
+                                        val resId = ctx.resources.getIdentifier(resName, "raw", ctx.packageName)
+                                        if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
+                                        else android.net.Uri.parse("android.resource://${ctx.packageName}/raw/$resName")
+                                    }
+                                    artistVideoUrl.startsWith("android.resource://") -> {
+                                        val parts = artistVideoUrl.split("/")
+                                        val resName = parts.lastOrNull() ?: ""
+                                        val resId = if (resName.isNotEmpty()) ctx.resources.getIdentifier(resName, "raw", ctx.packageName) else 0
+                                        if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
+                                        else android.net.Uri.parse(artistVideoUrl)
+                                    }
+                                    else -> android.net.Uri.parse(artistVideoUrl)
+                                }
+                                val bandwidthMeter = androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.Builder(ctx).setInitialBitrateEstimate(50_000_000L).build()
+                                val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                                    com.beatles.player.player.BeatlesMediaCache.createDataSourceFactory(ctx)
+                                )
+                                val fastLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                                    .setBufferDurationsMs(250, 4000, 100, 200)
+                                    .setPrioritizeTimeOverSizeThresholds(true)
+                                    .build()
+                                ExoPlayer.Builder(ctx)
+                                    .setBandwidthMeter(bandwidthMeter)
+                                    .setMediaSourceFactory(mediaSourceFactory)
+                                    .setLoadControl(fastLoadControl)
+                                    .build().apply {
+                                        setMediaItem(MediaItem.fromUri(uri))
+                                        repeatMode = Player.REPEAT_MODE_ALL
+                                        volume = 0f
+                                        addListener(object : Player.Listener {
+                                            override fun onRenderedFirstFrame() {
+                                                isArtistVideoReady = true
+                                                aTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, aVideoWidth, aVideoHeight) } }
+                                            }
+                                            override fun onPlaybackStateChanged(state: Int) {
+                                                if (state == Player.STATE_READY) {
+                                                    isArtistVideoReady = true
+                                                    aTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, aVideoWidth, aVideoHeight) } }
+                                                }
+                                            }
+                                            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                                if (videoSize.width > 0 && videoSize.height > 0) {
+                                                    aVideoWidth = videoSize.width.toFloat()
+                                                    aVideoHeight = videoSize.height.toFloat()
+                                                    aTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, aVideoWidth, aVideoHeight) } }
+                                                }
+                                            }
+                                        })
+                                        prepare()
+                                        playWhenReady = true
+                                    }
+                            }
+                            DisposableEffect(artistExoPlayer) {
+                                onDispose { artistExoPlayer.release() }
+                            }
+                            val artistVideoAlpha by animateFloatAsState(
+                                targetValue = if (isArtistVideoReady) 1f else 0f,
+                                animationSpec = tween(350),
+                                label = "artistVideoAlpha"
+                            )
+                            AndroidView(
+                                factory = { c ->
+                                    TextureView(c).apply {
+                                        aTvRef = this
+                                        artistExoPlayer.setVideoTextureView(this)
+                                        addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                                            if ((right - left) != (oldRight - oldLeft) || (bottom - top) != (oldBottom - oldTop)) {
+                                                applyTopCenterCropMatrix(this, aVideoWidth, aVideoHeight)
+                                            }
+                                        }
+                                    }
+                                },
+                                update = { tv ->
+                                    aTvRef = tv
+                                    artistExoPlayer.setVideoTextureView(tv)
+                                    tv.post { applyTopCenterCropMatrix(tv, aVideoWidth, aVideoHeight) }
+                                },
+                                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = artistVideoAlpha }
+                            )
+                        }
+
+                        // Gradient shade for text readability
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .background(
                                     Brush.verticalGradient(
                                         listOf(
-                                            Color.Black.copy(alpha = 0.30f),
-                                            Color.Black.copy(alpha = if (isDark) 0.85f else 0.60f)
+                                            Color.Black.copy(alpha = 0.20f),
+                                            Color.Black.copy(alpha = if (isDark) 0.85f else 0.55f)
                                         )
                                     )
                                 )
@@ -432,7 +541,7 @@ fun FluidArtistDetailOverlay(
                         modifier = Modifier
                             .fillMaxSize()
                             .nestedScroll(nestedScrollConnection),
-                        contentPadding = PaddingValues(top = targetArtworkSize + 110.dp, bottom = LocalDynamicBottomPadding.current + 32.dp)
+                        contentPadding = PaddingValues(top = 285.dp, bottom = LocalDynamicBottomPadding.current + 32.dp)
                     ) {
                         // Title & Metadata
                         item {
@@ -887,35 +996,34 @@ fun FluidArtistDetailOverlay(
                     }
             } // Closes Full-screen Sheet Box
 
-            // 5. Shared Morph Hero Artist Avatar: glides seamlessly from tapped origin card to centered hero position
-            val curArtLeft = origin.left + (targetLeftPx - origin.left) * smoothP
-            val curArtTop = origin.top + (targetTopPx + artTranslateY - origin.top) * smoothP + dragY
-            val curArtWidth = originCardWidth + (targetArtworkSizePx - originCardWidth) * smoothP
-            val curArtHeight = originCardHeight + (targetArtworkSizePx - originCardHeight) * smoothP
-            val curArtCorner = originCornerPx + (with(density) { 24.dp.toPx() } - originCornerPx) * smoothP
+            // 5. Shared Morph Hero: glides seamlessly from tapped origin card to top banner position
+            if (clampedP < 0.95f) {
+                val bannerHpx = with(density) { 350.dp.toPx() }
+                val curArtLeft = origin.left + (0f - origin.left) * smoothP
+                val curArtTop = origin.top + (0f - origin.top) * smoothP + dragY
+                val curArtWidth = originCardWidth + (screenWpx - originCardWidth) * smoothP
+                val curArtHeight = originCardHeight + (bannerHpx - originCardHeight) * smoothP
+                val curArtCorner = originCornerPx * (1f - smoothP)
+                val morphAlpha = (1f - clampedP * 1.2f).coerceIn(0f, 1f)
 
-            Box(
-                modifier = Modifier
-                    .offset { IntOffset(curArtLeft.roundToInt(), curArtTop.roundToInt()) }
-                    .size(
-                        width = with(density) { curArtWidth.toDp() },
-                        height = with(density) { curArtHeight.toDp() }
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(curArtLeft.roundToInt(), curArtTop.roundToInt()) }
+                        .size(
+                            width = with(density) { curArtWidth.toDp() },
+                            height = with(density) { curArtHeight.toDp() }
+                        )
+                        .graphicsLayer { alpha = morphAlpha }
+                        .clip(RoundedCornerShape(with(density) { curArtCorner.toDp() }))
+                        .shadow(elevation = (12.dp * clampedP).coerceAtLeast(0.dp), shape = RoundedCornerShape(with(density) { curArtCorner.toDp() }))
+                ) {
+                    AsyncImage(
+                        model = artistImage,
+                        contentDescription = curArtist,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
-                    .graphicsLayer {
-                        scaleX = if (clampedP >= 0.95f) artScale else 1f
-                        scaleY = if (clampedP >= 0.95f) artScale else 1f
-                        alpha = if (clampedP >= 0.95f) artAlpha.coerceIn(0.08f, 1f) else 1f
-                    }
-                    .then(if (artBlur > 0.dp && clampedP >= 0.95f) Modifier.blur(artBlur) else Modifier)
-                    .clip(RoundedCornerShape(with(density) { curArtCorner.toDp() }))
-                    .shadow(elevation = (12.dp * clampedP).coerceAtLeast(0.dp), shape = RoundedCornerShape(with(density) { curArtCorner.toDp() }))
-            ) {
-                AsyncImage(
-                    model = artistImage,
-                    contentDescription = curArtist,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+                }
             }
         }
     }

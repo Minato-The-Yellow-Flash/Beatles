@@ -3471,18 +3471,19 @@ fun NowPlayingThreeDotsMenu(
 ) {
     val miniMenuAnim by animateFloatAsState(
         targetValue = if (showMiniMenu) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
+        animationSpec = if (showMiniMenu) spring(dampingRatio = 0.82f, stiffness = 420f)
+                       else tween(durationMillis = 100, easing = androidx.compose.animation.core.LinearEasing),
         label = "miniMenuAnim"
     )
 
-    if (miniMenuAnim > 0.01f) {
+    if (showMiniMenu || miniMenuAnim > 0.05f) {
         val view = LocalView.current
         var newPlaylistName by remember { mutableStateOf("") }
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(500f)
-                .background(Color.Black.copy(alpha = 0.35f * miniMenuAnim))
+                .background(Color.Black.copy(alpha = if (showMiniMenu) 0.35f * miniMenuAnim else 0f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null

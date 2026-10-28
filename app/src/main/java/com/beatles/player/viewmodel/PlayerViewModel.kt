@@ -304,9 +304,19 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 val state = _uiState.value
                 val currentSong = state.currentSong
                 val isNotImmediatePostHandoffRepeat = (now - lastAutoMixHandoffTime >= 3_000L) || (currentSong != null && currentSong.id != lastHandoffSongId)
-                if (!autoMixEngine.isBusy && isNotImmediatePostHandoffRepeat && (now - lastSongEndedTime > 1500L)) {
-                    lastSongEndedTime = now
-                    playNext(isAutoMix = true)
+                if (isNotImmediatePostHandoffRepeat && (now - lastSongEndedTime > 1500L)) {
+                    if (autoMixEngine.isBusy) {
+                        viewModelScope.launch {
+                            delay(500)
+                            if (autoMixEngine.currentDeck?.isPlaying != true) {
+                                autoMixEngine.abortTransition()
+                                playNext(isAutoMix = true)
+                            }
+                        }
+                    } else {
+                        lastSongEndedTime = now
+                        playNext(isAutoMix = true)
+                    }
                 }
             }
         }
@@ -326,7 +336,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         autoMixEngine.urlResolver = { song -> resolvePlayableUrl(song) }
         autoMixEngine.onWatchdogRecover = { failedSong ->
             val now = System.currentTimeMillis()
-            if (!autoMixEngine.isBusy && (now - lastSongEndedTime > 1500L)) {
+            if (now - lastSongEndedTime > 1500L) {
                 lastSongEndedTime = now
                 android.util.Log.w("PlayerViewModel", "AutoMix watchdog recovered for ${failedSong.title}; advancing queue to prevent stop")
                 playNext(isAutoMix = true)
@@ -1900,6 +1910,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                         val updatedPl = currentPl + newTracks
                         _uiState.update { it.copy(playlist = updatedPl) }
                         playSong(newTracks.first(), updatedPl, isFromSearch = false, isAutoMix = isAutoMix, keepExpandedState = keepExpandedState)
+                    } else if (currentPl.isNotEmpty()) {
+                        // Loop back to the beginning of the queue so music never abruptly dies
+                        playSong(currentPl.first(), currentPl, isFromSearch = false, isAutoMix = isAutoMix, keepExpandedState = keepExpandedState)
                     } else {
                         // End of queue and no more related tracks found: stop playback cleanly
                         player.pause()

@@ -773,13 +773,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
                                                 Modifier.liquidGlass(
                                                     shape = RoundedCornerShape(pillCorner),
-                                                    surfaceTint = Color.White.copy(alpha = 0.10f)
+                                                    surfaceTint = if (isDark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.82f),
+                                                    showBorder = false
                                                 )
                                             } else {
                                                 Modifier.background(translucentPillBg)
                                             }
                                         )
-                                        .liquidGlassRim(RoundedCornerShape(pillCorner))
                                 ) {
                                     // Gesture detector for horizontal swipe to change track & tap to expand (R6)
                                     Box(
@@ -1037,7 +1037,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                     val isPlayerMorphing = playerProgress.value > 0.001f || state.isExpanded
                     val topMorphScale = (1f - morph).coerceIn(0f, 1f)
                     val topPlayerAlpha = if (isPlayerMorphing) 0f else (1f - combined * 2.5f).coerceIn(0f, 1f)
-                    if (hasSong && topMorphScale > 0.01f) {
+                    if (hasSong && state.currentTab != Tab.SEARCH && topMorphScale > 0.01f && topPlayerAlpha > 0.01f) {
                         val animatedTopHeight = 45.dp * topMorphScale
                         val animatedTopPad = 4.dp * topMorphScale
                         Box(
@@ -1235,11 +1235,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                             scaleY = squashY * holdScale
                                                         }
                                                         .clip(indicatorShape)
-                                                        .liquidGlass(
-                                                            shape = indicatorShape,
-                                                            surfaceTint = indicatorTint,
-                                                            showBorder = false
-                                                        )
+                                                        .background(indicatorTint, indicatorShape)
                                                 )
 
                                                 Row(

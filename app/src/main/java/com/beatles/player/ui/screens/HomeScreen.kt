@@ -444,17 +444,17 @@ fun HomeScreen(
             }
 
             // =========================================================================
-            // 1. FEATURED ALBUMS HERO BANNER (Top Section - Swipeable HorizontalPager, 350dp, Auto-Cycling)
+            // 1. FEATURED ALBUMS HERO BANNER (Top Section - Swipeable HorizontalPager, Compact, Auto-Cycling)
             // =========================================================================
             if (heroAlbumsList.isNotEmpty()) {
                 item(key = "hero_section_pager") {
                     val pagerState = rememberPagerState(pageCount = { heroAlbumsList.size })
 
-                    // Automatically cycle every 14 seconds when user is idle
+                    // Automatically cycle every 3.5 seconds when user is idle
                     LaunchedEffect(pagerState, heroAlbumsList.size) {
                         if (heroAlbumsList.size > 1) {
                             while (isActive) {
-                                delay(14_000L)
+                                delay(3_500L)
                                 if (!pagerState.isScrollInProgress) {
                                     val nextPage = (pagerState.currentPage + 1) % heroAlbumsList.size
                                     pagerState.animateScrollToPage(
@@ -471,7 +471,7 @@ fun HomeScreen(
                             state = pagerState,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(350.dp),
+                                .height(280.dp),
                             pageSpacing = 12.dp,
                             contentPadding = PaddingValues(horizontal = 16.dp)
                         ) { page ->
@@ -528,7 +528,7 @@ fun HomeScreen(
                                     )
                                 }
 
-                                // Frosted badge
+                                // Frosted badge (Top-Left)
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.TopStart)
@@ -537,6 +537,36 @@ fun HomeScreen(
                                         .padding(horizontal = 12.dp, vertical = 5.dp)
                                 ) {
                                     Text("FEATURED ALBUM", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                }
+
+                                // Page indicator dots inside the album art card (Top-Right opposite the badge)
+                                if (heroAlbumsList.size > 1) {
+                                    Row(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(14.dp)
+                                            .background(Color.Black.copy(alpha = 0.40f), RoundedCornerShape(50))
+                                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        for (i in heroAlbumsList.indices) {
+                                            val isCurrent = pagerState.currentPage == i
+                                            val dotWidth by animateDpAsState(
+                                                targetValue = if (isCurrent) 16.dp else 5.dp,
+                                                animationSpec = tween(300),
+                                                label = "dotWidth"
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .padding(horizontal = 2.dp)
+                                                    .height(4.dp)
+                                                    .width(dotWidth)
+                                                    .clip(RoundedCornerShape(2.dp))
+                                                    .background(if (isCurrent) Color.White else Color.White.copy(alpha = 0.35f))
+                                            )
+                                        }
+                                    }
                                 }
 
                                 Column(
@@ -624,35 +654,6 @@ fun HomeScreen(
                                             }
                                         }
                                     }
-                                }
-                            }
-                        }
-
-                        // Page indicator dots
-                        if (heroAlbumsList.size > 1) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                for (i in heroAlbumsList.indices) {
-                                    val isCurrent = pagerState.currentPage == i
-                                    val dotWidth by animateDpAsState(
-                                        targetValue = if (isCurrent) 20.dp else 6.dp,
-                                        animationSpec = tween(300),
-                                        label = "dotWidth"
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(horizontal = 3.dp)
-                                            .height(5.dp)
-                                            .width(dotWidth)
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(if (isCurrent) AccentRed else (if (isDark) Color.White.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.20f)))
-                                    )
                                 }
                             }
                         }
@@ -1043,185 +1044,7 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(28.dp))
             }
 
-            // =========================================================================
-            // 4. ADAPTIVE ARTIST SPOTLIGHT PLAYLIST CARD (4th Section)
-            // =========================================================================
-            item(key = "spotlight_artist_section") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .shadow(4.dp, RoundedCornerShape(22.dp), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(
-                            Brush.linearGradient(
-                                if (isDark) listOf(Color(0xFF261828), Color(0xFF191823), Color(0xFF141416))
-                                else listOf(Color(0xFFF3E7EC), Color(0xFFE9ECF5), Color(0xFFF6F7F9))
-                            )
-                        )
-                        .glassRefraction(22.dp, isDark = isDark)
-                        .padding(18.dp)
-                ) {
-                    Column {
-                        val isCurrentPlayingArtist = state.currentSong != null && state.currentSong?.artist?.isNotBlank() == true &&
-                            state.currentSong?.artist?.replace(" - Topic", "")?.trim()?.equals(spotlightArtist, ignoreCase = true) == true
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .shadow(2.dp, RoundedCornerShape(50), spotColor = AccentRed.copy(alpha = 0.35f))
-                                    .clip(RoundedCornerShape(50))
-                                    .background(AccentRed.copy(alpha = 0.18f))
-                                    .glassRefraction(50.dp, isDark = isDark)
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.GraphicEq, contentDescription = null, tint = AccentRed, modifier = Modifier.size(12.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        if (isCurrentPlayingArtist) "NOW PLAYING ARTIST SPOTLIGHT" else "ARTIST SPOTLIGHT",
-                                        color = AccentRed,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.sp
-                                    )
-                                }
-                            }
-                            Text(
-                                if (isCurrentPlayingArtist) "Playing: ${state.currentSong?.title}" else "Tailored to your taste",
-                                color = textMuted,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                modifier = Modifier.padding(start = 8.dp)
-                            )
-                        }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        var spotlightHeaderBounds by remember { mutableStateOf<Rect?>(null) }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onGloballyPositioned { spotlightHeaderBounds = it.boundsInRoot() }
-                                .clickable { onSelectArtist(spotlightArtist, spotlightHeaderBounds) },
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(CircleShape)
-                            ) {
-                                AppleMusicGradientCover(
-                                    title = spotlightArtist,
-                                    artist = "Spotlight",
-                                    modifier = Modifier.fillMaxSize(),
-                                    cornerRadius = 36.dp,
-                                    showLabel = false
-                                )
-                                if (spotlightArtistImage.isNotBlank() && spotlightArtistImage.startsWith("http")) {
-                                    AsyncImage(
-                                        model = spotlightArtistImage,
-                                        contentDescription = spotlightArtist,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    "$spotlightArtist Essentials",
-                                    color = textPrimary,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    "Dynamic mix updated from your listening style",
-                                    color = textSecondary,
-                                    fontSize = 12.sp,
-                                    maxLines = 2
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Preview tracks in spotlight
-                        spotlightSongs.take(3).forEach { song ->
-                            var itemBounds by remember { mutableStateOf<Rect?>(null) }
-                            val trackInteraction = remember { MutableInteractionSource() }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .onGloballyPositioned { coords -> itemBounds = coords.boundsInRoot() }
-                                    .liquidPress(trackInteraction)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable(interactionSource = trackInteraction, indication = null) { onPlay(song, spotlightSongs, itemBounds) }
-                                    .padding(vertical = 6.dp, horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                ) {
-                                    AppleMusicGradientCover(
-                                        title = song.title ?: "",
-                                        artist = song.artist ?: "",
-                                        modifier = Modifier.fillMaxSize(),
-                                        cornerRadius = 8.dp,
-                                        showLabel = false
-                                    )
-                                    if (song.coverUrl.isNotBlank() && song.coverUrl.startsWith("http")) {
-                                        AsyncImage(model = song.coverUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(song.title ?: "", color = textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                                    Text(song.artist ?: "", color = textSecondary, fontSize = 11.sp, maxLines = 1)
-                                }
-                                val dur = if (song.durationSeconds > 0) "${song.durationSeconds / 60}:${String.format("%02d", song.durationSeconds % 60)}" else ""
-                                Text(dur, color = textMuted, fontSize = 11.sp)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        val mixInteraction = remember { MutableInteractionSource() }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(44.dp)
-                                .liquidPress(mixInteraction)
-                                .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
-                                .clip(RoundedCornerShape(50))
-                                .background(AccentRed)
-                                .glassRefraction(50.dp, isDark)
-                                .clickable(
-                                    interactionSource = mixInteraction,
-                                    indication = null
-                                ) {
-                                    onPlayArtistMix(spotlightArtist, spotlightSongs)
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Play Artist Mix", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(28.dp))
-            }
 
             // =========================================================================
             // 5. TOP SONGS & MADE FOR YOU (5th Section)
