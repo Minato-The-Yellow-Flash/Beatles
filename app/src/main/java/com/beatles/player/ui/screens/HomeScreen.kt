@@ -121,12 +121,6 @@ fun HomeScreen(
     val allRecs = remember(state.recommendations) {
         state.recommendations.filter { it.id.isNotBlank() }.distinctBy { it.id }
     }
-    val madeForYouSongs = remember(allRecs) { 
-        allRecs.drop(3).take(6) 
-    }
-    val topSongsList = remember(allRecs) { 
-        allRecs.filter { !it.isAlbum }.take(6) 
-    }
     val homeAlbums = remember(state.albums) {
         state.albums.filter { it.id.isNotBlank() }.distinctBy { it.id }
     }
@@ -223,6 +217,16 @@ fun HomeScreen(
         }
     }
 
+    val topSongsList = remember(filteredGenreSongs, allRecs, selectedGenre) {
+        if (selectedGenre == "All") allRecs.filter { !it.isAlbum }.take(6)
+        else filteredGenreSongs.filter { !it.isAlbum }.take(6)
+    }
+
+    val madeForYouSongs = remember(filteredGenreSongs, allRecs, selectedGenre) {
+        if (selectedGenre == "All") allRecs.drop(3).take(6)
+        else filteredGenreSongs.filter { !it.isAlbum }.drop(6).take(6)
+    }
+
     // Adaptive Artist Spotlight derived from currently playing track or user recommendations / listening style
     val spotlightArtist = remember(state.currentSong, state.selectedArtists, state.recentlyPlayed, state.favoriteSongs, allRecs) {
         state.currentSong?.artist?.replace(" - Topic", "")?.trim()?.ifBlank { null }
@@ -248,7 +252,7 @@ fun HomeScreen(
         else allRecs.take(4)
     }
 
-    val heroAlbumsList = remember(state.heroAlbum, allFeaturedAlbums, selectedGenre) {
+    val heroAlbumsList = remember(state.heroAlbum, allFeaturedAlbums, selectedGenre, filteredGenreSongs) {
         val list = mutableListOf<Album>()
         if (selectedGenre == "All") {
             state.heroAlbum?.let { list.add(it) }
@@ -261,18 +265,39 @@ fun HomeScreen(
                 alb.title.contains(selectedGenre, ignoreCase = true) ||
                 alb.artist.contains(selectedGenre, ignoreCase = true)
             }
-            if (genreFiltered.isNotEmpty()) list.addAll(genreFiltered)
-            else {
-                state.heroAlbum?.let { list.add(it) }
-                list.addAll(allFeaturedAlbums)
+            if (genreFiltered.isNotEmpty()) {
+                list.addAll(genreFiltered)
+            } else {
+                val synthesized = filteredGenreSongs
+                    .filter { it.album.isNotBlank() && it.album != "Single" && it.album != "Album" && it.album != it.title }
+                    .groupBy { it.album }
+                    .map { (name, songs) ->
+                        val first = songs.first()
+                        Album(
+                            id = "hero_dyn_${first.id}",
+                            title = name,
+                            artist = first.artist,
+                            coverUrl = first.coverUrl,
+                            genre = selectedGenre,
+                            songs = songs
+                        )
+                    }
+                if (synthesized.isNotEmpty()) list.addAll(synthesized)
+                else {
+                    state.heroAlbum?.let { list.add(it) }
+                    list.addAll(allFeaturedAlbums)
+                }
             }
         }
         if (list.isEmpty()) allFeaturedAlbums else list
     }
 
-    val trendingAlbumsList = remember(allFeaturedAlbums, heroAlbumsList, selectedGenre, spotlightArtist, state.selectedArtists) {
-        val topHeroId = heroAlbumsList.firstOrNull()?.id
-        val pool = allFeaturedAlbums.filter { it.id != topHeroId }
+    val trendingAlbumsList = remember(allFeaturedAlbums, heroAlbumsList, selectedGenre, spotlightArtist, state.selectedArtists, filteredGenreSongs) {
+        val heroAlbumIds = heroAlbumsList.map { it.id }.toSet()
+        val heroAlbumTitles = heroAlbumsList.map { it.title.trim().lowercase() }.toSet()
+        val pool = allFeaturedAlbums.filter { alb ->
+            alb.id !in heroAlbumIds && alb.title.trim().lowercase() !in heroAlbumTitles
+        }
         if (selectedGenre == "All") {
             val preferred = pool.filter { alb ->
                 alb.artist.equals(spotlightArtist, ignoreCase = true) ||
@@ -286,7 +311,26 @@ fun HomeScreen(
                 alb.title.contains(selectedGenre, ignoreCase = true) ||
                 alb.artist.contains(selectedGenre, ignoreCase = true)
             }
-            if (genreFiltered.isNotEmpty()) genreFiltered else pool
+            if (genreFiltered.isNotEmpty()) {
+                genreFiltered
+            } else {
+                val synthTrending = filteredGenreSongs
+                    .drop(2)
+                    .filter { it.album.isNotBlank() && it.album != "Single" && it.album != "Album" && it.album != it.title }
+                    .groupBy { it.album }
+                    .map { (name, songs) ->
+                        val first = songs.first()
+                        Album(
+                            id = "trend_dyn_${first.id}",
+                            title = name,
+                            artist = first.artist,
+                            coverUrl = first.coverUrl,
+                            genre = selectedGenre,
+                            songs = songs
+                        )
+                    }.filter { it.id !in heroAlbumIds && it.title.trim().lowercase() !in heroAlbumTitles }
+                if (synthTrending.isNotEmpty()) synthTrending else pool
+            }
         }
     }
 
@@ -466,17 +510,21 @@ fun HomeScreen(
         ) {
             // Header title & Top Category Filter Pills
             item(key = "feed_header") {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)
                 ) {
                     Text(
                         text = "Home",
                         color = textPrimary,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 31.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        text = "Listen now, curated for you",
+                        color = textSecondary,
+                        fontSize = 13.sp
                     )
                 }
                 Spacer(modifier = Modifier.height(10.dp))
@@ -586,25 +634,38 @@ fun HomeScreen(
                                             modifier = Modifier.fillMaxSize()
                                         )
                                     }
-                                    // Gradual progressive bottom blur and dark gradient scrim (leaving top area crisp and unblurred)
+                                    // Progressive feathered layer blur and dark gradient scrim (leaving top area crisp and unblurred)
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(150.dp)
+                                            .height(180.dp)
                                             .align(Alignment.BottomCenter)
+                                            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                                             .hazeChild(
                                                 state = bannerHazeState,
                                                 shape = RoundedCornerShape(bottomStart = 26.dp, bottomEnd = 26.dp),
                                                 style = HazeStyle(
-                                                    tint = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.35f),
+                                                    tint = if (isDark) Color.Black.copy(alpha = 0.50f) else Color.Black.copy(alpha = 0.32f),
                                                     blurRadius = 24.dp
                                                 )
                                             )
+                                            .drawWithContent {
+                                                drawContent()
+                                                drawRect(
+                                                    brush = Brush.verticalGradient(
+                                                        0.0f to Color.Transparent,
+                                                        0.30f to Color.Black.copy(alpha = 0.35f),
+                                                        0.65f to Color.Black.copy(alpha = 0.85f),
+                                                        1.0f to Color.Black
+                                                    ),
+                                                    blendMode = BlendMode.DstIn
+                                                )
+                                            }
                                             .background(
                                                 Brush.verticalGradient(
                                                     listOf(
                                                         Color.Transparent,
-                                                        Color.Black.copy(alpha = 0.40f),
+                                                        Color.Black.copy(alpha = 0.30f),
                                                         Color.Black.copy(alpha = if (isDark) 0.88f else 0.70f)
                                                     )
                                                 )
@@ -1180,6 +1241,22 @@ fun HomeScreen(
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+
+            item(key = "home_footer_text") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Designed with love • Beatles Music",
+                        color = textMuted.copy(alpha = 0.55f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }

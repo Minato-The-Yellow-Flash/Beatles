@@ -297,9 +297,9 @@ fun OnboardStep1(onNext: (String) -> Unit) {
                 accentColor = Color(0xFF3B82F6)
             ),
             OnboardStickyNote(
-                badge = "BITCHORD ENGINE",
-                title = "Fluid Intelligence",
-                description = "BitChord auto-mix and predictive song discovery that intuitively tunes itself to your musical vibe.",
+                badge = "INTELLIGENT MIX",
+                title = "Harmonic Dynamic Mix",
+                description = "Intuitive auto-mix and predictive song discovery that tunes itself seamlessly to your musical vibe.",
                 footer = "– Never miss a beat",
                 rotation = 1.8f,
                 bgLight = Color(0xFFFAF5FF),
@@ -322,7 +322,9 @@ fun OnboardStep1(onNext: (String) -> Unit) {
         }
     }
 
-    Box(
+    val scrollState = rememberScrollState()
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(bg)
@@ -330,15 +332,18 @@ fun OnboardStep1(onNext: (String) -> Unit) {
             .navigationBarsPadding()
             .imePadding()
     ) {
+        val isScrollNeeded = maxHeight < 520.dp
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .then(if (isScrollNeeded) Modifier.verticalScroll(scrollState) else Modifier)
                 .padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 1. Top Beatles Branding (Logo + Name moved up with Apple SF Pro typography)
+            // 1. Top Beatles Branding (Logo + Name with Apple SF Pro typography)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -369,9 +374,14 @@ fun OnboardStep1(onNext: (String) -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            // Balanced vertical spacer to place sticky notes in the middle of the screen
+            if (isScrollNeeded) {
+                Spacer(modifier = Modifier.height(16.dp))
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
+            }
 
-            // 2. Interactive Animated Sticky Notes with Wrap-Up / Fold 3D Transitions
+            // 2. Interactive Animated Sticky Notes with Wrap-Up / Fold 3D Transitions (Centered in screen)
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier
@@ -504,7 +514,11 @@ fun OnboardStep1(onNext: (String) -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            if (isScrollNeeded) {
+                Spacer(modifier = Modifier.height(20.dp))
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
+            }
 
             // 3. User Name Input Field
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -528,6 +542,7 @@ fun OnboardStep1(onNext: (String) -> Unit) {
                     cursorBrush = SolidColor(if (isDark) Color.White else AccentRed),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .height(54.dp)
                         .shadow(
                             elevation = 2.dp,
                             shape = RoundedCornerShape(50),
@@ -536,10 +551,10 @@ fun OnboardStep1(onNext: (String) -> Unit) {
                         .clip(RoundedCornerShape(50))
                         .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.90f))
                         .glassRefraction(50.dp, isDark = isDark)
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                        .padding(horizontal = 20.dp),
                     decorationBox = { inner ->
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxSize(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(modifier = Modifier.weight(1f)) {
@@ -568,14 +583,13 @@ fun OnboardStep1(onNext: (String) -> Unit) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // 4. "Next" CTA Button with LiquidPress and SF Pro typography
+            // 4. "Next" CTA Button with LiquidPress and SF Pro typography (fixed height, never squishes)
             val nextInteraction = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 20.dp)
                     .height(54.dp)
                     .liquidPress(nextInteraction)
                     .shadow(

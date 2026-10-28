@@ -12,10 +12,18 @@ All notable changes to the **Beatles** music streaming application are documente
 - **App Update Dialog Bottom Cutting**: Re-architected the update prompt into an iOS-style centered modal card (`Alignment.Center`) with full `DialogWindowProvider` edge-to-edge support, preventing the dialog from getting cut off on gesture and 3-button navigation bars.
 - **Album Art Corner Hairlines**: Eliminated the outer specular edge stroke causing thin hairlines around the top corners of the media player artwork.
 - **Browse Detail Header Layering**: Decoupled genre banner title typography from the artwork's vertical gradient destination-in mask, ensuring title text remains 100% crisp and unmasked.
-- **Browse Exit Action Button Flicker**: Fixed action buttons lingering or flickering during sub-page pop/dismiss transitions.
-- **Dynamic Genre-Specific Albums**: Replaced the static 12-album fallback in browse genre pages with real-time dynamic album queries powered by iTunes Search API.
-- **Next Up Queue Spacing**: Lowered auto-current and queue suggestions by 10px and removed the rogue banner between consecutive tracks.
-- **Onboarding Permission Timing**: Removed premature permission prompting on the first screen of onboarding; media permissions are now requested contextually when performing actions (e.g., song downloads).
+- **Browse Exit Action Button Flicker**: Action buttons (Play, Shuffle) immediately fade to zero alpha upon dismissal, completely eliminating button flicker when returning from category views.
+- **Dynamic Genre-Specific Albums**: Replaced static album fallbacks in browse genre pages with real-time dynamic album queries powered by iTunes Search API.
+- **Next Up Queue Spacing**: Lowered auto-current and queue suggestions by 10px and removed any rogue divider banners between consecutive tracks.
+- **Onboarding Sticky Notes & Keyboard**: Vertically centered the story sticky notes in the middle of the screen and ensured the Next CTA button retains a crisp, non-collapsing 54dp height when the soft keyboard appears.
+- **Hero Banner Progressive Blur**: Replaced static bottom blur with smooth multi-layer progressive blur and vertical gradient scrim, eliminating hard cutoff lines and separating the album artwork from the controls.
+- **Trending & Featured Deduplication**: Guaranteed 100% mutual exclusivity between hero banner albums and trending albums carousel.
+- **Bottom Navigation Clearance**: Added a clean 5px clearance between scrollable page content and the floating translucent navigation bar.
+- **Home Genre Filtering**: Selecting any genre pill dynamically filters the hero albums, trending albums, and top tracks across the entire home feed.
+- **Search Popularity Ranking**: Search algorithm now incorporates logarithmic view count weighting and verified artist boosting to prioritize original and popular tracks over low-quality re-uploads.
+- **Now Playing 3-Dots Menu Background**: Replaced transparent container with a solid frosted card background and subtle glass refraction for flawless contrast.
+- **Seamless Card Dismissal**: Expanded player sheet closes toward the mini-player layer with a 60px swipe threshold and single back gesture minimization.
+- **Harmonic AutoMix Beatmatching**: Implemented dynamic tempo and pitch synchronization during DJ crossfades with gentle tempo glide restoration.
 
 ### ✨ New Features & Improvements
 - **Card Popup Modal Player**: Replaced the previous mini-player capsule container with a smooth, fluid card expand and dismiss animation featuring background dim scrim and blur.
@@ -26,27 +34,5 @@ All notable changes to the **Beatles** music streaming application are documente
   - *“Designed with Love”* by Aashirvad Shukla
   - *“It All Started with a Java Project”*
   - *“Zero Ads. High Fidelity.”* (320kbps Lossless)
-  - *“BitChord Dynamic Mix Engine”*
+  - *“Intelligent Harmonic Mix”*
 - **Apple SF Pro Typography**: Standardized letter spacing, tracking, and font weights across all headers, cards, and modal sheets.
-
----
-
-## [1.9] - 2026-10-18
-
-### 🐛 Fixes & Improvements
-- **Queue Song Item Curves**: Updated queue item corner radius to pure `RoundedCornerShape(30)` for a balanced modern aesthetic.
-- **Made For You 'Show More'**: Added fluid navbar liquid-glass 'Show More' card with arrow for seamless personalized discovery.
-- **Free Download & User Analytics Engine**: Real-time APK download counts fetched live from GitHub Releases API.
-- **User Geolocation & Hardware Telemetry**: Country, city, region, device model, and OS tracking via free GeoIP without paid subscriptions.
-- **Interactive Admin Analytics Hub**: In-app real-time downloads dashboard with 1-click Google Apps Script webhook integration for free Google Sheets logging.
-
----
-
-## [1.8] - 2026-10-10
-
-### 🐛 Fixes & Improvements
-- **Pill Queue Items**: Refined queue item layout without visual rendering artifacts.
-- **Album Morph**: Fluid transition between album view and active playback.
-- **Explore Genre Show-More**: Richer recommendations and deep query expansions for regional and international genres.
-- **Top Charts Cooldown**: Added a 2-minute caching window to prevent redundant network requests.
-- **Movie Albums**: Enabled movie soundtrack queries and distinct album set groupings.

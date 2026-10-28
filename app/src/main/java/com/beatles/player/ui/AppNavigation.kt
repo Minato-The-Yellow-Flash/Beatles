@@ -265,16 +265,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
         try { progress.collect {}; viewModel.setProfileOpen(false) } catch (_: Exception) {}
     }
 
-    // 2. Player sub-pages: if player is expanded and showing Lyrics or Next Up, exit that sub-page and show player's main view
-    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && state.isExpanded && state.showSeeAllSection == "next_up") { progress ->
-        try { progress.collect {}; viewModel.setSeeAllSection(null) } catch (_: Exception) {}
-    }
-    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && state.isExpanded && state.showLyrics && state.showSeeAllSection != "next_up") { progress ->
-        try { progress.collect {}; viewModel.toggleLyrics() } catch (_: Exception) {}
-    }
-
-    // 3. Player collapse: if the player is expanded on its main view, collapse it back to the mini player with predictive back
-    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && (state.isExpanded || morphState != PlayerMorphState.COLLAPSED || playerProgress.value > 0.001f) && !state.showLyrics && state.showSeeAllSection != "next_up") { progress ->
+    // 2. Player collapse: A single back gesture minimizes the expanded player directly
+    PredictiveBackHandler(enabled = !state.showAddAlbumDialog && !state.showProfilePage && (state.isExpanded || morphState != PlayerMorphState.COLLAPSED || playerProgress.value > 0.001f)) { progress ->
         try {
             morphState = PlayerMorphState.DRAGGING
             progress.collect { backEvent ->
@@ -289,6 +281,8 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                 activeMiniPillBounds = standardMiniPillBounds
                 activeMiniPillCorner = 22.dp
             }
+            if (state.showLyrics) viewModel.toggleLyrics()
+            if (state.showSeeAllSection == "next_up") viewModel.setSeeAllSection(null)
             viewModel.setExpanded(false)
             playerProgress.animateTo(
                 targetValue = 0f,
@@ -434,7 +428,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
             }
 
 
-            val targetBottomPadding = if (state.currentSong != null) 98.dp else 40.dp
+            val targetBottomPadding = if (state.currentSong != null) 120.dp else 68.dp
             val animatedBottomPadding by animateDpAsState(
                 targetValue = targetBottomPadding,
                 animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow),
@@ -1919,13 +1913,15 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                             )
 
                             // Smooth Card Popup Sheet
+                            val targetDismissY = startBounds.top.coerceAtLeast(0f)
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .graphicsLayer {
-                                        translationY = (1f - smoothP) * screenHeightPx + dragY.coerceAtLeast(0f)
+                                        translationY = (1f - smoothP) * targetDismissY + dragY.coerceAtLeast(0f)
                                         scaleX = cardScale
                                         scaleY = cardScale
+                                        alpha = (smoothP * 1.6f).coerceIn(0f, 1f)
                                         transformOrigin = TransformOrigin(0.5f, 1.0f)
                                     }
                                     .shadow(
@@ -1940,7 +1936,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                         if (isInSubPage) return@pointerInput
                                         detectVerticalDragGestures(
                                             onDragEnd = {
-                                                if (dragY > 150f) {
+                                                if (dragY > 60f) {
                                                     viewModel.setExpanded(false)
                                                 }
                                                 dragY = 0f
@@ -1949,7 +1945,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                             onVerticalDrag = { change, dragAmount ->
                                                 if (dragAmount > 0f || dragY > 0f) {
                                                     dragY = (dragY + dragAmount).coerceAtLeast(0f)
-                                                    if (dragY > 200f) {
+                                                    if (dragY > 80f) {
                                                         change.consume()
                                                         viewModel.setExpanded(false)
                                                         dragY = 0f

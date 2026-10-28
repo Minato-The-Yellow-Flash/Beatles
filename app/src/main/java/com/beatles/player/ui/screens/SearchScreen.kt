@@ -543,7 +543,7 @@ fun SearchScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .padding(start = 16.dp, end = 16.dp, top = 32.dp, bottom = 12.dp)
                         ) {
                             Text(
                                 "Recommended for You",

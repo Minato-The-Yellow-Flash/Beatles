@@ -614,9 +614,11 @@ fun FluidAlbumDetailOverlay(
                                 Spacer(modifier = Modifier.height(20.dp))
 
                                 // Action Controls Row: Shuffle, Large Center Play, Save to Set / Library (Favorite removed per request)
+                                val controlsAlpha = if (isClosing || p < 0.95f) 0f else 1f
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .graphicsLayer { alpha = controlsAlpha }
                                         .padding(horizontal = 24.dp),
                                     horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
                                     verticalAlignment = Alignment.CenterVertically

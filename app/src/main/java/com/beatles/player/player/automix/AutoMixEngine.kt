@@ -350,9 +350,15 @@ class AutoMixEngine(
                         nextActiveDeck.seekTo(plan.incomingStartOffsetMs.coerceAtLeast(0L))
                     }
                     nextActiveDeck.volume = 0f
-                    // Lock to 1.0x native playback parameters (no Sonic phase/surround artifacts)
-                    nextActiveDeck.playbackParameters = PlaybackParameters(1.0f)
-                    outgoingDeck.playbackParameters = PlaybackParameters(1.0f)
+                    // Apply dynamic tempo and beatmatching adjustment ratio from DJ transition plan
+                    val initialInSpeed = if (plan.type == TransitionType.BEAT_MIX && plan.tempoAdjustmentRatio in 0.80f..1.20f) {
+                        plan.tempoAdjustmentRatio
+                    } else 1.0f
+                    val initialOutSpeed = if (plan.type == TransitionType.BEAT_MIX && plan.outgoingTempoAdjustmentRatio in 0.80f..1.20f) {
+                        plan.outgoingTempoAdjustmentRatio
+                    } else 1.0f
+                    nextActiveDeck.playbackParameters = PlaybackParameters(initialInSpeed)
+                    outgoingDeck.playbackParameters = PlaybackParameters(initialOutSpeed)
                     nextActiveDeck.playWhenReady = true
                     if (nextActiveDeck.playbackState == Player.STATE_IDLE) {
                         nextActiveDeck.prepare()
@@ -416,6 +422,16 @@ class AutoMixEngine(
                                 delay(400)
                                 handingOff = false
                             }
+                        }
+
+                        // Subtle tempo glide back to 1.0x native speed after handoff
+                        val initialInSpeed = if (plan.type == TransitionType.BEAT_MIX && plan.tempoAdjustmentRatio in 0.80f..1.20f) {
+                            plan.tempoAdjustmentRatio
+                        } else 1.0f
+                        if (initialInSpeed != 1.0f && t >= 0.65f) {
+                            val glide = ((t - 0.65f) / 0.35f).coerceIn(0f, 1f)
+                            val curSpeed = initialInSpeed + (1.0f - initialInSpeed) * glide
+                            nextActiveDeck.playbackParameters = PlaybackParameters(curSpeed)
                         }
                     }
 

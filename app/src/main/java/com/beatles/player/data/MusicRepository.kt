@@ -205,10 +205,17 @@ object MusicRepository {
             if (title.contains(t) && !q.contains(t)) score -= 18.0
         }
 
+        // Popularity score bonus: log10 of views ensures mega hits and genuine popular songs rank higher
+        if (song.viewCount > 0) {
+            val viewBonus = (kotlin.math.log10(song.viewCount.toDouble().coerceAtLeast(10.0)) - 1.0) * 3.5
+            score += viewBonus.coerceIn(0.0, 30.0)
+        }
+
         // Tie-breaker bonus for studio audio / official topic track ONLY if song already matches query!
-        if (tMatch >= 0.5) {
-            if (song.artist.contains("Topic", ignoreCase = true) || title.contains("audio")) {
-                score += 5.0
+        if (tMatch >= 0.4) {
+            if (song.artist.contains("Topic", ignoreCase = true) || song.artist.contains("VEVO", ignoreCase = true) ||
+                title.contains("audio") || title.contains("official")) {
+                score += 14.0
             }
         }
 
@@ -241,6 +248,7 @@ object MusicRepository {
                             val cleanTitle = cleanSongTitle(item.name)
                             val cleanArtist = item.uploaderName.replace(" - Topic", "").trim()
                             val motionVideo = getCuratedMotionArtwork(cleanTitle, cleanArtist, "")
+                            val views = item.viewCount ?: 0L
                             val song = Song(
                                 item.url,
                                 cleanTitle,
@@ -249,7 +257,8 @@ object MusicRepository {
                                 highRes,
                                 item.duration.toInt(),
                                 isAlbum = false,
-                                videoUrl = motionVideo
+                                videoUrl = motionVideo,
+                                viewCount = views
                             )
 
                             list.add(song)

@@ -3483,19 +3483,11 @@ fun NowPlayingThreeDotsMenu(
                         alpha = miniMenuAnim.coerceIn(0f, 1f)
                         transformOrigin = TransformOrigin(0.92f, 1.0f)
                     }
-                    .shadow(12.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.16f))
+                    .shadow(16.dp, menuShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.20f))
                     .clip(menuShape)
-                    .then(
-                        if (QualityManager.currentQuality.value != VisualQuality.BATTERY_SAVER) {
-                            Modifier.liquidGlass(
-                                shape = menuShape,
-                                surfaceTint = if (isDark) Color(0xFF1C1D24).copy(alpha = 0.88f) else Color(0xFFFFFFFF).copy(alpha = 0.90f),
-                                showBorder = false
-                            )
-                        } else {
-                            Modifier.background(solidMenuBg)
-                        }
-                    )
+                    .background(solidMenuBg)
+                    .border(1.dp, if (isDark) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f), menuShape)
+                    .glassRefraction(22.dp, isDark = isDark)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
                     .padding(vertical = 6.dp)
             ) {

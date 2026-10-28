@@ -10,7 +10,8 @@ data class Song @JvmOverloads constructor(
     val streamUrl: String? = null,
     val genre: String = "Various",
     val isAlbum: Boolean = false,
-    val videoUrl: String? = null
+    val videoUrl: String? = null,
+    val viewCount: Long = 0L
 )
 
 data class LyricLine(

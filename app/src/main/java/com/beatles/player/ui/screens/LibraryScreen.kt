@@ -502,6 +502,22 @@ fun LibraryScreen(
                     }
                 }
             }
+
+            item(key = "library_footer_text") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Designed with love • Beatles Music",
+                        color = textMuted.copy(alpha = 0.55f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
         }
 
         // Fixed Top Sticky Header with Subtle Layer Blur (no hard blur, no edges) & Glass Segmented Control
@@ -524,11 +540,18 @@ fun LibraryScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 110.dp, start = 16.dp, end = 16.dp, bottom = 16.dp),
+                        .padding(top = 110.dp, start = 16.dp, end = 16.dp, bottom = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Library", color = textPrimary, fontSize = 31.sp, fontWeight = FontWeight.Black)
+                    Column {
+                        Text("Library", color = textPrimary, fontSize = 31.sp, fontWeight = FontWeight.Black)
+                        Text(
+                            "Your music, playlists & collections",
+                            color = textSecondary,
+                            fontSize = 13.sp
+                        )
+                    }
                     val addInteraction = remember { MutableInteractionSource() }
                     Box(
                         modifier = Modifier

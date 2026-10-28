@@ -566,6 +566,22 @@ fun ExploreScreen(
                         }
                     }
                 }
+
+                item(key = "explore_footer_text") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "Designed with love • Beatles Music",
+                            color = textMuted.copy(alpha = 0.55f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
         }
 
@@ -983,7 +999,7 @@ fun FluidGenreDetailOverlay(
                                 }
                             }
 
-                            // Dark overlay for sharp text readability
+                            // Dark overlay for sharp text readability, fading seamlessly into page background (zero visible line)
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -992,7 +1008,8 @@ fun FluidGenreDetailOverlay(
                                             listOf(
                                                 Color.Transparent,
                                                 Color.Black.copy(alpha = 0.35f),
-                                                Color.Black.copy(alpha = 0.75f)
+                                                pageOpaqueBg.copy(alpha = 0.85f),
+                                                pageOpaqueBg
                                             )
                                         )
                                     )
@@ -1033,7 +1050,7 @@ fun FluidGenreDetailOverlay(
 
                     // Action Controls Row: Shuffle & Large Center Play (borderless liquid glass)
                     item {
-                        val controlsAlpha = if (isClosing) 0f else (p * p).coerceIn(0f, 1f)
+                        val controlsAlpha = if (isClosing || p < 0.95f) 0f else 1f
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1454,14 +1471,15 @@ fun FluidGenreDetailOverlay(
                 }
             }
 
-            // 3. Back Button (Top Left) — strictly fades synchronously with p so zero buttons linger on exit
+            // 3. Back Button (Top Left) — strictly fades immediately on close so zero buttons linger on exit
             val backInteraction = remember { MutableInteractionSource() }
+            val backAlpha = if (isClosing || p < 0.85f) 0f else p.coerceIn(0f, 1f)
             Box(
                 modifier = Modifier
                     .statusBarsPadding()
                     .padding(start = 12.dp, top = 8.dp)
                     .size(40.dp)
-                    .graphicsLayer { alpha = p.coerceIn(0f, 1f) }
+                    .graphicsLayer { alpha = backAlpha }
                     .liquidPress(backInteraction)
                     .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                     .clip(CircleShape)
