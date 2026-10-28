@@ -1379,6 +1379,88 @@ object MusicRepository {
         .distinctBy { it.id }
     }
 
+    fun scoreBitChordRecommendation(candidate: Song, seed: Song): Float {
+        if (candidate.id == seed.id) return -1f
+        val cleanCandidateArtist = candidate.artist.replace(" - Topic", "").trim()
+        val cleanSeedArtist = seed.artist.replace(" - Topic", "").trim()
+
+        // 1. Artist affinity (40%)
+        val artistScore = when {
+            cleanCandidateArtist.equals(cleanSeedArtist, ignoreCase = true) -> 1.0f
+            cleanCandidateArtist.contains(cleanSeedArtist, ignoreCase = true) || cleanSeedArtist.contains(cleanCandidateArtist, ignoreCase = true) -> 0.75f
+            candidate.title.contains(cleanSeedArtist, ignoreCase = true) || seed.title.contains(cleanCandidateArtist, ignoreCase = true) -> 0.60f
+            else -> 0.10f
+        }
+
+        // 2. Language & region match (25%)
+        val candidateLang = detectLanguage(candidate)
+        val seedLang = detectLanguage(seed)
+        val langScore = when {
+            candidateLang.equals(seedLang, ignoreCase = true) -> 1.0f
+            candidateLang == "All" || seedLang == "All" -> 0.5f
+            else -> -0.4f // Strong negative penalty for language mismatch
+        }
+
+        // 3. Genre cohesion (20%)
+        val candidateGenre = detectGenre(candidate)
+        val seedGenre = detectGenre(seed)
+        val genreScore = when {
+            candidateGenre.equals(seedGenre, ignoreCase = true) -> 1.0f
+            else -> 0.35f
+        }
+
+        // 4. Album affinity (10%)
+        val albumScore = if (candidate.album.isNotBlank() && candidate.album.equals(seed.album, ignoreCase = true)) 1.0f else 0.0f
+
+        // 5. Duration similarity (5%)
+        val durationDiff = kotlin.math.abs(candidate.durationSeconds - seed.durationSeconds)
+        val durationScore = (1f - (durationDiff / 240f)).coerceIn(0f, 1f)
+
+        return (artistScore * 0.40f) + (langScore * 0.25f) + (genreScore * 0.20f) + (albumScore * 0.10f) + (durationScore * 0.05f)
+    }
+
+    fun rankBitChordRecommendations(candidates: List<Song>, seed: Song): List<Song> {
+        val scored = candidates
+            .filter { it.id != seed.id && !it.isAlbum && it.durationSeconds in 45..1200 }
+            .distinctBy { "${it.title.lowercase().trim()}_${it.artist.lowercase().trim()}" }
+            .map { it to scoreBitChordRecommendation(it, seed) }
+            .filter { it.second > 0.10f }
+            .sortedByDescending { it.second }
+
+        val sameArtist = scored.filter { it.second >= 0.55f }.map { it.first }
+        val diverseCohesive = scored.filter { it.second < 0.55f }.map { it.first }
+
+        // BitChord diversity interleaving: 1 same artist -> 2 diverse related -> 1 same artist -> remaining
+        val interleaved = mutableListOf<Song>()
+        var artistIdx = 0
+        var divIdx = 0
+        while (artistIdx < sameArtist.size || divIdx < diverseCohesive.size) {
+            if (artistIdx < sameArtist.size) {
+                interleaved.add(sameArtist[artistIdx++])
+            }
+            if (divIdx < diverseCohesive.size) {
+                interleaved.add(diverseCohesive[divIdx++])
+            }
+            if (divIdx < diverseCohesive.size) {
+                interleaved.add(diverseCohesive[divIdx++])
+            }
+        }
+        return (interleaved + scored.map { it.first }).distinctBy { it.id }
+    }
+
+    fun rankBitChordAlbumRecommendations(albums: List<Album>, seedArtist: String, seedGenre: String): List<Album> {
+        val cleanSeedArtist = seedArtist.lowercase().trim()
+        val cleanSeedGenre = seedGenre.lowercase().trim()
+        return albums.sortedByDescending { alb ->
+            val albArtist = alb.artist.lowercase().trim()
+            val albGenre = (alb.genre ?: "").lowercase().trim()
+            var score = 0f
+            if (albArtist.contains(cleanSeedArtist) || cleanSeedArtist.contains(albArtist)) score += 0.60f
+            if (albGenre.contains(cleanSeedGenre) || cleanSeedGenre.contains(albGenre)) score += 0.40f
+            score
+        }
+    }
+
     suspend fun getRelatedSongs(song: Song): List<Song> = withContext(Dispatchers.IO) {
         val result = mutableListOf<Song>()
         val targetLang = detectLanguage(song)
@@ -1395,12 +1477,10 @@ object MusicRepository {
                     val highRes = getBestThumbnailUrl(rawThumb)
                     Song(item.url, cleanSongTitle(item.name), item.uploaderName.replace(" - Topic", "").trim(), "Recommended", highRes, item.duration.toInt(), genre = "$targetLang • $targetGenre", isAlbum = false)
                 }
-            // Filter strictly to match the same language as the seed song!
             val matched = extracted.filter { detectLanguage(it) == targetLang }
             result.addAll(matched)
         } catch (_: Exception) {}
 
-        // If fewer than 8, complement with targeted searches strictly in that language and genre
         if (result.size < 8 && cleanArtist.isNotBlank()) {
             try {
                 val query = when (targetLang) {
@@ -1429,7 +1509,6 @@ object MusicRepository {
             } catch (_: Exception) {}
         }
 
-        // If still fewer than 6, search popular hits strictly in the same language and genre
         if (result.size < 6) {
             try {
                 val fallbackQuery = when (targetLang) {
@@ -1458,7 +1537,8 @@ object MusicRepository {
             } catch (_: Exception) {}
         }
 
-        result.distinctBy { "${it.title.lowercase()}_${it.artist.lowercase()}" }
+        // Apply BitChord multi-factor re-ranking & diversity interleaving
+        rankBitChordRecommendations(result, song)
     }
 
     suspend fun getRelatedSongs(url: String): List<Song> = getRelatedSongs(Song(id = url, title = "", artist = "", album = "", coverUrl = "", durationSeconds = 0))
@@ -1518,6 +1598,61 @@ object MusicRepository {
             return MOTION_ART_1989
         }
         return null
+    }
+
+    fun getCuratedArtistMotionArtwork(artist: String): String? {
+        val a = artist.lowercase().trim()
+        return when {
+            a.contains("taylor swift") -> MOTION_ART_1989
+            else -> null
+        }
+    }
+
+    suspend fun resolveArtistMotionArtwork(artist: String): String? = withContext(Dispatchers.IO) {
+        val a = artist.trim()
+        if (a.isBlank()) return@withContext null
+        val cacheKey = "artist_motion_${a.lowercase()}"
+        motionArtworkCache[cacheKey]?.let { return@withContext it }
+
+        val curated = getCuratedArtistMotionArtwork(a)
+        if (curated != null) {
+            motionArtworkCache[cacheKey] = curated
+            return@withContext curated
+        }
+
+        try {
+            val q = URLEncoder.encode(a, "UTF-8")
+            val req = Request.Builder().url("https://itunes.apple.com/search?term=$q&media=music&entity=album&limit=4").build()
+            val resp = httpClient.newCall(req).execute()
+            val body = resp.body?.string()
+            if (body != null) {
+                val json = gson.fromJson(body, JsonObject::class.java)
+                val results = json.getAsJsonArray("results")
+                if (results != null) {
+                    for (i in 0 until minOf(results.size(), 4)) {
+                        val albumObj = results[i].asJsonObject
+                        val collectionUrl = albumObj.get("collectionViewUrl")?.asString
+                        if (!collectionUrl.isNullOrEmpty()) {
+                            val pageReq = Request.Builder()
+                                .url(collectionUrl)
+                                .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                                .build()
+                            val pageResp = httpClient.newCall(pageReq).execute()
+                            val pageHtml = pageResp.body?.string()
+                            if (pageHtml != null) {
+                                val mvodMatch = Regex("https://mvod\\.itunes\\.apple\\.com/[^\"]+\\.m3u8").find(pageHtml)?.value
+                                if (!mvodMatch.isNullOrEmpty()) {
+                                    motionArtworkCache[cacheKey] = mvodMatch
+                                    return@withContext mvodMatch
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        null
     }
 
     private val motionArtworkCache = java.util.concurrent.ConcurrentHashMap<String, String>()

@@ -1379,13 +1379,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                             } else {
                                 val related = if (isFromSearch) {
                                     val searchArtist = song.artist.replace(" - Topic", "").trim()
-                                    // 1. YouTube's recommendation algorithm provides related tracks & similar singers
+                                    // BitChord Recommendation Engine: query candidate pool & score multi-factor affinity
                                     val rel = repo.getRelatedSongs(song).filter { !it.isAlbum && it.id != song.id }
-                                    // 2. Fetch at most 2 tracks from the same artist
                                     val artistTracks = repo.search("$searchArtist songs")
-                                        .filter { !it.isAlbum && it.id != song.id && repo.detectLanguage(it).equals(songLang, ignoreCase = true) }
-                                        .take(2)
-                                    // 3. Search for top hits in the same genre and language
+                                        .filter { !it.isAlbum && it.id != song.id }
+                                        .take(4)
                                     val genreQuery = when (songLang) {
                                         "Hindi" -> "top bollywood $songGenre hits"
                                         "Punjabi" -> "top punjabi $songGenre hits"
@@ -1393,18 +1391,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                                         else -> "top $songLang $songGenre hits"
                                     }
                                     val genreTracks = repo.search(genreQuery)
-                                        .filter { !it.isAlbum && it.id != song.id && !ArtistMixEngine.isArtistMatch(it, searchArtist) }
-                                        .take(6)
+                                        .filter { !it.isAlbum && it.id != song.id }
+                                        .take(8)
 
-                                    // Interleave: 1 track from same artist, 3 diverse tracks from related/genre, 1 track from same artist, then diverse tracks
-                                    val versatilePool = mutableListOf<Song>()
-                                    if (artistTracks.isNotEmpty()) versatilePool.add(artistTracks.first())
-                                    versatilePool.addAll(rel.take(3))
-                                    versatilePool.addAll(genreTracks.take(3))
-                                    if (artistTracks.size > 1) versatilePool.add(artistTracks[1])
-                                    versatilePool.addAll(rel.drop(3))
-                                    versatilePool.addAll(genreTracks.drop(3))
-                                    versatilePool.distinctBy { it.id }
+                                    val pool = (artistTracks + rel + genreTracks).distinctBy { it.id }
+                                    repo.rankBitChordRecommendations(pool, song)
                                 } else {
                                     repo.getRelatedSongs(song)
                                 }
@@ -1476,14 +1467,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                         .filter { !it.isAlbum && it.id != song.id && !ArtistMixEngine.isArtistMatch(it, searchArtist) }
                         .take(6)
 
-                    val candidatePool = mutableListOf<Song>()
-                    if (artistTracks.isNotEmpty()) candidatePool.add(artistTracks.first())
-                    candidatePool.addAll(rel.take(4))
-                    candidatePool.addAll(genreTracks.take(4))
-                    if (artistTracks.size > 1) candidatePool.add(artistTracks[1])
-                    candidatePool.addAll(rel.drop(4))
-                    candidatePool.addAll(genreTracks.drop(4))
-                    val uniqueCandidates = candidatePool.distinctBy { it.id }
+                    val pool = (artistTracks + rel + genreTracks).distinctBy { it.id }
+                    val uniqueCandidates = repo.rankBitChordRecommendations(pool, song)
                     
                     val existingIds = _uiState.value.playlist.map { it.id }.toSet()
                     val cohesive = uniqueCandidates.filter {
@@ -1814,7 +1799,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun enhanceCoverArt(song: Song) {
         viewModelScope.launch(Dispatchers.IO) {
-            val hqCover = repo.getHighResCover(song.title, song.artist, song.coverUrl)
+            // Maintain 100% artwork consistency between preview and playback:
+            // Upscale the original track's verified cover rather than replacing with an inconsistent search match
+            val nativeHq = repo.getHighestQualityCover(song.coverUrl)
+            val needsExternalCover = song.coverUrl.isBlank() || song.coverUrl.contains("default")
+            val hqCover = if (needsExternalCover) repo.getHighResCover(song.title, song.artist, nativeHq) else nativeHq
             val motionVideo = song.videoUrl ?: repo.resolveMotionArtwork(song.title, song.artist, song.album)
             val hasNewCover = hqCover.isNotBlank() && hqCover != song.coverUrl
             val hasNewVideo = motionVideo != null && motionVideo != song.videoUrl
@@ -2644,8 +2633,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         // Background enhance cover art with high-res iTunes artwork
         launch(Dispatchers.IO) {
             val enhanced = finalRecs.map { s ->
-                val hq = repo.getHighResCover(s.title, s.artist, s.coverUrl)
-                if (hq != s.coverUrl) s.copy(coverUrl = hq) else s
+                val hq = repo.getHighestQualityCover(s.coverUrl)
+                if (hq.isNotBlank() && hq != s.coverUrl) s.copy(coverUrl = hq) else s
             }
             withContext(Dispatchers.Main) {
                 _uiState.update { it.copy(recommendations = enhanced) }

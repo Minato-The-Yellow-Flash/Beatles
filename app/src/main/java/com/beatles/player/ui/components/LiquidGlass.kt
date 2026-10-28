@@ -175,6 +175,31 @@ fun Modifier.liquidGlassRim(
         ),
         style = Stroke(width = strokePx)
     )
+
+    // 5. Chromatic Dispersion (Prismatic edge refraction of true liquid glass)
+    // Grazing angles split light into subtle cyan (leading) and magenta (trailing) wavelengths
+    val chromaticCyan = if (isDark) Color(0x3500E5FF) else Color(0x240080FF)
+    val chromaticMagenta = if (isDark) Color(0x28FF007F) else Color(0x20E040FB)
+    drawRoundRect(
+        brush = Brush.linearGradient(
+            0.0f to chromaticCyan,
+            0.18f to Color.Transparent,
+            0.82f to Color.Transparent,
+            1.0f to chromaticMagenta,
+            start = Offset(0f, 0f),
+            end = Offset(size.width, size.height)
+        ),
+        topLeft = Offset(strokePx / 2f, strokePx / 2f),
+        size = Size(
+            (size.width - strokePx).coerceAtLeast(0f),
+            (size.height - strokePx).coerceAtLeast(0f)
+        ),
+        cornerRadius = CornerRadius(
+            (cornerPx - strokePx / 2f).coerceAtLeast(0f),
+            (cornerPx - strokePx / 2f).coerceAtLeast(0f)
+        ),
+        style = Stroke(width = strokePx)
+    )
 }
 
 /**
@@ -201,8 +226,8 @@ fun Modifier.lightweightLiquidGlass(
 ): Modifier {
     val enabled = LocalLiquidGlassEnabled.current
     val isDark = MaterialTheme.colorScheme.surface.luminance() <= 0.5f
-    // 90% transparent pure liquid glass body tint (0.10f in dark mode, 0.15f in light mode)
-    val glassTint = if (isDark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.15f)
+    // 90% transparent pure liquid glass body tint (0.10f in dark mode, 0.82f in light mode)
+    val glassTint = if (isDark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.82f)
     val finalBg = if (enabled) glassTint else fallbackColor
 
     var m = clip(shape)
@@ -217,11 +242,11 @@ fun Modifier.lightweightLiquidGlass(
 }
 
 /**
- * Renders an ultra-clear pure liquid glass surface (almost crystal-clear, ~4% body tint):
- * 1. Live dynamic backdrop blur via [HazeState]
- * 2. Ultra-clear transparent crystal surface tint (no cloudy blur)
- * 3. Restored vertical & horizontal lens refraction with lowered edge opacity
- * 4. Borderless by default for clean media player controls
+ * Renders unified pure liquid glass with optical chromatic refraction and seamless morphing:
+ * 1. Merged GPU blur & body tint pass via [HazeState] with [HazeStyle(tint)] (no separate milky background modifier)
+ * 2. Integrated chromatic dispersion & dual-curve lens refraction on the unified canvas
+ * 3. 90% crystal clear transmission in dark mode & crisp iOS glass in light mode
+ * 4. Borderless by default for ultra-smooth fluid shape morphing
  */
 @Composable
 fun Modifier.liquidGlass(
@@ -243,9 +268,19 @@ fun Modifier.liquidGlass(
     }
 
     val hazeState = LocalHazeState.current
-    // 90% transparent pure liquid glass: 10% translucent body (crystal glass)
-    val defaultTint = if (isDark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.15f)
+    // 90% transparent pure liquid glass body tint (crystal glass)
+    val defaultTint = if (isDark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.82f)
     val finalTint = surfaceTint ?: defaultTint
+
+    // Merge Layer 1 (blur) and Layer 2 (tint) into a single hardware shader pass via HazeStyle.
+    // This eliminates the separate Compose .background() overlay that previously caused a milky "frosted" look!
+    val unifiedStyle = androidx.compose.runtime.remember(finalTint) {
+        HazeStyle(
+            tint = finalTint,
+            blurRadius = 12.dp,
+            noiseFactor = 0.015f
+        )
+    }
 
     var base: Modifier = this.clip(shape)
 
@@ -253,13 +288,14 @@ fun Modifier.liquidGlass(
         base = base.hazeChild(
             state = hazeState,
             shape = shape,
-            style = GlassHazeStyle
+            style = unifiedStyle
         )
+    } else {
+        base = base.background(finalTint, shape)
     }
 
-    var result = base
-        .background(finalTint, shape)
-        .liquidGlassRim(shape, isDark = isDark)
+    // Layer 3: Directional lens refraction with chromatic dispersion directly on the same node
+    var result = base.liquidGlassRim(shape, isDark = isDark)
 
     if (showBorder) {
         val edgeColor = if (isDark) Color.White.copy(alpha = 0.04f) else Color(0xFF141416).copy(alpha = 0.04f)

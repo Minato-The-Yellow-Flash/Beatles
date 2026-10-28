@@ -172,7 +172,8 @@ fun AppleMusicLiveCover(
         label = "specularShift"
     )
 
-    val currentScale = 1f + (liveScale - 1f) * motionDamp
+    // Intentional 1.025f overscan ensures album artwork bleeds edge-to-edge with 0px corner or top gaps
+    val currentScale = 1.025f + (liveScale - 1f) * motionDamp
     val currentDriftX = liveDriftX * motionDamp
     val currentDriftY = liveDriftY * motionDamp
 
@@ -181,22 +182,22 @@ fun AppleMusicLiveCover(
             .fillMaxSize()
             .clip(RoundedCornerShape(cornerRadius))
     ) {
-        // 1. Base Layer: High-Res Static Artwork (always rendered first as instant backdrop, aligned strictly to top)
+        // 1. Base Layer: High-Res Static Artwork with overscan & centered origin to eliminate 1px subpixel border gaps
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
                     scaleX = currentScale
                     scaleY = currentScale
-                    transformOrigin = TransformOrigin(0.5f, 0.0f)
+                    transformOrigin = TransformOrigin(0.5f, 0.5f)
                     translationX = currentDriftX
-                    translationY = 0f
+                    translationY = currentDriftY
                 }
         ) {
             AppleMusicGradientCover(
                 title = song.title,
                 artist = song.artist,
-                cornerRadius = cornerRadius,
+                cornerRadius = 0.dp,
                 modifier = Modifier.fillMaxSize()
             )
             // Instant cached highest quality cover (loads immediately in highest quality without double-layered pops)

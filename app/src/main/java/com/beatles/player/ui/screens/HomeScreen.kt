@@ -539,35 +539,7 @@ fun HomeScreen(
                                     Text("FEATURED ALBUM", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                                 }
 
-                                // Page indicator dots inside the album art card (Top-Right opposite the badge)
-                                if (heroAlbumsList.size > 1) {
-                                    Row(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(14.dp)
-                                            .background(Color.Black.copy(alpha = 0.40f), RoundedCornerShape(50))
-                                            .padding(horizontal = 8.dp, vertical = 5.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        for (i in heroAlbumsList.indices) {
-                                            val isCurrent = pagerState.currentPage == i
-                                            val dotWidth by animateDpAsState(
-                                                targetValue = if (isCurrent) 16.dp else 5.dp,
-                                                animationSpec = tween(300),
-                                                label = "dotWidth"
-                                            )
-                                            Box(
-                                                modifier = Modifier
-                                                    .padding(horizontal = 2.dp)
-                                                    .height(4.dp)
-                                                    .width(dotWidth)
-                                                    .clip(RoundedCornerShape(2.dp))
-                                                    .background(if (isCurrent) Color.White else Color.White.copy(alpha = 0.35f))
-                                            )
-                                        }
-                                    }
-                                }
+
 
                                 Column(
                                     modifier = Modifier

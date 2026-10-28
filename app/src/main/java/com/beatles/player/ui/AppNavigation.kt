@@ -1217,13 +1217,13 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         )
                                                     }
                                             ) {
-                                                // Sliding active indicator with liquid deformation, strictly clamped inside outer bounds
+                                                // Sliding active indicator with liquid deformation and chromatic liquid glass lens refraction
                                                 val indicatorCorner = (barCorner - 4.dp).coerceAtLeast(12.dp)
                                                 val indicatorShape = RoundedCornerShape(indicatorCorner)
                                                 val indicatorTint = if (isDark) {
-                                                    Color.White.copy(alpha = if (isHoldingNav) 0.18f else 0.10f)
+                                                    Color.White.copy(alpha = if (isHoldingNav) 0.16f else 0.08f)
                                                 } else {
-                                                    Color.White.copy(alpha = if (isHoldingNav) 0.95f else 0.70f)
+                                                    Color.White.copy(alpha = if (isHoldingNav) 0.90f else 0.65f)
                                                 }
                                                 Box(
                                                     modifier = Modifier
@@ -1236,6 +1236,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         }
                                                         .clip(indicatorShape)
                                                         .background(indicatorTint, indicatorShape)
+                                                        .liquidGlassRim(indicatorShape, strokeWidth = 0.5.dp, isDark = isDark)
                                                 )
 
                                                 Row(

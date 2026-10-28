@@ -692,9 +692,17 @@ fun FluidGenreDetailOverlay(
     val p = progress.value
     val curGenre = currentGenre
 
+    var isClosing by remember { mutableStateOf(false) }
+
     fun handleClose() {
+        if (isClosing) return
+        isClosing = true
         scope.launch {
-            progress.animateTo(0f, tween(240, easing = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)))
+            progress.animateTo(0f, tween(180, easing = LinearEasing))
+            currentGenre = null
+            currentOriginBounds = null
+            genreTracks = emptyList()
+            isClosing = false
             onClose()
         }
     }
@@ -807,12 +815,12 @@ fun FluidGenreDetailOverlay(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = 0.dp, bottom = LocalDynamicBottomPadding.current + 28.dp)
                 ) {
-                    // Hero Section: Full-width live gradient motion video banner with DstIn fade
+                    // Hero Section: Full-width edge-to-edge live gradient motion video banner matching expanded album sheet
                     item {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(270.dp)
+                                .height(330.dp)
                                 .graphicsLayer {
                                     alpha = (1f - (scrollOffset / 320f) * p).coerceIn(0f, 1f)
                                     translationY = (-scrollOffset * 0.4f).coerceAtLeast(-200f) * p
@@ -1406,13 +1414,14 @@ fun FluidGenreDetailOverlay(
                 }
             }
 
-            // 3. Back Button (Top Left)
+            // 3. Back Button (Top Left) — strictly fades synchronously with p so zero buttons linger on exit
             val backInteraction = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
                     .statusBarsPadding()
                     .padding(start = 12.dp, top = 8.dp)
                     .size(40.dp)
+                    .graphicsLayer { alpha = p.coerceIn(0f, 1f) }
                     .liquidPress(backInteraction)
                     .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                     .clip(CircleShape)
@@ -1427,57 +1436,6 @@ fun FluidGenreDetailOverlay(
                     tint = if (isDark) Color.White else Color(0xFF141416),
                     modifier = Modifier.size(20.dp)
                 )
-            }
-
-            // 4. Shared Morph Hero Category Card: glides seamlessly from tapped origin card to centered hero position
-            val targetArtworkSize = 200.dp
-            val targetArtworkSizePx = with(density) { targetArtworkSize.toPx() }
-            val targetTopPx = with(density) { 44.dp.toPx() }
-            val targetLeftPx = (screenWpx - targetArtworkSizePx) / 2f
-
-            val curArtLeft = origin.left + (targetLeftPx - origin.left) * p
-            val curArtTop = origin.top + (targetTopPx + artTranslateY - origin.top) * p + dragY
-            val curArtWidth = origin.width + (targetArtworkSizePx - origin.width) * p
-            val curArtHeight = origin.height + (targetArtworkSizePx - origin.height) * p
-            val curArtCorner = with(density) { (18.dp.toPx() + (22.dp.toPx() - 18.dp.toPx()) * p).toDp() }
-
-            Box(
-                modifier = Modifier
-                    .offset { IntOffset(curArtLeft.roundToInt(), curArtTop.roundToInt()) }
-                    .size(
-                        width = with(density) { curArtWidth.toDp() },
-                        height = with(density) { curArtHeight.toDp() }
-                    )
-                    .graphicsLayer {
-                        scaleX = if (p >= 0.95f) artScale else 1f
-                        scaleY = if (p >= 0.95f) artScale else 1f
-                        alpha = if (p >= 0.95f) artAlpha.coerceIn(0.08f, 1f) else 1f
-                    }
-                    .then(if (artBlur > 0.dp && p >= 0.95f) Modifier.blur(artBlur) else Modifier)
-                    .clip(RoundedCornerShape(curArtCorner))
-                    .shadow(elevation = (18.dp * p).coerceAtLeast(0.dp), shape = RoundedCornerShape(curArtCorner))
-            ) {
-                LiveMorphingGradientCard(
-                    palette = palette,
-                    modifier = Modifier.fillMaxSize()
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.12f))
-                )
-                if (p < 0.85f) {
-                    val titleAlpha = ((0.85f - p) / 0.85f).coerceIn(0f, 1f)
-                    Text(
-                        curGenre,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .graphicsLayer { alpha = titleAlpha }
-                    )
-                }
             }
         }
     }

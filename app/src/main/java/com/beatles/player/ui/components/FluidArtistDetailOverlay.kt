@@ -128,10 +128,7 @@ fun FluidArtistDetailOverlay(
         scope.launch {
             progress.animateTo(
                 targetValue = 0f,
-                animationSpec = spring(
-                    dampingRatio = 0.84f,
-                    stiffness = 380f
-                )
+                animationSpec = tween(durationMillis = 180, easing = LinearEasing)
             )
             currentArtist = null
             currentOriginBounds = null
@@ -234,10 +231,27 @@ fun FluidArtistDetailOverlay(
             com.beatles.player.data.MusicRepository.getHighestQualityCover(raw)
         }
 
-        val artistVideoUrl = remember(curArtist, artistTracks) {
-            MusicRepository.getCuratedMotionArtwork(curArtist, curArtist, "")
-                ?: artistTracks.firstOrNull { !it.videoUrl.isNullOrBlank() }?.videoUrl
+        var liveArtistVideoUrl by remember(curArtist) {
+            mutableStateOf(
+                MusicRepository.getCuratedMotionArtwork(curArtist, curArtist, "")
+                    ?: artistTracks.firstOrNull { !it.videoUrl.isNullOrBlank() }?.videoUrl
+            )
         }
+
+        LaunchedEffect(curArtist, artistTracks) {
+            if (curArtist != null) {
+                val fromTrack = artistTracks.firstOrNull { !it.videoUrl.isNullOrBlank() }?.videoUrl
+                if (!fromTrack.isNullOrBlank()) {
+                    liveArtistVideoUrl = fromTrack
+                } else if (liveArtistVideoUrl.isNullOrBlank()) {
+                    val resolved = MusicRepository.resolveArtistMotionArtwork(curArtist)
+                    if (!resolved.isNullOrBlank()) {
+                        liveArtistVideoUrl = resolved
+                    }
+                }
+            }
+        }
+        val artistVideoUrl = liveArtistVideoUrl
         val hasArtistVideo = !artistVideoUrl.isNullOrBlank()
 
         val targetArtworkSize = 200.dp
@@ -969,13 +983,14 @@ fun FluidArtistDetailOverlay(
                         }
                     }
 
-                    // 4. Back Button (Top Left)
+                    // 4. Back Button (Top Left) — fades synchronously with clampedP
                     val backInteraction = remember { MutableInteractionSource() }
                     Box(
                         modifier = Modifier
                             .statusBarsPadding()
                             .padding(start = 12.dp, top = 8.dp)
                             .size(40.dp)
+                            .graphicsLayer { alpha = clampedP.coerceIn(0f, 1f) }
                             .liquidPress(backInteraction)
                             .shadow(3.dp, CircleShape, spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.15f))
                             .clip(CircleShape)
@@ -996,8 +1011,8 @@ fun FluidArtistDetailOverlay(
                     }
             } // Closes Full-screen Sheet Box
 
-            // 5. Shared Morph Hero: glides seamlessly from tapped origin card to top banner position
-            if (clampedP < 0.95f) {
+            // 5. Shared Morph Hero: glides seamlessly from tapped origin card to top banner position on entrance only
+            if (!isClosing && clampedP < 0.95f && clampedP > 0.05f) {
                 val bannerHpx = with(density) { 350.dp.toPx() }
                 val curArtLeft = origin.left + (0f - origin.left) * smoothP
                 val curArtTop = origin.top + (0f - origin.top) * smoothP + dragY
