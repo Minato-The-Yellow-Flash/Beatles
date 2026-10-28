@@ -55,27 +55,32 @@ fun AppUpdateDialog(
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
     val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
 
-    // Ensure edge-to-edge on dialog window so navigation bar insets are accurately dispatched and no bottom clipping occurs
+    // Ensure edge-to-edge on dialog window by traversing view parents to DialogWindowProvider
     DisposableEffect(view) {
-        val dialogWindow = (view.parent as? DialogWindowProvider)?.window
-        if (dialogWindow != null) {
-            WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
-            dialogWindow.setLayout(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            dialogWindow.setBackgroundDrawableResource(android.R.color.transparent)
-            dialogWindow.navigationBarColor = android.graphics.Color.TRANSPARENT
-            dialogWindow.statusBarColor = android.graphics.Color.TRANSPARENT
+        var currentParent = view.parent
+        while (currentParent != null) {
+            if (currentParent is DialogWindowProvider) {
+                val dialogWindow = currentParent.window
+                WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
+                dialogWindow.setLayout(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                dialogWindow.setBackgroundDrawableResource(android.R.color.transparent)
+                dialogWindow.navigationBarColor = android.graphics.Color.TRANSPARENT
+                dialogWindow.statusBarColor = android.graphics.Color.TRANSPARENT
+                break
+            }
+            currentParent = currentParent.parent
         }
         onDispose {}
     }
 
-    // Lively AirPods-style bottom slide-up spring entrance animation
-    val enterSlideY = remember { Animatable(360f) }
+    // Fluid iOS-style center spring entrance animation
+    val enterScale = remember { Animatable(0.88f) }
     val enterAlpha = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        launch { enterSlideY.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow)) }
+        launch { enterScale.animateTo(1f, spring(dampingRatio = 0.76f, stiffness = Spring.StiffnessMediumLow)) }
         launch { enterAlpha.animateTo(1f, tween(200)) }
     }
 
@@ -128,7 +133,10 @@ fun AppUpdateDialog(
             Haptics.tick(view)
             onDismiss()
         },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Box(
             modifier = Modifier
@@ -141,26 +149,24 @@ fun AppUpdateDialog(
                     Haptics.tick(view)
                     onDismiss()
                 },
-            contentAlignment = Alignment.BottomCenter
+            contentAlignment = Alignment.Center
         ) {
             val dialogShape = RoundedCornerShape(32.dp)
-            val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.78f) else Color(0xFFFFFFFF).copy(alpha = 0.88f)
+            val translucentBarBg = if (isDark) Color(0xFF14151B).copy(alpha = 0.88f) else Color(0xFFFFFFFF).copy(alpha = 0.92f)
             val translucentBarBorder = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.12f)
-            val navBottomPadding = maxOf(WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(), 28.dp) + 16.dp
 
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = navBottomPadding)
+                    .fillMaxWidth(0.88f)
                     .graphicsLayer {
-                        translationY = enterSlideY.value
+                        scaleX = enterScale.value
+                        scaleY = enterScale.value
                         alpha = enterAlpha.value
                     }
                     .shadow(
-                        elevation = 20.dp,
+                        elevation = 24.dp,
                         shape = dialogShape,
-                        spotColor = if (isDark) Color.Black.copy(alpha = 0.60f) else Color.Black.copy(alpha = 0.15f)
+                        spotColor = if (isDark) Color.Black.copy(alpha = 0.65f) else Color.Black.copy(alpha = 0.20f)
                     )
                     .clip(dialogShape)
                     .background(translucentBarBg)
@@ -170,23 +176,13 @@ fun AppUpdateDialog(
                         shape = dialogShape
                     )
                     .glassRefraction(32.dp, isDark = isDark)
-                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                    .padding(horizontal = 22.dp, vertical = 22.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { /* prevent backdrop tap dismiss */ },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Top AirPods-style grabber pill
-                Box(
-                    modifier = Modifier
-                        .width(36.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(if (isDark) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.15f))
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
                 // Moving glowing pulse update badge
                 Box(
                     modifier = Modifier.size(76.dp),
@@ -414,6 +410,7 @@ fun AppUpdateDialog(
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
                 }
             }
         }

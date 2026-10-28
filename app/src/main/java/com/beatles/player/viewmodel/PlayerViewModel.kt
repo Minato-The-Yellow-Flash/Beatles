@@ -1126,7 +1126,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun playAlbumSet(set: AlbumSet) {
         val allSongs = set.albums.flatMap { it.songs }.distinctBy { it.id }
         if (allSongs.isNotEmpty()) {
-            playSong(allSongs.first(), allSongs)
+            playSong(allSongs.first(), allSongs, openExpanded = true)
             _uiState.update { it.copy(downloadNotice = "Playing all songs from \"${set.name}\" (${allSongs.size} tracks)") }
         }
     }
@@ -1204,12 +1204,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         isFromSearch: Boolean = false,
         isAutoMix: Boolean = false,
         sourceBounds: Rect? = null,
-        keepExpandedState: Boolean = false
+        keepExpandedState: Boolean = false,
+        openExpanded: Boolean = false
     ) {
         if (song.isAlbum) {
             viewModelScope.launch {
                 val tracks = repo.getAlbumTracks(song.id)
-                if (tracks.isNotEmpty()) playSong(tracks.first(), tracks, sourceBounds = sourceBounds)
+                if (tracks.isNotEmpty()) playSong(tracks.first(), tracks, sourceBounds = sourceBounds, openExpanded = true)
             }
             return
         }
@@ -1288,7 +1289,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         )
 
         _uiState.update { it.copy(
-            currentSong = readySong, isPlaying = true, isExpanded = if (isAutoMix || keepExpandedState) it.isExpanded else true, isLoadingStream = true,
+            currentSong = readySong, isPlaying = true, isExpanded = if (openExpanded) true else if (isAutoMix || keepExpandedState) it.isExpanded else it.isExpanded, isLoadingStream = true,
             selectedSongBounds = sourceBounds,
             isArtistMixActive = isRetainingArtistMix,
             queueTitle = if (isRetainingArtistMix) it.queueTitle else null,

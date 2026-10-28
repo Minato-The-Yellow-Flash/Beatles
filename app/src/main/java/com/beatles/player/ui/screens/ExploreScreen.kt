@@ -621,6 +621,7 @@ fun FluidGenreDetailOverlay(
     val scope = rememberCoroutineScope()
 
     var genreTracks by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var genreAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var isGenreLoading by remember { mutableStateOf(false) }
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
     val subcategories = remember { listOf("Top Hits", "Party Mix", "Chill & Relax", "Classics", "Trending Viral") }
@@ -640,6 +641,12 @@ fun FluidGenreDetailOverlay(
                     s.artist.contains(genre, ignoreCase = true)
                 }.distinctBy { it.id }
             genreTracks = local
+            scope.launch {
+                try {
+                    val alb = MusicRepository.fetchRealAlbumsForGenre(genre)
+                    if (alb.isNotEmpty()) genreAlbums = alb
+                } catch (_: Exception) {}
+            }
             scope.launch {
                 try {
                     val (q1, q2, q3) = when (genre.lowercase().trim()) {
@@ -810,6 +817,39 @@ fun FluidGenreDetailOverlay(
                     )
                 }
 
+                // BitChord-Style Shelf 2: Dynamic Genre-Specific Popular Albums & Releases
+                val matchingAlbums = remember(genreAlbums, state.albums, curGenre, genreTracks) {
+                    if (genreAlbums.isNotEmpty()) {
+                        genreAlbums
+                    } else {
+                        val filtered = state.albums.filter { alb ->
+                            alb.genre.contains(curGenre, ignoreCase = true) ||
+                            alb.title.contains(curGenre, ignoreCase = true) ||
+                            alb.artist.contains(curGenre, ignoreCase = true)
+                        }
+                        if (filtered.isNotEmpty()) {
+                            filtered
+                        } else {
+                            val synthesized = genreTracks
+                                .filter { it.album.isNotBlank() && it.album != "Single" && it.album != "Album" && it.album != it.title }
+                                .groupBy { it.album }
+                                .map { (albName, songs) ->
+                                    val firstSong = songs.first()
+                                    Album(
+                                        id = "genre_synth_${firstSong.id}",
+                                        title = albName,
+                                        artist = firstSong.artist,
+                                        coverUrl = firstSong.coverUrl,
+                                        genre = curGenre,
+                                        songs = songs
+                                    )
+                                }
+                            if (synthesized.isNotEmpty()) synthesized else state.albums.filter { it.genre.isNotBlank() }.take(6)
+                        }
+                    }
+                }
+                val displayedAlbums = if (showAllAlbums) matchingAlbums else matchingAlbums.take(6)
+
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -824,117 +864,123 @@ fun FluidGenreDetailOverlay(
                                 .graphicsLayer {
                                     alpha = (1f - (scrollOffset / 320f) * p).coerceIn(0f, 1f)
                                     translationY = (-scrollOffset * 0.4f).coerceAtLeast(-200f) * p
-                                    compositingStrategy = CompositingStrategy.Offscreen
-                                }
-                                .drawWithContent {
-                                    drawContent()
-                                    drawRect(
-                                        brush = Brush.verticalGradient(
-                                            0.0f to Color.Black,
-                                            0.55f to Color.Black.copy(alpha = 0.90f),
-                                            0.80f to Color.Black.copy(alpha = 0.35f),
-                                            1.0f to Color.Transparent
-                                        ),
-                                        blendMode = BlendMode.DstIn
-                                    )
                                 }
                         ) {
-                            // Live breathing morphing gradient
-                            LiveMorphingGradientBackground(
-                                palette = palette,
-                                modifier = Modifier.fillMaxSize()
-                            )
-
-                            // Motion Video Layer if video artwork available
-                            if (hasGenreVideo) {
-                                val ctx = LocalContext.current
-                                var isGenreVideoReady by remember(genreVideoUrl) { mutableStateOf(false) }
-                                var gVideoWidth by remember(genreVideoUrl) { mutableFloatStateOf(1f) }
-                                var gVideoHeight by remember(genreVideoUrl) { mutableFloatStateOf(1f) }
-                                var gTvRef by remember(genreVideoUrl) { mutableStateOf<TextureView?>(null) }
-                                val genreExoPlayer = remember(genreVideoUrl) {
-                                    val uri = when {
-                                        genreVideoUrl!!.startsWith("raw://") -> {
-                                            val resName = genreVideoUrl.removePrefix("raw://")
-                                            val resId = ctx.resources.getIdentifier(resName, "raw", ctx.packageName)
-                                            if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
-                                            else android.net.Uri.parse("android.resource://${ctx.packageName}/raw/$resName")
-                                        }
-                                        genreVideoUrl.startsWith("android.resource://") -> {
-                                            val parts = genreVideoUrl.split("/")
-                                            val resName = parts.lastOrNull() ?: ""
-                                            val resId = if (resName.isNotEmpty()) ctx.resources.getIdentifier(resName, "raw", ctx.packageName) else 0
-                                            if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
-                                            else android.net.Uri.parse(genreVideoUrl)
-                                        }
-                                        else -> android.net.Uri.parse(genreVideoUrl)
+                            // Masked background artwork & video layer
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                                    .drawWithContent {
+                                        drawContent()
+                                        drawRect(
+                                            brush = Brush.verticalGradient(
+                                                0.0f to Color.Black,
+                                                0.55f to Color.Black.copy(alpha = 0.90f),
+                                                0.80f to Color.Black.copy(alpha = 0.35f),
+                                                1.0f to Color.Transparent
+                                            ),
+                                            blendMode = BlendMode.DstIn
+                                        )
                                     }
-                                    val bandwidthMeter = androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.Builder(ctx).setInitialBitrateEstimate(50_000_000L).build()
-                                    val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
-                                        com.beatles.player.player.BeatlesMediaCache.createDataSourceFactory(ctx)
-                                    )
-                                    val fastLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                                        .setBufferDurationsMs(250, 4000, 100, 200)
-                                        .setPrioritizeTimeOverSizeThresholds(true)
-                                        .build()
-                                    ExoPlayer.Builder(ctx)
-                                        .setBandwidthMeter(bandwidthMeter)
-                                        .setMediaSourceFactory(mediaSourceFactory)
-                                        .setLoadControl(fastLoadControl)
-                                        .build().apply {
-                                            setMediaItem(MediaItem.fromUri(uri))
-                                            repeatMode = Player.REPEAT_MODE_ALL
-                                            volume = 0f
-                                            addListener(object : Player.Listener {
-                                                override fun onRenderedFirstFrame() {
-                                                    isGenreVideoReady = true
-                                                    gTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, gVideoWidth, gVideoHeight) } }
-                                                }
-                                                override fun onPlaybackStateChanged(state: Int) {
-                                                    if (state == Player.STATE_READY) {
+                            ) {
+                                // Live breathing morphing gradient
+                                LiveMorphingGradientBackground(
+                                    palette = palette,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+
+                                // Motion Video Layer if video artwork available
+                                if (hasGenreVideo) {
+                                    val ctx = LocalContext.current
+                                    var isGenreVideoReady by remember(genreVideoUrl) { mutableStateOf(false) }
+                                    var gVideoWidth by remember(genreVideoUrl) { mutableFloatStateOf(1f) }
+                                    var gVideoHeight by remember(genreVideoUrl) { mutableFloatStateOf(1f) }
+                                    var gTvRef by remember(genreVideoUrl) { mutableStateOf<TextureView?>(null) }
+                                    val genreExoPlayer = remember(genreVideoUrl) {
+                                        val uri = when {
+                                            genreVideoUrl!!.startsWith("raw://") -> {
+                                                val resName = genreVideoUrl.removePrefix("raw://")
+                                                val resId = ctx.resources.getIdentifier(resName, "raw", ctx.packageName)
+                                                if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
+                                                else android.net.Uri.parse("android.resource://${ctx.packageName}/raw/$resName")
+                                            }
+                                            genreVideoUrl.startsWith("android.resource://") -> {
+                                                val parts = genreVideoUrl.split("/")
+                                                val resName = parts.lastOrNull() ?: ""
+                                                val resId = if (resName.isNotEmpty()) ctx.resources.getIdentifier(resName, "raw", ctx.packageName) else 0
+                                                if (resId != 0) android.net.Uri.parse("android.resource://${ctx.packageName}/$resId")
+                                                else android.net.Uri.parse(genreVideoUrl)
+                                            }
+                                            else -> android.net.Uri.parse(genreVideoUrl)
+                                        }
+                                        val bandwidthMeter = androidx.media3.exoplayer.upstream.DefaultBandwidthMeter.Builder(ctx).setInitialBitrateEstimate(50_000_000L).build()
+                                        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
+                                            com.beatles.player.player.BeatlesMediaCache.createDataSourceFactory(ctx)
+                                        )
+                                        val fastLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                                            .setBufferDurationsMs(250, 4000, 100, 200)
+                                            .setPrioritizeTimeOverSizeThresholds(true)
+                                            .build()
+                                        ExoPlayer.Builder(ctx)
+                                            .setBandwidthMeter(bandwidthMeter)
+                                            .setMediaSourceFactory(mediaSourceFactory)
+                                            .setLoadControl(fastLoadControl)
+                                            .build().apply {
+                                                setMediaItem(MediaItem.fromUri(uri))
+                                                repeatMode = Player.REPEAT_MODE_ALL
+                                                volume = 0f
+                                                addListener(object : Player.Listener {
+                                                    override fun onRenderedFirstFrame() {
                                                         isGenreVideoReady = true
                                                         gTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, gVideoWidth, gVideoHeight) } }
                                                     }
-                                                }
-                                                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                                                    if (videoSize.width > 0 && videoSize.height > 0) {
-                                                        gVideoWidth = videoSize.width.toFloat()
-                                                        gVideoHeight = videoSize.height.toFloat()
-                                                        gTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, gVideoWidth, gVideoHeight) } }
+                                                    override fun onPlaybackStateChanged(state: Int) {
+                                                        if (state == Player.STATE_READY) {
+                                                            isGenreVideoReady = true
+                                                            gTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, gVideoWidth, gVideoHeight) } }
+                                                        }
+                                                    }
+                                                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                                        if (videoSize.width > 0 && videoSize.height > 0) {
+                                                            gVideoWidth = videoSize.width.toFloat()
+                                                            gVideoHeight = videoSize.height.toFloat()
+                                                            gTvRef?.let { tv -> tv.post { applyTopCenterCropMatrix(tv, gVideoWidth, gVideoHeight) } }
+                                                        }
+                                                    }
+                                                })
+                                                prepare()
+                                                playWhenReady = true
+                                            }
+                                    }
+                                    DisposableEffect(genreExoPlayer) {
+                                        onDispose { genreExoPlayer.release() }
+                                    }
+                                    val videoAlpha by animateFloatAsState(
+                                        targetValue = if (isGenreVideoReady) 0.85f else 0f,
+                                        animationSpec = tween(350),
+                                        label = "genreVideoAlpha"
+                                    )
+                                    AndroidView(
+                                        factory = { c ->
+                                            TextureView(c).apply {
+                                                gTvRef = this
+                                                genreExoPlayer.setVideoTextureView(this)
+                                                addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+                                                    if ((right - left) != (oldRight - oldLeft) || (bottom - top) != (oldBottom - oldTop)) {
+                                                        applyTopCenterCropMatrix(this, gVideoWidth, gVideoHeight)
                                                     }
                                                 }
-                                            })
-                                            prepare()
-                                            playWhenReady = true
-                                        }
-                                }
-                                DisposableEffect(genreExoPlayer) {
-                                    onDispose { genreExoPlayer.release() }
-                                }
-                                val videoAlpha by animateFloatAsState(
-                                    targetValue = if (isGenreVideoReady) 0.85f else 0f,
-                                    animationSpec = tween(350),
-                                    label = "genreVideoAlpha"
-                                )
-                                AndroidView(
-                                    factory = { c ->
-                                        TextureView(c).apply {
-                                            gTvRef = this
-                                            genreExoPlayer.setVideoTextureView(this)
-                                            addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
-                                                if ((right - left) != (oldRight - oldLeft) || (bottom - top) != (oldBottom - oldTop)) {
-                                                    applyTopCenterCropMatrix(this, gVideoWidth, gVideoHeight)
-                                                }
                                             }
-                                        }
-                                    },
-                                    update = { tv ->
-                                        gTvRef = tv
-                                        genreExoPlayer.setVideoTextureView(tv)
-                                        tv.post { applyTopCenterCropMatrix(tv, gVideoWidth, gVideoHeight) }
-                                    },
-                                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = videoAlpha }
-                                )
+                                        },
+                                        update = { tv ->
+                                            gTvRef = tv
+                                            genreExoPlayer.setVideoTextureView(tv)
+                                            tv.post { applyTopCenterCropMatrix(tv, gVideoWidth, gVideoHeight) }
+                                        },
+                                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = videoAlpha }
+                                    )
+                                }
                             }
 
                             // Dark overlay for sharp text readability
@@ -987,9 +1033,11 @@ fun FluidGenreDetailOverlay(
 
                     // Action Controls Row: Shuffle & Large Center Play (borderless liquid glass)
                     item {
+                        val controlsAlpha = if (isClosing) 0f else (p * p).coerceIn(0f, 1f)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .graphicsLayer { alpha = controlsAlpha }
                                 .padding(horizontal = 24.dp, vertical = 20.dp),
                             horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
                             verticalAlignment = Alignment.CenterVertically
@@ -1192,14 +1240,6 @@ fun FluidGenreDetailOverlay(
                     }
 
                     // BitChord-Style Shelf 2: Popular Albums & Releases
-                    val matchingAlbums = state.albums.filter { alb ->
-                        alb.genre.contains(curGenre, ignoreCase = true) ||
-                        alb.title.contains(curGenre, ignoreCase = true) ||
-                        alb.artist.contains(curGenre, ignoreCase = true)
-                    }.let { if (it.isNotEmpty()) it else state.albums.take(12) }
-
-                    val displayedAlbums = if (showAllAlbums) matchingAlbums else matchingAlbums.take(6)
-
                     if (displayedAlbums.isNotEmpty()) {
                         item {
                             Column(modifier = Modifier.padding(bottom = 22.dp)) {

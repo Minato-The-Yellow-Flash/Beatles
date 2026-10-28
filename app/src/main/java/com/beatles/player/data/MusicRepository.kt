@@ -2342,4 +2342,63 @@ object MusicRepository {
 
         return sets
     }
+
+    suspend fun fetchRealAlbumsForGenre(genre: String, limit: Int = 12): List<Album> = withContext(Dispatchers.IO) {
+        try {
+            val cleanGenre = genre.trim()
+            val query = when (cleanGenre.lowercase()) {
+                "punjabi" -> "top punjabi album"
+                "bollywood" -> "bollywood hits album"
+                "hip-hop" -> "hip hop album"
+                "pop" -> "pop hits album"
+                "lo-fi" -> "lofi chill album"
+                "indie" -> "indie rock album"
+                "ghazal" -> "ghazal collection album"
+                "classical" -> "indian classical album"
+                "electronic" -> "electronic dance album"
+                "r&b" -> "r&b soul album"
+                "workout" -> "gym workout edm album"
+                "chill" -> "chillout relaxing album"
+                "focus" -> "deep focus study album"
+                "party" -> "party club anthems album"
+                "romance" -> "romantic love songs album"
+                else -> "$cleanGenre album"
+            }
+            val encoded = URLEncoder.encode(query, "UTF-8")
+            val url = "https://itunes.apple.com/search?term=$encoded&entity=album&limit=20"
+            val req = Request.Builder().url(url).header("User-Agent", "BeatlesApp/2.0").build()
+            val resp = httpClient.newCall(req).execute()
+            if (!resp.isSuccessful) return@withContext emptyList()
+            val json = gson.fromJson(resp.body?.string(), JsonObject::class.java)
+            val results = json.getAsJsonArray("results") ?: return@withContext emptyList()
+            val list = mutableListOf<Album>()
+            val seen = mutableSetOf<String>()
+            for (elem in results) {
+                val item = elem.asJsonObject
+                val title = item.get("collectionName")?.asString ?: continue
+                val cleanKey = title.lowercase().trim()
+                if (cleanKey in seen) continue
+                seen.add(cleanKey)
+                val artist = item.get("artistName")?.asString ?: "Unknown"
+                val cover = item.get("artworkUrl100")?.asString?.replace("100x100bb", "1000x1000bb") ?: continue
+                val cId = item.get("collectionId")?.asLong ?: continue
+                val genreName = item.get("primaryGenreName")?.asString ?: cleanGenre
+                val year = item.get("releaseDate")?.asString?.take(4) ?: "2024"
+                list.add(
+                    Album(
+                        id = "genre_alb_$cId",
+                        title = title,
+                        artist = artist,
+                        coverUrl = cover,
+                        genre = genreName,
+                        releaseYear = year,
+                        songs = emptyList()
+                    )
+                )
+            }
+            list.take(limit)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
 }

@@ -54,6 +54,8 @@ import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -1074,22 +1076,32 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                 if (idx >= 0) selectedMainTabIdx = idx
                             }
 
-                            var bottomSearchText by remember { mutableStateOf(state.searchQuery) }
+                            var bottomSearchTextFieldValue by remember {
+                                mutableStateOf(TextFieldValue(state.searchQuery, TextRange(state.searchQuery.length)))
+                            }
                             val bottomSearchFocusRequester = remember { FocusRequester() }
 
                             LaunchedEffect(state.searchQuery) {
-                                if (state.searchQuery != bottomSearchText) bottomSearchText = state.searchQuery
+                                if (state.searchQuery != bottomSearchTextFieldValue.text) {
+                                    bottomSearchTextFieldValue = TextFieldValue(
+                                        text = state.searchQuery,
+                                        selection = TextRange(state.searchQuery.length)
+                                    )
+                                }
                             }
 
                             LaunchedEffect(state.currentTab) {
                                 if (state.currentTab == Tab.SEARCH) {
+                                    bottomSearchTextFieldValue = bottomSearchTextFieldValue.copy(
+                                        selection = TextRange(bottomSearchTextFieldValue.text.length)
+                                    )
                                     delay(220)
                                     try {
                                         bottomSearchFocusRequester.requestFocus()
                                         keyboardController?.show()
                                     } catch (_: Exception) {}
                                 } else {
-                                    bottomSearchText = ""
+                                    bottomSearchTextFieldValue = TextFieldValue("")
                                     viewModel.onSearchQueryChanged("")
                                 }
                             }
@@ -1236,7 +1248,6 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         }
                                                         .clip(indicatorShape)
                                                         .background(indicatorTint, indicatorShape)
-                                                        .liquidGlassRim(indicatorShape, strokeWidth = 0.5.dp, isDark = isDark)
                                                 )
 
                                                 Row(
@@ -1405,10 +1416,12 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Box(modifier = Modifier.weight(1f)) {
                                                     BasicTextField(
-                                                        value = bottomSearchText,
-                                                        onValueChange = {
-                                                            bottomSearchText = it
-                                                            viewModel.onSearchQueryChanged(it)
+                                                        value = bottomSearchTextFieldValue,
+                                                        onValueChange = { newValue ->
+                                                            bottomSearchTextFieldValue = newValue
+                                                            if (newValue.text != state.searchQuery) {
+                                                                viewModel.onSearchQueryChanged(newValue.text)
+                                                            }
                                                         },
                                                         modifier = Modifier
                                                             .fillMaxWidth()
@@ -1417,17 +1430,17 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                                                         singleLine = true,
                                                         cursorBrush = SolidColor(AccentRed),
                                                         decorationBox = { inner ->
-                                                            if (bottomSearchText.isEmpty()) {
+                                                            if (bottomSearchTextFieldValue.text.isEmpty()) {
                                                                 Text("Search", color = searchHintColor, fontSize = 13.sp)
                                                             }
                                                             inner()
                                                         }
                                                     )
                                                 }
-                                                if (bottomSearchText.isNotEmpty()) {
+                                                if (bottomSearchTextFieldValue.text.isNotEmpty()) {
                                                     IconButton(
                                                         onClick = {
-                                                            bottomSearchText = ""
+                                                            bottomSearchTextFieldValue = TextFieldValue("")
                                                             viewModel.clearSearch()
                                                         },
                                                         modifier = Modifier.size(28.dp)
@@ -1770,7 +1783,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         state = state,
                         viewModel = viewModel,
                         onClose = { viewModel.setSelectedArtist(null) },
-                        onPlay = { s, pl -> viewModel.playSong(s, pl) },
+                        onPlay = { s, pl -> viewModel.playSong(s, pl, openExpanded = true) },
                         onPlayArtistMix = { viewModel.playArtistMix(it) }
                     )
                 }
@@ -1783,7 +1796,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         state = state,
                         viewModel = viewModel,
                         onClose = { viewModel.setSelectedAlbumSet(null) },
-                        onPlay = { s, pl -> viewModel.playSong(s, pl) },
+                        onPlay = { s, pl -> viewModel.playSong(s, pl, openExpanded = true) },
                         onPlayAlbumSet = { viewModel.playAlbumSet(it) }
                     )
                 }
@@ -1796,7 +1809,7 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         state = state,
                         viewModel = viewModel,
                         onClose = { viewModel.setSelectedAlbum(null) },
-                        onPlay = { s, pl -> viewModel.playSong(s, pl) }
+                        onPlay = { s, pl -> viewModel.playSong(s, pl, openExpanded = true) }
                     )
                 }
 
@@ -1876,303 +1889,157 @@ fun BeatlesApp(viewModel: PlayerViewModel) {
                         }
 
                         val smoothP = (p * p * (3f - 2f * p)).coerceIn(0f, 1f)
-                        val curLeft = androidx.compose.ui.util.lerp(startBounds.left, 0f, smoothP) + dragOffsetXPx * (1f - smoothP) * 0.35f
-                        val curTop = androidx.compose.ui.util.lerp(startBounds.top, 0f, smoothP)
-                        val curRight = androidx.compose.ui.util.lerp(startBounds.right, screenWidthPx, smoothP) + dragOffsetXPx * (1f - smoothP) * 0.35f
-                        val curBottom = androidx.compose.ui.util.lerp(startBounds.bottom, screenHeightPx, smoothP)
-                        val curWidth = (curRight - curLeft).coerceAtLeast(1f)
-                        val curHeight = (curBottom - curTop).coerceAtLeast(1f)
-                        val topCorner = androidx.compose.ui.unit.lerp(startCorner, 32.dp, smoothP)
-                        val bottomCorner = androidx.compose.ui.unit.lerp(startCorner, 0.dp, smoothP)
-                        val curCornerShape = RoundedCornerShape(
-                            topStart = topCorner,
-                            topEnd = topCorner,
-                            bottomStart = bottomCorner,
-                            bottomEnd = bottomCorner
+                        val cardTopCorner = (32.dp * smoothP).coerceIn(0.dp, 32.dp)
+                        val cardCornerShape = RoundedCornerShape(
+                            topStart = cardTopCorner,
+                            topEnd = cardTopCorner,
+                            bottomStart = 0.dp,
+                            bottomEnd = 0.dp
                         )
-                        val curWidthDp = with(density) { curWidth.toDp() }
-                        val curHeightDp = with(density) { curHeight.toDp() }
-                        val curLeftPx = curLeft.roundToInt()
-                        val curTopPx = curTop.roundToInt()
                         val playerBg = if (isDark) Color(0xFF0E0E10) else Color.White
-                        val containerBg = androidx.compose.ui.graphics.lerp(
-                            translucentPillBg,
-                            playerBg,
-                            (smoothP * 1.6f).coerceIn(0f, 1f)
-                        )
-
-                        val morphContainerAlpha = 1f
+                        val cardScale = 0.94f + 0.06f * smoothP
 
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .zIndex(100f)
                         ) {
+                            // Backdrop blur & dim scrim behind the card popup
                             Box(
                                 modifier = Modifier
-                                    .offset { IntOffset(curLeftPx, curTopPx) }
-                                    .size(curWidthDp, curHeightDp)
-                                    .graphicsLayer { alpha = morphContainerAlpha }
+                                    .fillMaxSize()
+                                    .graphicsLayer { alpha = smoothP }
+                                    .background(Color.Black.copy(alpha = 0.52f))
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        if (state.isExpanded) viewModel.setExpanded(false)
+                                    }
+                            )
+
+                            // Smooth Card Popup Sheet
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        translationY = (1f - smoothP) * screenHeightPx + dragY.coerceAtLeast(0f)
+                                        scaleX = cardScale
+                                        scaleY = cardScale
+                                        transformOrigin = TransformOrigin(0.5f, 1.0f)
+                                    }
                                     .shadow(
-                                        elevation = (16.dp * p).coerceAtLeast(0.dp),
-                                        shape = curCornerShape,
-                                        spotColor = Color.Black.copy(alpha = 0.5f)
+                                        elevation = (24.dp * smoothP).coerceAtLeast(0.dp),
+                                        shape = cardCornerShape,
+                                        spotColor = Color.Black.copy(alpha = 0.55f)
                                     )
-                                    .clip(curCornerShape)
-                                    .background(containerBg)
-                                    .liquidGlassRim(curCornerShape, isDark = isDark)
+                                    .clip(cardCornerShape)
+                                    .background(playerBg)
                                     .pointerInput(state.isExpanded, state.showLyrics, state.showSeeAllSection) {
                                         val isInSubPage = (state.showLyrics && state.showSeeAllSection != "next_up") || state.showSeeAllSection == "next_up"
                                         if (isInSubPage) return@pointerInput
-                                        var accumulatedDragY = 0f
                                         detectVerticalDragGestures(
-                                            onDragStart = { accumulatedDragY = 0f },
-                                            onDragEnd = { accumulatedDragY = 0f },
-                                            onDragCancel = { accumulatedDragY = 0f },
+                                            onDragEnd = {
+                                                if (dragY > 150f) {
+                                                    viewModel.setExpanded(false)
+                                                }
+                                                dragY = 0f
+                                            },
+                                            onDragCancel = { dragY = 0f },
                                             onVerticalDrag = { change, dragAmount ->
-                                                if (dragAmount > 0f || accumulatedDragY > 0f) {
-                                                    accumulatedDragY += dragAmount
-                                                    if (accumulatedDragY > with(density) { 18.dp.toPx() }) {
+                                                if (dragAmount > 0f || dragY > 0f) {
+                                                    dragY = (dragY + dragAmount).coerceAtLeast(0f)
+                                                    if (dragY > 200f) {
                                                         change.consume()
-                                                        if (morphState != PlayerMorphState.COLLAPSING && morphState != PlayerMorphState.COLLAPSED) {
-                                                            morphState = PlayerMorphState.COLLAPSING
-                                                            if (openedFromMidCapsule && midMiniPillBounds != null) {
-                                                                activeMiniPillBounds = midMiniPillBounds
-                                                                activeMiniPillCorner = 28.dp
-                                                            } else if (standardMiniPillBounds != null) {
-                                                                activeMiniPillBounds = standardMiniPillBounds
-                                                                activeMiniPillCorner = 22.dp
-                                                            }
-                                                            viewModel.setExpanded(false)
-                                                            scope.launch {
-                                                                playerProgress.animateTo(
-                                                                    targetValue = 0f,
-                                                                    animationSpec = spring(dampingRatio = 1.0f, stiffness = 210f)
-                                                                )
-                                                                morphState = PlayerMorphState.COLLAPSED
-                                                                dragOffsetXPx = 0f
-                                                            }
-                                                        }
+                                                        viewModel.setExpanded(false)
+                                                        dragY = 0f
                                                     }
                                                 }
                                             }
                                         )
                                     }
                             ) {
-                                // 1. Full Player Content (aligned to screen space so album art and components glide smoothly)
-                                val fullPlayerAlpha = if (p <= 0.001f) 0f else 1f
-                                if (fullPlayerAlpha > 0.001f) {
-                                    Box(
-                                        modifier = Modifier
-                                            .requiredSize(screenWidthDp, screenHeightDp)
-                                            .offset { IntOffset(-curLeftPx, -curTopPx) }
-                                            .graphicsLayer { alpha = fullPlayerAlpha }
-                                    ) {
-                                        NowPlayingSheet(
-                                            song = state.currentSong!!,
-                                            isPlaying = state.isPlaying,
-                                            currentPosition = state.currentPosition,
-                                            duration = state.duration,
-                                            shuffleEnabled = state.shuffleModeEnabled,
-                                            repeatMode = state.repeatMode,
-                                            isFavorite = state.isFavorite,
-                                            lyrics = state.lyrics,
-                                            playlist = state.playlist,
-                                            showLyrics = state.showLyrics && state.showSeeAllSection != "next_up",
-                                            showNextUp = state.showSeeAllSection == "next_up",
-                                            playlists = state.playlists,
-                                            isLoadingStream = state.isLoadingStream,
-                                            autoMixActive = state.autoMixState.isMixing,
-                                            autoMixProgress = state.autoMixState.progress,
-                                            autoMixLabel = state.autoMixState.label,
-                                            morphProgress = p,
-                                            sourceOriginBounds = if (isExpandingFromSongCard && songCardArtBounds != null) {
-                                                songCardArtBounds
-                                            } else if (openedFromMidCapsule && midMiniArtBounds != null) {
-                                                midMiniArtBounds
-                                            } else {
-                                                activeMiniArtBounds ?: topMiniArtBounds
-                                            },
-                                            onClose = {
-                                                if (openedFromMidCapsule && midMiniPillBounds != null) {
-                                                    activeMiniPillBounds = midMiniPillBounds
-                                                    activeMiniPillCorner = 28.dp
-                                                } else if (standardMiniPillBounds != null) {
-                                                    activeMiniPillBounds = standardMiniPillBounds
-                                                    activeMiniPillCorner = 22.dp
-                                                }
-                                                viewModel.setExpanded(false)
-                                            },
-                                            onTogglePlay = { viewModel.togglePlayPause() },
-                                            onNext = { viewModel.playNext() },
-                                            onPrevious = { viewModel.playPrevious() },
-                                            onSeek = { viewModel.seekTo(it) },
-                                            onToggleShuffle = { viewModel.toggleShuffle() },
-                                            onToggleRepeat = { viewModel.toggleRepeat() },
-                                            onToggleFavorite = { viewModel.toggleFavorite() },
-                                            onToggleLyrics = { viewModel.switchToLyrics() },
-                                            onToggleNextUp = { viewModel.switchToNextUp() },
-                                            onPlayFromQueue = { s -> viewModel.playSong(s, state.playlist) },
-                                            autoPlayEnabled = state.autoPlayEnabled,
-                                            onToggleAutoPlay = { viewModel.toggleAutoPlay() },
-                                            autoMixMode = state.autoMixMode,
-                                            autoMixEnabled = state.autoMixEnabled,
-                                            onToggleAutoMix = { viewModel.toggleAutoMix() },
-                                            onGoToAlbum = { s -> viewModel.openAlbumForSong(s) },
-                                            onGoToArtist = { s -> viewModel.openArtist(s) },
-                                            onMoveToPlayNext = { s -> viewModel.moveSongToPlayNext(s) },
-                                            onRemoveFromQueue = { sId -> viewModel.removeSongFromQueue(sId) },
-                                            onMoveInQueue = { from, to -> viewModel.moveSongInQueue(from, to) },
-                                            onDownloadSong = { s -> viewModel.downloadSongHighestQuality(s) },
-                                            downloadedSongs = state.downloadedSongs,
-                                            downloadingSongId = state.downloadingSongId,
-                                            downloadProgress = state.downloadProgress,
-                                            downloadFailedSongId = state.downloadFailedSongId,
-                                            onCancelDownload = { sId -> viewModel.cancelDownload(sId) },
-                                            onRemoveDownload = { sId -> viewModel.removeDownloadedSong(sId) },
-                                            onCreatePlaylist = { name, s -> viewModel.createPlaylist(name, s) },
-                                            onAddToPlaylist = { pId, s -> viewModel.addSongToPlaylist(pId, s) },
-                                            queueTitle = state.queueTitle,
-                                            isArtistMixLoading = state.isArtistMixLoading,
-                                            onLoadMoreUpcoming = { viewModel.loadMoreUpcoming() },
-                                            onPlayArtistMix = { viewModel.playArtistMix(it) },
-                                            sleepTimerState = state.sleepTimerState,
-                                            onStartSleepTimerMinutes = { viewModel.startSleepTimerMinutes(it) },
-                                            onStartSleepTimerSongs = { viewModel.startSleepTimerSongs(it) },
-                                            onStartSleepTimerAlbum = { viewModel.startSleepTimerAlbum() },
-                                            onStartSleepTimerEndOfTrack = { viewModel.startSleepTimerEndOfTrack() },
-                                            onExtendSleepTimerMinutes = { viewModel.extendSleepTimerMinutes(it) },
-                                            onExtendSleepTimerSongs = { viewModel.extendSleepTimerSongs(it) },
-                                            onExtendSleepTimerAlbum = { viewModel.extendSleepTimerAlbum() },
-                                            onCancelSleepTimer = { viewModel.cancelSleepTimer() },
-                                            onDismissSleepWarning = { viewModel.dismissSleepWarningPopup() },
-                                            onSetSleepExtendPopupEnabled = { viewModel.setSleepExtendPopupEnabled(it) },
-                                            autoMixTargetSongId = state.autoMixTargetSongId
-                                        )
-                                    }
-                                }
-
-                                // 2. Mini Player Pill Content (crossfades in when closing/expanding with RenderEffect blur, hero artwork morphs continuously into the leading slot)
-                                val miniPillAlpha = if (p >= 0.48f) 0f else ((0.48f - p) / 0.48f).coerceIn(0f, 1f)
-                                val midpointBlurFactor = (1f - kotlin.math.abs(p - 0.5f) * 2f).coerceIn(0f, 1f)
-                                val miniBlurDp = 14.dp * midpointBlurFactor
-                                val miniScale = 1f + 0.04f * p
-                                if (miniPillAlpha > 0.001f) {
-                                    val isCircleMini = startBounds.width < 100f
-                                    val isMidCompact = !isCircleMini && !isExpandingFromSongCard && (openedFromMidCapsule || activeMiniPillBounds == midMiniPillBounds || startBounds.width < screenWidthPx * 0.85f)
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .graphicsLayer {
-                                                alpha = miniPillAlpha
-                                                scaleX = miniScale
-                                                scaleY = miniScale
-                                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S && miniBlurDp > 0.5.dp && p > 0.05f) {
-                                                    val blurPx = with(density) { miniBlurDp.toPx() }
-                                                    renderEffect = android.graphics.RenderEffect.createBlurEffect(
-                                                        blurPx, blurPx, android.graphics.Shader.TileMode.CLAMP
-                                                    ).asComposeRenderEffect()
-                                                }
-                                            }
-                                            .padding(horizontal = if (isCircleMini) 0.dp else 8.dp),
-                                        contentAlignment = if (isCircleMini) Alignment.Center else Alignment.CenterStart
-                                    ) {
-                                        if (isCircleMini) {
-                                            Spacer(modifier = Modifier.fillMaxSize())
-                                        } else if (isExpandingFromSongCard) {
-                                            val currentSong = state.currentSong!!
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Spacer(modifier = Modifier.size(52.dp))
-                                                Spacer(modifier = Modifier.width(14.dp))
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        currentSong.title,
-                                                        color = if (isDark) Color.White else Color(0xFF141416),
-                                                        fontSize = 15.sp,
-                                                        fontWeight = FontWeight.Medium,
-                                                        maxLines = 1,
-                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                    )
-                                                    Spacer(modifier = Modifier.height(2.dp))
-                                                    val subText = if (currentSong.album.isNotBlank() && currentSong.album != "Single" && currentSong.album != "Album") "${currentSong.artist} • ${currentSong.album}" else currentSong.artist
-                                                    Text(
-                                                        subText,
-                                                        color = if (isDark) Color.White.copy(alpha = 0.55f) else Color(0xFF6B7280),
-                                                        fontSize = 12.sp,
-                                                        maxLines = 1,
-                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                                IconButton(onClick = {}, modifier = Modifier.size(36.dp)) {
-                                                    Icon(
-                                                        Icons.Default.PlayArrow,
-                                                        contentDescription = "Play",
-                                                        tint = if (isDark) Color.White.copy(alpha = 0.85f) else Color(0xFF141416),
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                }
-                                            }
-                                        } else {
-                                            Row(
-                                                modifier = Modifier.fillMaxSize(),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                val pillArt = if (isMidCompact || startCorner > 24.dp) 38.dp else 32.dp
-                                                Spacer(modifier = Modifier.size(pillArt))
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Column(
-                                                    modifier = Modifier.weight(1f),
-                                                    verticalArrangement = Arrangement.Center
-                                                ) {
-                                                    Text(
-                                                        state.currentSong!!.title,
-                                                        color = Color.White,
-                                                        fontSize = if (isMidCompact) 12.sp else 13.sp,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        maxLines = 1
-                                                    )
-                                                    if (!isMidCompact) {
-                                                        Text(
-                                                            state.currentSong!!.artist,
-                                                            color = Color.White.copy(alpha = 0.6f),
-                                                            fontSize = 10.sp,
-                                                            maxLines = 1
-                                                        )
-                                                    }
-                                                }
-                                                IconButton(
-                                                    onClick = { viewModel.togglePlayPause() },
-                                                    modifier = Modifier.size(if (isMidCompact) 32.dp else 34.dp)
-                                                 ) {
-                                                    Icon(
-                                                        if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                                        contentDescription = null,
-                                                        tint = Color.White,
-                                                        modifier = Modifier.size(if (isMidCompact) 19.dp else 20.dp)
-                                                    )
-                                                }
-                                                if (!isMidCompact) {
-                                                    IconButton(
-                                                        onClick = { viewModel.playNext() },
-                                                        modifier = Modifier.size(34.dp)
-                                                    ) {
-                                                        Icon(
-                                                            Icons.Rounded.SkipNext,
-                                                            contentDescription = null,
-                                                            tint = Color.White,
-                                                            modifier = Modifier.size(20.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
+                                NowPlayingSheet(
+                                    song = state.currentSong!!,
+                                    isPlaying = state.isPlaying,
+                                    currentPosition = state.currentPosition,
+                                    duration = state.duration,
+                                    shuffleEnabled = state.shuffleModeEnabled,
+                                    repeatMode = state.repeatMode,
+                                    isFavorite = state.isFavorite,
+                                    lyrics = state.lyrics,
+                                    playlist = state.playlist,
+                                    showLyrics = state.showLyrics && state.showSeeAllSection != "next_up",
+                                    showNextUp = state.showSeeAllSection == "next_up",
+                                    playlists = state.playlists,
+                                    isLoadingStream = state.isLoadingStream,
+                                    autoMixActive = state.autoMixState.isMixing,
+                                    autoMixProgress = state.autoMixState.progress,
+                                    autoMixLabel = state.autoMixState.label,
+                                    morphProgress = p,
+                                    sourceOriginBounds = if (isExpandingFromSongCard && songCardArtBounds != null) {
+                                        songCardArtBounds
+                                    } else if (openedFromMidCapsule && midMiniArtBounds != null) {
+                                        midMiniArtBounds
+                                    } else {
+                                        activeMiniArtBounds ?: topMiniArtBounds
+                                    },
+                                    onClose = {
+                                        if (openedFromMidCapsule && midMiniPillBounds != null) {
+                                            activeMiniPillBounds = midMiniPillBounds
+                                            activeMiniPillCorner = 28.dp
+                                        } else if (standardMiniPillBounds != null) {
+                                            activeMiniPillBounds = standardMiniPillBounds
+                                            activeMiniPillCorner = 22.dp
                                         }
-                                    }
-                                }
+                                        viewModel.setExpanded(false)
+                                    },
+                                    onTogglePlay = { viewModel.togglePlayPause() },
+                                    onNext = { viewModel.playNext() },
+                                    onPrevious = { viewModel.playPrevious() },
+                                    onSeek = { viewModel.seekTo(it) },
+                                    onToggleShuffle = { viewModel.toggleShuffle() },
+                                    onToggleRepeat = { viewModel.toggleRepeat() },
+                                    onToggleFavorite = { viewModel.toggleFavorite() },
+                                    onToggleLyrics = { viewModel.switchToLyrics() },
+                                    onToggleNextUp = { viewModel.switchToNextUp() },
+                                    onPlayFromQueue = { s -> viewModel.playSong(s, state.playlist) },
+                                    autoPlayEnabled = state.autoPlayEnabled,
+                                    onToggleAutoPlay = { viewModel.toggleAutoPlay() },
+                                    autoMixMode = state.autoMixMode,
+                                    autoMixEnabled = state.autoMixEnabled,
+                                    onToggleAutoMix = { viewModel.toggleAutoMix() },
+                                    onGoToAlbum = { s -> viewModel.openAlbumForSong(s) },
+                                    onGoToArtist = { s -> viewModel.openArtist(s) },
+                                    onMoveToPlayNext = { s -> viewModel.moveSongToPlayNext(s) },
+                                    onRemoveFromQueue = { sId -> viewModel.removeSongFromQueue(sId) },
+                                    onMoveInQueue = { from, to -> viewModel.moveSongInQueue(from, to) },
+                                    onDownloadSong = { s -> viewModel.downloadSongHighestQuality(s) },
+                                    downloadedSongs = state.downloadedSongs,
+                                    downloadingSongId = state.downloadingSongId,
+                                    downloadProgress = state.downloadProgress,
+                                    downloadFailedSongId = state.downloadFailedSongId,
+                                    onCancelDownload = { sId -> viewModel.cancelDownload(sId) },
+                                    onRemoveDownload = { sId -> viewModel.removeDownloadedSong(sId) },
+                                    onCreatePlaylist = { name, s -> viewModel.createPlaylist(name, s) },
+                                    onAddToPlaylist = { pId, s -> viewModel.addSongToPlaylist(pId, s) },
+                                    queueTitle = state.queueTitle,
+                                    isArtistMixLoading = state.isArtistMixLoading,
+                                    onLoadMoreUpcoming = { viewModel.loadMoreUpcoming() },
+                                    onPlayArtistMix = { viewModel.playArtistMix(it) },
+                                    sleepTimerState = state.sleepTimerState,
+                                    onStartSleepTimerMinutes = { viewModel.startSleepTimerMinutes(it) },
+                                    onStartSleepTimerSongs = { viewModel.startSleepTimerSongs(it) },
+                                    onStartSleepTimerAlbum = { viewModel.startSleepTimerAlbum() },
+                                    onStartSleepTimerEndOfTrack = { viewModel.startSleepTimerEndOfTrack() },
+                                    onExtendSleepTimerMinutes = { viewModel.extendSleepTimerMinutes(it) },
+                                    onExtendSleepTimerSongs = { viewModel.extendSleepTimerSongs(it) },
+                                    onExtendSleepTimerAlbum = { viewModel.extendSleepTimerAlbum() },
+                                    onCancelSleepTimer = { viewModel.cancelSleepTimer() },
+                                    onDismissSleepWarning = { viewModel.dismissSleepWarningPopup() },
+                                    onSetSleepExtendPopupEnabled = { viewModel.setSleepExtendPopupEnabled(it) },
+                                    autoMixTargetSongId = state.autoMixTargetSongId
+                                )
                             }
                         }
                     }

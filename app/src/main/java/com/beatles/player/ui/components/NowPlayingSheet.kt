@@ -2856,7 +2856,7 @@ fun NowPlayingQueueLayer(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(bottom = 190.dp, top = 140.dp)
+            .padding(bottom = 190.dp, top = 150.dp)
             .clipToBounds()
             .graphicsLayer {
                 translationX = 0f
@@ -2966,39 +2966,6 @@ fun NowPlayingQueueLayer(
                             onToggleAutoPlay = onToggleAutoPlay,
                             isDark = isDark
                         )
-                    }
-                    if (queueTitle == null) {
-                        item {
-                            val cleanArtist = song.artist.replace(" - Topic", "").trim()
-                            val sameArtistInteraction = remember { MutableInteractionSource() }
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 20.dp, vertical = 6.dp)
-                                    .liquidPress(sameArtistInteraction)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color.White.copy(alpha = 0.06f))
-                                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
-                                    .clickable(interactionSource = sameArtistInteraction, indication = null) {
-                                        Haptics.confirm(view)
-                                        onPlayArtistMix(cleanArtist)
-                                    }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Radio, contentDescription = null, tint = AccentRed, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        "Listen to more from $cleanArtist",
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
-                                }
-                            }
-                        }
                     }
                     itemsIndexed(upcoming, key = { idx, s -> "${s.id}_$idx" }) { idx, s ->
                         if (idx >= upcoming.size - 4) {

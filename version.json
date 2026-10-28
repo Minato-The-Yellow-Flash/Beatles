@@ -1,8 +1,8 @@
 {
-  "versionName": "1.9",
-  "versionCode": 12,
-  "releaseTitle": "Beatles v1.9",
-  "releaseNotes": "• Refined Queue Song Item Curves: Updated queue item corner radius to pure RoundedCornerShape(30) for a balanced modern aesthetic\n• Made For You 'Show More': Added fluid navbar liquid-glass 'Show More' card with arrow for seamless personalized discovery\n• Free Download & User Analytics Engine: Real-time APK download counts fetched live from GitHub Releases API\n• User Geolocation & Hardware Telemetry: Country, city, region, device model, and OS tracking via 100% free GeoIP without paid subscriptions\n• Interactive Admin Analytics Hub: In-app real-time downloads dashboard with 1-click Google Apps Script webhook integration for free Google Sheets logging",
-  "apkUrl": "https://github.com/Minato-The-Yellow-Flash/Beatles/releases/download/v1.9/Beatles-App.apk",
-  "publishedAt": "2026-10-18T01:45:00Z"
+  "versionName": "2.0",
+  "versionCode": 13,
+  "releaseTitle": "Beatles v2.0 — Fluid Soundscape",
+  "releaseNotes": "Fixes:\n• Search Bar Cursor: Fixed cursor jumping to start after playing a search result; cursor now stays properly at the end (Shout-out to Vimal Updhyaya for reporting this!)\n• App Update Dialog: Centered modal card design with full edge-to-edge support\n• Media Player Art: Eliminated corner hairlines & polished Next Up queue\n\nNew Additions:\n• Card Popup Modal Player: Smooth card expand and dismissal animations with background blur\n• Seamless Song Playback: Tapping any song plays instantly in the background without forcing full-screen\n• Home Category Filters: Category pills (Radio, Podcasts, Pop, Hip-Hop, Punjabi, Bollywood, Lo-Fi) directly under Home\n• Trending Albums: Dedicated section tailored to your listening habits\n• Onboarding Story: Interactive animated sticky note slides with wrap-up transitions\n• Apple SF Pro Typography: System-wide typography refinements",
+  "apkUrl": "https://github.com/Minato-The-Yellow-Flash/Beatles/releases/download/v2.0/Beatles-App.apk",
+  "publishedAt": "2026-10-29T00:00:00Z"
 }

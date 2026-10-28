@@ -11,8 +11,8 @@ android {
         applicationId = "com.beatles.player"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.9"
+        versionCode = 13
+        versionName = "2.0"
         manifestPlaceholders["appName"] = "Beatles"
         buildConfigField("Boolean", "IS_ADMIN_EDITION", "false")
     }

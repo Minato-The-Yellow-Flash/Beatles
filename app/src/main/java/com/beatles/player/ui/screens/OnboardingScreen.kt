@@ -28,6 +28,9 @@ import com.beatles.player.ui.motion.liquidPress
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -238,86 +241,365 @@ val MUSIC_LANGUAGES = listOf(
     LanguageOption("All", "All Languages", "Global", "Mix of everything")
 )
 
+data class OnboardStickyNote(
+    val badge: String,
+    val title: String,
+    val description: String,
+    val footer: String,
+    val rotation: Float,
+    val bgLight: Color,
+    val bgDark: Color,
+    val accentColor: Color
+)
+
 @Composable
 fun OnboardStep1(onNext: (String) -> Unit) {
     val isDark = isSystemInDarkTheme()
     val bg = if (isDark) GrayBlackBg else Color(0xFFF6F7F9)
     val textPrimary = if (isDark) Color.White else Color(0xFF141416)
     val textSecondary = if (isDark) Color.White.copy(alpha = 0.65f) else Color(0xFF6B7280)
-    val inputBg = if (isDark) Color(0xFF26262A) else Color(0xFFE5E7EB)
     val btnActiveBg = if (isDark) ActiveButtonBg else Color(0xFF141416)
     val btnActiveText = if (isDark) GrayBlackBg else Color.White
     val btnInactiveBg = if (isDark) InactiveButtonBg else Color(0xFFE5E7EB)
     val btnInactiveText = if (isDark) Color.White.copy(alpha = 0.45f) else Color(0xFF9CA3AF)
 
     var name by remember { mutableStateOf("") }
+    val stickyNotes = remember {
+        listOf(
+            OnboardStickyNote(
+                badge = "THE STORY",
+                title = "Designed with Love",
+                description = "Handcrafted with obsession for fluid design, acoustic depth, and seamless micro-interactions.",
+                footer = "– Designed with Love by Aashirvad",
+                rotation = -2.2f,
+                bgLight = Color(0xFFFFFBEB),
+                bgDark = Color(0xFF28231C),
+                accentColor = Color(0xFFF59E0B)
+            ),
+            OnboardStickyNote(
+                badge = "ORIGINS",
+                title = "A Java Project",
+                description = "It all started with a simple Java project in college. Today it stands as a next-generation fluid music player.",
+                footer = "– It all started with a Java Project",
+                rotation = 2.0f,
+                bgLight = Color(0xFFF0FDF4),
+                bgDark = Color(0xFF1B2920),
+                accentColor = Color(0xFF10B981)
+            ),
+            OnboardStickyNote(
+                badge = "PURE SOUND",
+                title = "Zero Ads. High Fidelity.",
+                description = "320kbps Lossless audio quality, instant lyrics synchronization, and distraction-free playback for everyone.",
+                footer = "– Pure Audiophile Experience",
+                rotation = -1.6f,
+                bgLight = Color(0xFFEFF6FF),
+                bgDark = Color(0xFF1B2433),
+                accentColor = Color(0xFF3B82F6)
+            ),
+            OnboardStickyNote(
+                badge = "BITCHORD ENGINE",
+                title = "Fluid Intelligence",
+                description = "BitChord auto-mix and predictive song discovery that intuitively tunes itself to your musical vibe.",
+                footer = "– Never miss a beat",
+                rotation = 1.8f,
+                bgLight = Color(0xFFFAF5FF),
+                bgDark = Color(0xFF271F32),
+                accentColor = Color(0xFFAF52DE)
+            )
+        )
+    }
+
+    val pagerState = rememberPagerState(pageCount = { stickyNotes.size })
+
+    // Auto-advance sticky notes smoothly every 4 seconds when user is idle
+    LaunchedEffect(pagerState) {
+        while (true) {
+            delay(4_000L)
+            if (!pagerState.isScrollInProgress) {
+                val next = (pagerState.currentPage + 1) % stickyNotes.size
+                pagerState.animateScrollToPage(next, animationSpec = tween(650, easing = FastOutSlowInEasing))
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(bg)
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .imePadding()
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Column(
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 1. Top Beatles Branding (Logo + Name moved up with Apple SF Pro typography)
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 120.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
                 Image(
                     painter = painterResource(id = if (isDark) R.drawable.beatles_logo else R.drawable.beatles_logo_light),
-                    contentDescription = "Beatles",
-                    modifier = Modifier.size(20.dp)
+                    contentDescription = "Beatles Logo",
+                    modifier = Modifier.size(46.dp)
                 )
-                Spacer(modifier = Modifier.height(20.dp))
-                Text("beatles music", fontSize = 32.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                Text("the ocean of music awaits you", fontSize = 14.sp, color = textSecondary)
+                Spacer(modifier = Modifier.width(14.dp))
+                Column {
+                    Text(
+                        text = "Beatles Music",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.5).sp,
+                        color = textPrimary
+                    )
+                    Text(
+                        text = "The ocean of music awaits you",
+                        fontSize = 12.sp,
+                        letterSpacing = 0.1.sp,
+                        color = textSecondary
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // 2. Interactive Animated Sticky Notes with Wrap-Up / Fold 3D Transitions
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(205.dp),
+                pageSpacing = 16.dp,
+                contentPadding = PaddingValues(horizontal = 8.dp)
+            ) { page ->
+                val note = stickyNotes[page]
+                val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction).coerceIn(-1f, 1f)
+                val absOffset = kotlin.math.abs(pageOffset)
+
+                val noteShape = RoundedCornerShape(24.dp)
+                val noteBg = if (isDark) note.bgDark else note.bgLight
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            // Interactive 3D paper fold and rotation wrap-up physics
+                            scaleX = 1f - 0.08f * absOffset
+                            scaleY = 1f - 0.08f * absOffset
+                            alpha = 1f - 0.25f * absOffset
+                            rotationZ = note.rotation + pageOffset * 7f
+                            rotationY = pageOffset * 16f
+                            cameraDistance = 16f * density
+                        }
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = noteShape,
+                            spotColor = if (isDark) Color.Black.copy(alpha = 0.45f) else note.accentColor.copy(alpha = 0.25f)
+                        )
+                        .clip(noteShape)
+                        .background(noteBg)
+                        .border(
+                            width = 1.dp,
+                            color = if (isDark) note.accentColor.copy(alpha = 0.25f) else note.accentColor.copy(alpha = 0.18f),
+                            shape = noteShape
+                        )
+                        .padding(horizontal = 20.dp, vertical = 18.dp)
+                ) {
+                    // Semi-translucent washi tape at top center
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .width(52.dp)
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                if (isDark) Color.White.copy(alpha = 0.12f)
+                                else Color.Black.copy(alpha = 0.08f)
+                            )
+                    )
+
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Badge Tag
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(note.accentColor.copy(alpha = if (isDark) 0.22f else 0.15f))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = note.badge,
+                                color = note.accentColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.8.sp
+                            )
+                        }
+
+                        // Title & Description
+                        Column {
+                            Text(
+                                text = note.title,
+                                color = textPrimary,
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-0.4).sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = note.description,
+                                color = textSecondary,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                letterSpacing = (-0.1).sp
+                            )
+                        }
+
+                        // Footer / Quote
+                        Text(
+                            text = note.footer,
+                            color = note.accentColor,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.1.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Sticky Note Carousel Indicator Dots with Morphing Pill
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(stickyNotes.size) { idx ->
+                    val isCurrent = pagerState.currentPage == idx
+                    val dotWidth by animateDpAsState(
+                        targetValue = if (isCurrent) 22.dp else 6.dp,
+                        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow),
+                        label = "dotWidth"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .height(6.dp)
+                            .width(dotWidth)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (isCurrent) AccentRed
+                                else (if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.15f))
+                            )
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.weight(1f))
-            Column(modifier = Modifier.padding(horizontal = 20.dp)) {
-                Text("What should we call you?", fontSize = 22.sp, fontWeight = FontWeight.Medium, color = textPrimary)
-                Spacer(modifier = Modifier.height(16.dp))
+
+            // 3. User Name Input Field
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "What should we call you?",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.3).sp,
+                    color = textPrimary
+                )
+                Spacer(modifier = Modifier.height(12.dp))
                 BasicTextField(
                     value = name,
                     onValueChange = { name = it },
-                    textStyle = TextStyle(color = textPrimary, fontSize = 16.sp),
+                    textStyle = TextStyle(
+                        color = textPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
                     singleLine = true,
                     cursorBrush = SolidColor(if (isDark) Color.White else AccentRed),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .shadow(2.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.12f))
+                        .shadow(
+                            elevation = 2.dp,
+                            shape = RoundedCornerShape(50),
+                            spotColor = if (isDark) Color.Black.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.10f)
+                        )
                         .clip(RoundedCornerShape(50))
                         .background(if (isDark) Color(0xFF1E2024).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.90f))
                         .glassRefraction(50.dp, isDark = isDark)
                         .padding(horizontal = 20.dp, vertical = 16.dp),
                     decorationBox = { inner ->
-                        if (name.isEmpty()) Text("Your name...", color = textSecondary, fontSize = 16.sp)
-                        inner()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                if (name.isEmpty()) {
+                                    Text(
+                                        "Your name...",
+                                        color = textSecondary,
+                                        fontSize = 16.sp,
+                                        letterSpacing = (-0.2).sp
+                                    )
+                                }
+                                inner()
+                            }
+                            if (name.isNotEmpty()) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear",
+                                    tint = textSecondary,
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clickable { name = "" }
+                                )
+                            }
+                        }
                     }
                 )
             }
-            Spacer(modifier = Modifier.height(16.dp))
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // 4. "Next" CTA Button with LiquidPress and SF Pro typography
             val nextInteraction = remember { MutableInteractionSource() }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 36.dp, top = 8.dp)
-                    .height(56.dp)
+                    .padding(bottom = 20.dp)
+                    .height(54.dp)
                     .liquidPress(nextInteraction)
-                    .shadow(3.dp, RoundedCornerShape(50), spotColor = if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.15f))
+                    .shadow(
+                        elevation = 4.dp,
+                        shape = RoundedCornerShape(50),
+                        spotColor = if (isDark) Color.Black.copy(alpha = 0.40f) else Color.Black.copy(alpha = 0.15f)
+                    )
                     .clip(RoundedCornerShape(50))
                     .background(if (name.isNotBlank()) btnActiveBg else btnInactiveBg)
                     .glassRefraction(50.dp, isDark = isDark)
-                    .clickable(enabled = name.isNotBlank(), interactionSource = nextInteraction, indication = null) {
+                    .clickable(
+                        enabled = name.isNotBlank(),
+                        interactionSource = nextInteraction,
+                        indication = null
+                    ) {
                         onNext(name.trim())
                     },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "Next",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    text = "Next",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.2).sp,
                     color = if (name.isNotBlank()) btnActiveText else btnInactiveText
                 )
             }
